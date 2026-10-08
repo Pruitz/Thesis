@@ -1,0 +1,62 @@
+\chapter{Background and Problem Formulation}
+\label{cap:background}
+
+This chapter establishes the agricultural navigation context and formulates the vision-based local guidance problem addressed in this thesis.
+
+\section{Agricultural autonomous navigation}
+\label{sec:agricultural_navigation}
+
+\subsection{Navigation tasks and requirements}
+\label{subsec:navigation_tasks}
+
+Agricultural robots perform tasks such as monitoring, spraying, harvesting, and weeding in structured crop environments. Navigation between crop rows requires the robot to follow a path aligned with the row structure while avoiding plants and obstacles. The guidance reference must be computed from local sensing, as global GNSS positioning may be obstructed by crop canopies or greenhouse structures.
+
+Vision-based methods identify crop rows, inter-row paths, or crop boundaries from camera images and convert these observations into steering commands. The task is local: the robot maintains its position relative to the visible row structure, not a global map.
+
+\subsection{Environmental challenges}
+\label{subsec:environmental_challenges}
+
+Field conditions vary with illumination, shadows, weather, growth stage, and weed presence. Plants may occlude parts of the path, and gaps or irregular spacing disrupt row structure. These changes affect both the appearance of image features and the reliability of geometric references extracted from them.
+
+Segmentation models trained on one set of conditions must generalize to new lighting, crops, or row configurations. Geometric extractors must handle incomplete or ambiguous corridor observations without assuming perfect segmentation.
+
+\section{Vision-based local guidance}
+\label{sec:vision_guidance}
+
+\subsection{Sensing modalities}
+\label{subsec:sensing_modalities}
+
+Camera-based perception provides appearance information for distinguishing plants, soil, and paths. Monocular RGB cameras are simpler and less expensive than LiDAR or stereo systems, but do not directly measure depth. RGB-D cameras combine appearance and depth; their suitability depends on field conditions and cost constraints.
+
+This thesis uses monocular RGB sensing for local guidance. It does not reconstruct three-dimensional field structure or maintain a global map.
+
+\subsection{Image-space reference extraction}
+\label{subsec:image_space_reference}
+
+The guidance pipeline converts image observations into a reference suitable for control. Depending on the method, this may be a horizontal position, a fitted line, or a curve. Image-space references describe the path geometry in pixel coordinates; they must be interpreted by the controller to generate velocity commands.
+
+Straight-line models assume locally linear boundaries and produce simple references for proportional control. They do not capture distant curves or complex row patterns, but are computationally efficient and suitable for short prediction horizons.
+
+\section{The segmentation-to-control pipeline}
+\label{sec:pipeline_structure}
+
+\subsection{Perception stage}
+\label{subsec:perception_stage}
+
+The perception stage assigns semantic labels to image pixels. For inter-row navigation, relevant classes may include plants, soil, path, background, and covering material. The choice of output classes affects what the geometric stage can extract: a vegetation mask differs from a path mask, and a crop-row label differs from a soil corridor.
+
+Segmentation models are trained on annotated datasets. Transfer learning from pretrained weights can reduce training time and improve generalization, but the output layers must be adapted to the target task.
+
+\subsection{Geometric extraction stage}
+\label{subsec:geometric_stage}
+
+The geometric stage reduces the segmentation mask to a navigation reference. Methods differ in their input representation, search strategy, and fitted model. Some aggregate mask pixels by image column; others select local evidence from horizontal strips or search for lines within a bounded region.
+
+The output must be robust to segmentation errors, gaps, and occlusions. Validation checks can reject references that fail quality thresholds, but the controller must handle cases where no valid reference is available.
+
+\subsection{Control integration}
+\label{subsec:control_integration}
+
+The controller interprets the navigation reference to generate linear and angular velocity commands. Proportional control uses the lateral displacement and heading error of the reference relative to the image center. Temporal filtering can smooth references across frames, but introduces lag.
+
+Closed-loop evaluation measures the robot's ability to follow rows under field conditions. Segmentation accuracy and geometric reference quality are necessary but not sufficient: the complete system must maintain corridor alignment over extended distances and variable conditions.

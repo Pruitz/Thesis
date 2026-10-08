@@ -1,0 +1,189 @@
+\chapter{Conclusions and Future Work}
+\label{cap:conclusions}
+
+This chapter will synthesize the findings on dataset preparation,
+segmentation, geometric reference extraction, and robot operation.
+It is currently a working outline: the completion notes identify the
+material to add after experimental evaluation and do not report tests
+or results already obtained. Detailed protocols, numerical tables, and
+individual trial results belong in the experimental chapter; the
+conclusions should interpret that evidence without repeating it in full.
+
+\section{Thesis objectives and main contributions}
+\label{sec:c6_objectives}
+
+\emph{To complete:} Return to the objectives stated in the introduction
+and summarize the work actually completed. Distinguish implementation
+contributions from experimentally demonstrated benefits.
+\begin{itemize}
+    \item Dataset preparation and the use of manual and SAM~3-generated
+    annotations for agricultural segmentation.
+    \item Selection of a segmentation architecture and of the trained
+    configuration used for robotic integration.
+    \item Implementation and comparison of the two edge-based geometric
+    extractors described in Chapter~\ref{cap:geometric_reference}.
+    \item Integration of perception, reference extraction, and control,
+    limited to the functionality and validation actually completed.
+\end{itemize}
+
+\section{Conclusions on dataset preparation and automatic annotation}
+\label{sec:c6_annotation}
+
+\emph{To complete:} Explain what the experiments establish about replacing
+or reducing manual annotation. Keep direct mask-quality evaluation
+separate from the performance of networks trained on those masks.
+\begin{itemize}
+    \item Summarize the effects of manual and automatic supervision on
+    path segmentation, distinguishing the full evaluation set from the
+    selected operational subset.
+    \item Discuss the role of label sets and prompt targets, including
+    visible soil versus a central navigation-path annotation.
+    \item State whether annotation-time savings were measured, including
+    inspection and correction; do not infer savings from model IoU.
+    \item Identify the conditions in which automatic labels were useful
+    and the cases requiring manual inspection or revision.
+\end{itemize}
+
+\section{Selection of the segmentation model for the robot}
+\label{sec:c6_segmentation_selection}
+
+\subsection{Architecture selection: accuracy and inference time}
+\label{subsec:c6_architecture_selection}
+
+\emph{To complete:} Synthesize the initial FCN, DeepLabV3, and LR-ASPP
+comparison on manually annotated lettuce. Explain the practical choice
+of LR-ASPP using measured accuracy and inference time under documented,
+comparable conditions. Distinguish training duration from inference
+latency, and model-only inference from end-to-end robot processing.
+
+\subsection{Supervision and target-class selection}
+\label{subsec:c6_supervision_selection}
+
+\emph{To complete:} Explain the separate decision to use the binary
+\texttt{allPlantsSAM} configuration. Relate its path-focused output to
+the geometric extractor and summarize the evidence supporting its use
+in the selected operating conditions. Do not describe it as the most
+accurate configuration if the manually supervised model performs better.
+State whether evaluation results also contributed to this selection.
+
+\section{Conclusions on geometric reference extraction}
+\label{sec:c6_geometry}
+
+\emph{To complete:} Compare Method~3 and Method~4 using the evidence from
+the geometric experiments, rather than their design rules alone.
+\begin{itemize}
+    \item Discuss interval association, independent boundary fitting,
+    and centerline accuracy on the same evaluation masks.
+    \item Summarize the effects of seed selection, association gaps,
+    border-point exclusion, and post-fit validation.
+    \item Report the implications of strip count, ROI, and parameter
+    choices, distinguishing controlled comparisons from default settings.
+    \item Discuss rejection behavior and incorrect but geometrically
+    consistent references; a fitted line is not verified free space.
+\end{itemize}
+
+\section{Conclusions from robot field validation}
+\label{sec:c6_field_validation}
+
+\emph{To complete after the field campaign:} Summarize what closed-loop
+trials establish beyond offline image segmentation and line extraction.
+If field validation is not completed, explicitly state that limitation
+instead of writing this section as if the trials had taken place.
+
+\subsection{Test conditions and scope of the evidence}
+\label{subsec:c6_field_conditions}
+
+\emph{To complete:} Briefly identify the robot, crop and row conditions,
+camera configuration, deployed checkpoint, geometric method, controller,
+and number and length of trials. Refer to the experimental chapter for
+full configuration and trial records. Distinguish any planned scenarios
+from those actually tested, including illumination changes, discontinuous
+rows, partial occlusions, and different initial offsets.
+
+\subsection{Row following and task completion}
+\label{subsec:c6_field_tracking}
+
+\emph{To complete:} Interpret path-following accuracy and the fraction
+of trials completed under a predefined success criterion. Summarize
+travelled distance, failures, and operator interventions as well as
+successful runs. Define how lateral and heading errors were measured;
+image-coordinate deviations must not be presented as metric cross-track
+errors without an independent measurement or justified conversion.
+
+\subsection{Reference loss, rejection, and robot response}
+\label{subsec:c6_field_failures}
+
+\emph{To complete:} Discuss the observed behavior when the extractor
+returns \texttt{degraded} or \texttt{lost}, when the reference becomes
+incorrect, or when observations are interrupted. Relate these states to
+the controller's implemented slowing, stopping, or recovery behavior and
+to any manual intervention. Describe the supervision and protective
+measures actually used in the tests. Do not infer collision avoidance
+from a confidence score or from the presence of a centerline.
+
+\subsection{Processing latency and closed-loop operation}
+\label{subsec:c6_field_timing}
+
+\emph{To complete:} Relate measured segmentation and geometric-processing
+latency to the actual control update rate and robot speed. Include
+end-to-end delay, variability, and dropped or stale observations where
+recorded. A short network inference time alone does not establish that
+the integrated system meets its timing requirements.
+
+\section{Limitations and validity of the findings}
+\label{sec:c6_limitations}
+
+\emph{To complete:} Identify the limits supported by the final experiment
+records. Resolve outstanding checks before treating them as verified facts.
+\begin{itemize}
+    \item Evaluation-set provenance, including the distinction between
+    validation exports, full-test results, and the operational subset.
+    \item Potential overlap, duplicate images, or related acquisitions
+    between training and evaluation datasets.
+    \item Any use of test results for model selection and the resulting
+    limits on independent final evaluation.
+    \item Sensitivity to label definitions, segmentation errors, image
+    resolution, camera pose, and extractor parameters.
+    \item Locally straight image-space boundaries, extrapolation, and
+    the absence of verified obstacle detection or terrain reconstruction.
+    \item Field-trial scope, measurement uncertainty, and the distinction
+    between offline accuracy and closed-loop navigation performance.
+\end{itemize}
+
+\section{Future work}
+\label{sec:c6_future_work}
+
+\subsection{Dataset expansion and annotation verification}
+\label{subsec:c6_future_data}
+
+\emph{To complete:} Prioritize additional crop and lighting conditions,
+manual review of difficult automatic masks, annotation-time measurement,
+and acquisition-separated evaluation sets. Explain which observed
+limitation motivates each proposed extension.
+
+\subsection{Geometric extraction and temporal integration}
+\label{subsec:c6_future_geometry}
+
+\emph{To complete:} Discuss extensions justified by the measured failure
+cases, such as parameter scaling, adaptive strips, temporal association,
+curved references, or improved handling of partially visible boundaries.
+Clearly distinguish these proposals from implemented functionality.
+
+\subsection{Further robot trials and operational coverage}
+\label{subsec:c6_future_field}
+
+\emph{To complete:} Identify the field tests still needed to extend the
+evidence: repeated trials across rows and acquisition sessions, longer
+runs, additional initial offsets, and conditions not represented in the
+completed campaign. Where relevant, propose evaluating reference-loss
+handling and controller behavior under supervised, controlled conditions.
+Do not claim operational coverage beyond the environments actually tested.
+
+\section{Final remarks}
+\label{sec:c6_final_remarks}
+
+\emph{To complete last:} Provide a concise answer to the thesis objectives
+using only findings established by the final evidence. State the level
+of validation reached and the main remaining limitation. Avoid introducing
+new experiments, unsupported performance claims, or results not discussed
+in the preceding chapters.

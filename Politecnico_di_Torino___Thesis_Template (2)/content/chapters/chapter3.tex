@@ -1,0 +1,272 @@
+\chapter{State of the Art}
+\label{cap:stato_arte}
+
+This chapter reviews vision-based methods for agricultural row
+navigation, focusing on the conversion of image observations into a
+local guidance reference. It covers visual perception, geometric
+extraction, and the integration of these stages with robot control.
+Dataset preparation and the implementation used in this thesis are
+described in Chapters~\ref{cap:segmentation}
+and~\ref{cap:geometric_reference}.
+
+\section{Classical image-processing methods}
+\label{sec:classical_methods}
+
+Classical pipelines combine image filtering, thresholding, and
+application-specific geometric rules. Mendez et al. convert vineyard
+images to grayscale, apply Gaussian filtering and Otsu thresholding,
+select the largest blob, and use column pixel counts to estimate the row
+center \cite[Sections~3.4--4]{mendez2023vineyards}. Such methods can be
+effective in the conditions for which their parameters were selected,
+but changes in illumination, weeds, and crop appearance can require
+retuning \cite[Section~2]{kneip2020cropedge}.
+
+\section{Learning-based segmentation for agricultural navigation}
+\label{sec:learning_based_segmentation}
+
+\subsection{Semantic segmentation approaches}
+\label{subsec:semantic_segmentation}
+
+Semantic segmentation assigns a class to each pixel, but the label
+definition determines what the geometric stage can recover. De Silva
+et al. train U-Net to predict narrow crop-row masks in sugar-beet
+images; the labels represent row structure rather than individual plant
+pixels or traversable soil \cite[Sections~3.3 and~4.1]{silva2023rowdetection}.
+Navone et al. instead predict a binary vegetation mask from RGB images
+using a MobileNetV3 backbone and an LR-ASPP head, then combine that
+output with depth for reference extraction
+\cite[Sections~3.3 and~4.1]{navone2025gpsfree}.
+
+The distinction matters for this work: its target is the soil region
+between crop rows, not a crop-row line or a vegetation mask. A
+segmentation model therefore supplies a candidate region; the geometric
+stage must still select the corridor and construct the guidance
+reference.
+
+\subsection{Training data and generalization}
+\label{subsec:training_data}
+
+Pixel-level annotation is time-consuming, and agricultural datasets
+must represent changes in crop, growth stage, and lighting. De Silva et
+al. include 11 field variations in their dataset
+\cite[Section~3]{silva2023rowdetection}. Navone et al. initialize their
+segmentation model with ImageNet weights and train using synthetic
+AgriSeg images supplemented by 100 real crop images
+\cite[Section~4.1, Table~1]{navone2025gpsfree}. Pretraining and the
+choice of training images are separate design choices.
+
+\section{Semantic segmentation architectures}
+\label{sec:segmentation_architectures}
+
+\subsection{FCN, DeepLabV3, and mobile architectures}
+\label{subsec:architectures_overview}
+
+Fully Convolutional Networks (FCN) replace fully connected layers with convolutions to produce dense predictions. DeepLabV3 introduces atrous convolution and atrous spatial pyramid pooling to capture multi-scale context. LR-ASPP (Lite Reduced Atrous Spatial Pyramid Pooling) reduces computational cost for mobile deployment while maintaining segmentation accuracy.
+
+The choice of architecture affects both offline accuracy and real-time inference speed. Models with deeper backbones or larger receptive fields may achieve higher IoU but require more computation. For robotic applications, the trade-off between accuracy and latency determines which architecture is deployable.
+
+\subsection{Transfer learning and pretraining}
+\label{subsec:transfer_learning}
+
+Transfer learning initializes network weights from models pretrained on large-scale datasets such as ImageNet or COCO. The backbone extracts general visual features; the segmentation head is adapted to the target task by replacing output layers with new convolutions matching the desired class count.
+
+Pretrained weights reduce training time and improve generalization, especially when target datasets are small. However, the extent of pretraining differs: some implementations retain pretrained segmentation heads and replace only the final classifier, while others initialize only the backbone and train the head from scratch.
+
+\section{Dataset preparation and model-assisted annotation}
+\label{sec:dataset_annotation}
+
+\subsection{Manual annotation challenges}
+\label{subsec:manual_annotation}
+
+Manual pixel-level annotation requires annotators to label every pixel in training images. For agricultural datasets spanning multiple crops, growth stages, and lighting conditions, this process is time-consuming and expensive. Annotation consistency depends on annotator interpretation of ambiguous boundaries, particularly where plants overlap soil or covering material.
+
+\subsection{SAM and foundation models for segmentation}
+\label{subsec:sam_annotation}
+
+Segment Anything Model~3 (SAM~3) supports text- and image-prompted
+concept segmentation. Its training data were assembled using a data
+engine with human and automated quality checks
+\cite[Sections~2 and~4]{carion2026sam3}. Foundation models like SAM~3 can assist annotation by generating masks from text prompts, reducing manual effort.
+
+In this thesis, SAM~3 is used to prepare labels offline, not as the network running during robot navigation. The quality of these masks and the time required to review or correct them are evaluated separately in Chapter~\ref{cap:segmentation}.
+
+\section{Geometric extraction methods}
+\label{sec:geometric_extraction}
+
+The geometric stage reduces a mask to a quantity the controller can use.
+Depending on the representation and method, the output may be a
+horizontal image position, a straight line, a crop-edge estimate, or a
+curve. These outputs describe different tasks and coordinate systems.
+
+\subsection{Line fitting and crop-edge detection}
+\label{subsec:line_fitting}
+
+Chen et al. estimate a path line for greenhouse cucumber rows from
+navigation points selected in plant--soil segmentation. Their
+prediction-point Hough transform uses a least-squares estimate to
+restrict the line search and is compared with traditional Hough and
+least-squares fitting \cite[Sections~2--3]{chen2021navigation}.
+
+Kneip et al. detect crop--ground transitions in scanlines of a stereo
+elevation map, then fit a linear crop-edge model using a Huber
+M-estimator and iteratively reweighted least squares. Their output is a
+crop boundary in ground-plane coordinates, not an image-space estimate
+of the inter-row path \cite[Sections~6--7]{kneip2020cropedge}.
+
+\subsection{Column-wise histogram methods}
+\label{subsec:histogram_methods}
+
+Histogram methods aggregate mask pixels by image column. Mendez et al.
+estimate the row center from the five columns with the largest pixel
+counts in a thresholded background region
+\cite[Section~3.4.3]{mendez2023vineyards}. Navone et al. use a different
+input: a temporally combined vegetation mask refined with depth. SegMin
+smooths its column histogram and selects the minimum; SegMinD weights
+the vegetation mask by normalized inverse depth before calculating the
+histogram \cite[Section~3]{navone2025gpsfree}. In both cases the output
+is a horizontal position, not a full path line.
+
+\subsection{Horizontal strips and adaptive multi-ROI methods}
+\label{subsec:strip_methods}
+
+Li et al. combine a Faster-U-net inter-row-path mask with an adaptive
+multi-ROI procedure. Horizontal regions supply ordered local points,
+which are used as control points for a multisegment cubic B-spline.
+Their experiments use 40-pixel search regions and discuss the trade-off
+between the number of points and fitting behavior
+\cite[Section~2.2.3, Figure~9]{li2022multiroi}.
+
+This is the closest geometric comparison for the present work because
+both pipelines select local evidence from horizontal image regions.
+The representation and fitted model differ: Li et al. use an
+inter-row-path mask and a spline, whereas this thesis estimates a local
+straight reference from the soil corridor between parallel crop rows.
+
+\subsection{Triangle Scan Method}
+\label{subsec:triangle_scan}
+
+De Silva et al. propose the Triangle Scan Method (TSM) for crop-row
+masks. It first scans an upper horizontal band to find an anchor column,
+using a preset anchor if the scan fails a threshold. Candidate lines
+from that anchor to positions along the base of a triangular region are
+then evaluated; the line with the greatest mask support defines the
+central crop row. Its two endpoints provide position and angular errors
+for visual servoing \cite[Section~4.2, Algorithm~1]{silva2023rowdetection}.
+
+TSM is not the same as extracting one point from each of several
+horizontal strips: the upper scan establishes an anchor for a bounded
+line search. It also operates on crop-row masks, so its output is not
+directly equivalent to a reference extracted from a soil mask.
+
+\subsection{Comparison of geometric representations}
+\label{subsec:geometric_comparison}
+
+Table~\ref{tab:confronto_riferimenti_geometrici} summarizes the input
+representation and geometric output of the methods discussed above.
+
+\begin{table}[htbp]
+    \centering
+    \footnotesize
+    \setlength{\tabcolsep}{3pt}
+    \renewcommand{\arraystretch}{1.15}
+    \caption{Perceptual inputs and geometric references in selected
+    agricultural navigation studies.}
+    \label{tab:confronto_riferimenti_geometrici}
+    \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.16\textwidth}
+        >{\raggedright\arraybackslash}X
+        >{\raggedright\arraybackslash}X
+        >{\raggedright\arraybackslash}p{0.22\textwidth}@{}}
+        \toprule
+        Study & Perceptual input & Geometric operation & Output \\
+        \midrule
+        Chen et al.\ \cite{chen2021navigation}
+        & Plant--soil segmentation and navigation points
+        & Restricted Hough search around a predicted point
+        & Image-space path line \\
+        \addlinespace
+        Kneip et al.\ \cite{kneip2020cropedge}
+        & Stereo elevation map
+        & Scanline transitions and robust linear fit
+        & Ground-plane crop edge \\
+        \addlinespace
+        Mendez et al.\ \cite{mendez2023vineyards}
+        & Thresholded background region
+        & Column counts and mean of the five largest
+        & Horizontal row-center position \\
+        \addlinespace
+        Navone et al.\ \cite{navone2025gpsfree}
+        & Vegetation mask with depth
+        & Smoothed column histogram; inverse-depth weighting in SegMinD
+        & Histogram-minimum position \\
+        \addlinespace
+        Li et al.\ \cite{li2022multiroi}
+        & Predicted inter-row-path mask
+        & Adaptive horizontal regions and cubic B-spline
+        & Curved image-space path \\
+        \addlinespace
+        De Silva et al.\ \cite{silva2023rowdetection}
+        & Predicted crop-row mask
+        & Upper anchor and triangular line search
+        & Central crop-row line \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+The methods are not directly ranked by this comparison: their inputs
+and outputs differ. Li et al. provide the closest structural precedent
+for strip-based point selection, while TSM illustrates a line search
+for a crop-row representation. Neither method uses the same
+soil-corridor mask and straight-line model as the pipeline developed
+in this thesis.
+
+\section{System integration and experimental validation}
+\label{sec:system_integration}
+
+\subsection{Perception and control integration}
+\label{subsec:perception_control}
+
+Navigation systems use the extracted reference to generate motion
+commands. Navone et al. convert the displacement of their histogram
+reference into linear and angular velocity commands and smooth them
+with an Exponential Moving Average
+\cite[Section~3.4]{navone2025gpsfree}. Mendez et al. use proportional
+control based on row-center displacement and the distribution of
+background pixels \cite[Section~3.5]{mendez2023vineyards}. De Silva et
+al. combine the central row's angular and positional errors in a
+proportional visual-servoing controller for simulation
+\cite[Section~4.3]{silva2023rowdetection}.
+
+\subsection{Scope of reported evaluations}
+\label{subsec:evaluation_scope}
+
+The studies evaluate different stages of navigation. Kneip et al.
+assess crop-edge detection on recorded harvesting data
+\cite[Section~8]{kneip2020cropedge}; Chen et al. report angular errors
+and processing times for image-based path fitting
+\cite[Sections~3.6, Tables~6--7]{chen2021navigation}. De Silva et al.
+evaluate row detection on real images and visual servoing in simulation,
+with preliminary real-world row following also reported
+\cite[Sections~5.2--5.3 and~6, Table~5]{silva2023rowdetection}.
+Mendez et al. report closed-loop vineyard trials, measuring centering
+error from the distances to the two sides of the row
+\cite[Sections~3.6 and~4]{mendez2023vineyards}. Navone et al. test in
+simulation and crop fields, using LiDAR and attitude measurements to
+assess displacement and heading \cite[Sections~4.3--4.4]{navone2025gpsfree}.
+
+Segmentation IoU, image-space line error, field tracking error, and
+processing time measure different parts of the system. Results from
+these studies therefore provide context, not a common performance
+benchmark.
+
+\section{Positioning of this thesis}
+\label{sec:thesis_positioning}
+
+This thesis studies a camera-based pipeline that segments plants and
+the soil corridor, selects the relevant inter-row region, and estimates
+a local guidance line for navigation between parallel crop rows. Its
+geometric stage uses horizontal strips to select candidate intervals
+and fits the two corridor boundaries separately. This shares the
+local-selection structure of Li et al.'s multi-ROI method, but uses a
+straight image-space reference rather than a spline. The experiments
+in the following chapters evaluate the segmentation models, geometric
+extractors, and integrated robot at their respective stages.

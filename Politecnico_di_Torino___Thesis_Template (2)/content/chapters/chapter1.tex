@@ -1,0 +1,42 @@
+\chapter{Introduction}
+\label{cap:introduction}
+
+% TODO: Expand with actual thesis context and motivation
+
+\section{Context and motivation}
+\label{sec:context}
+
+Autonomous navigation in agricultural environments requires robots to follow crop rows reliably under variable field conditions. Vision-based guidance uses cameras to identify the navigable path between rows, but lighting changes, occlusions, weeds, and plant growth affect image appearance. Manual pixel-level annotation for training segmentation models is time-consuming and must cover multiple crops and conditions.
+
+This thesis addresses these challenges through a combination of learning-based semantic segmentation and geometric reference extraction. It investigates model-assisted annotation to reduce manual labeling effort, compares segmentation architectures suitable for real-time robot perception, and develops geometric methods that convert corridor masks into local navigation references.
+
+\section{Objectives of the thesis}
+\label{sec:objectives}
+
+The main objectives of this work are:
+\begin{itemize}
+\item Compare manual and SAM~3-assisted annotation strategies for agricultural segmentation datasets spanning lettuce, tomato, and cucumber.
+\item Select a segmentation architecture balancing accuracy and inference speed for robotic deployment, through offline evaluation of FCN, DeepLabV3, and LR-ASPP on manually annotated lettuce images.
+\item Evaluate the effect of output label configurations (four-class, three-class, and binary path) on path segmentation accuracy.
+\item Implement and compare two edge-based geometric extractors that convert segmentation masks into local image-space navigation references.
+\item Integrate the selected perception and geometric components on a robot platform for field validation.
+\end{itemize}
+
+\section{Organization of the work}
+\label{sec:organization}
+
+The thesis is organized as follows:
+
+\textbf{Chapter~\ref{cap:background}} introduces the agricultural navigation problem, the role of vision-based local guidance, and the segmentation-to-control pipeline structure.
+
+\textbf{Chapter~\ref{cap:stato_arte}} reviews vision-based methods for agricultural row navigation, covering classical and learning-based segmentation approaches, geometric extraction techniques, and experimental validation in related work.
+
+\textbf{Chapter~\ref{cap:segmentation}} describes dataset preparation with manual and SAM~3-assisted annotation, the comparison of three segmentation architectures on lettuce, and the evaluation of supervision strategies with different output label configurations.
+
+\textbf{Chapter~\ref{cap:geometric_reference}} presents the two geometric extractors that convert corridor masks into navigation references through horizontal-strip interval selection and independent edge fitting.
+
+\textbf{Chapter~\ref{cap:platform}} describes the robot hardware, camera configuration, software integration using ROS, and the deployment of the trained segmentation model.
+
+\textbf{Chapter~\ref{cap:experiments}} reports offline and field validation results for segmentation accuracy, geometric reference extraction, and closed-loop navigation performance.
+
+\textbf{Chapter~\ref{cap:conclusions}} summarizes the main findings, discusses limitations, and identifies directions for future work.

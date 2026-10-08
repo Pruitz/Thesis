@@ -1,0 +1,112 @@
+\chapter{Experimental Validation}
+\label{cap:experiments}
+
+This chapter reports the experimental evaluation of the segmentation models, geometric extractors, and integrated navigation system. It covers offline evaluation using recorded images and, if completed, closed-loop field trials.
+
+\section{Offline evaluation protocol}
+\label{sec:offline_evaluation}
+
+\subsection{Segmentation metrics}
+\label{subsec:segmentation_metrics}
+
+Segmentation performance is measured using intersection over union (IoU) for each semantic class. For a class $c$, IoU is defined as:
+\begin{equation}
+    \operatorname{IoU}_c=
+    \frac{\operatorname{TP}_c}
+         {\operatorname{TP}_c+\operatorname{FP}_c+\operatorname{FN}_c},
+    \label{eq:iou}
+\end{equation}
+where true positives, false positives, and false negatives are computed against the manual reference masks.
+
+Mean IoU (mIoU) averages the per-class IoU values. For the four-class configuration, mIoU includes background, plants, path, and covering material. Path IoU is the task-specific metric most relevant for navigation.
+
+\subsubsection{Architecture comparison results}
+\label{subsubsec:architecture_results}
+
+The architecture comparison results reported in Section~\ref{subsec:c4_architecture_results} demonstrate that LR-ASPP achieves path IoU of 0.9546 with inference time of 10.41~ms, compared to FCN (0.9621, 58.24~ms) and DeepLabV3 (0.9651, 86.87~ms). The 1.2 percentage point mIoU deficit is offset by a 5--8$\times$ reduction in inference latency.
+
+\subsubsection{Supervision strategy results}
+\label{subsubsec:supervision_results}
+
+% TODO: Complete after provenance verification
+% - Compare manual 4-class vs SAM 4-class
+% - Compare manual 4-class vs SAM 3-class (plants+path)
+% - Compare manual vs SAM binary (path only)
+% - Report on full test set and operational subset
+
+\subsection{Geometric reference accuracy}
+\label{subsec:geometric_accuracy}
+
+Geometric reference quality is assessed by comparing Method~3 and Method~4 outputs on the same evaluation masks. Metrics include:
+\begin{itemize}
+\item Reference line parameters (slope and intercept)
+\item Lateral deviation from manual reference (if available)
+\item Rejection rate (percentage of images where extraction fails validation)
+\item Computational time
+\end{itemize}
+
+% TODO: Add geometric comparison results
+% - Method 3 vs Method 4 on lettuce test set
+% - Effect of ROI, strip count, and parameter choices
+% - Success rate and failure modes
+
+\section{Field validation}
+\label{sec:field_validation}
+
+\subsection{Test conditions}
+\label{subsec:test_conditions}
+
+% TODO: If field trials completed, describe:
+% - Test location and crop type
+% - Row length and width
+% - Lighting and weather conditions
+% - Number of trials
+
+\subsection{Closed-loop navigation results}
+\label{subsec:navigation_results}
+
+% TODO: If field trials completed, report:
+% - Lateral tracking error
+% - Success rate (percentage of row length navigated)
+% - Failure modes (loss of reference, collisions, controller instability)
+% - Comparison with baseline methods (if applicable)
+
+\subsection{Qualitative observations}
+\label{subsec:qualitative}
+
+% TODO: If field trials completed, discuss:
+% - Robustness to gaps and occlusions
+% - Behavior under shadow and lighting changes
+% - Limitations and edge cases
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Segmentation performance}
+\label{subsec:segmentation_discussion}
+
+The architecture comparison demonstrates that LR-ASPP provides a practical accuracy--speed trade-off for robotic deployment. Its path IoU of 0.9546 on manually annotated lettuce is sufficient for geometric extraction, while its inference time supports real-time operation.
+
+The supervision strategy comparison addresses the effort required for dataset preparation. SAM~3-assisted annotation reduces manual labeling time, but its quality and the need for inspection remain to be quantified systematically.
+
+% TODO: Expand discussion with supervision results
+
+\subsection{Geometric extraction performance}
+\label{subsec:geometric_discussion}
+
+Method~3 and Method~4 differ in their association strategy and validation checks. Their relative performance depends on mask quality, row structure, and parameter tuning.
+
+% TODO: Expand with geometric comparison results
+
+\subsection{Limitations}
+\label{subsec:limitations}
+
+The experiments are subject to several limitations:
+\begin{itemize}
+\item Segmentation evaluation uses manually annotated lettuce as ground truth. Performance on other crops is inferred from multi-crop training but not directly validated against manual references for tomato or cucumber.
+\item Geometric extractors assume locally straight boundaries. They do not handle curves or complex row patterns.
+\item Offline evaluation does not establish closed-loop navigation performance. Segmentation IoU and geometric reference quality are necessary but not sufficient for successful field operation.
+\item If field trials were not completed, the integrated system's behavior under real navigation conditions remains unvalidated.
+\end{itemize}
+
+% TODO: Update limitations based on completed experiments

@@ -1,0 +1,99 @@
+\chapter{Robot Platform and Integration}
+\label{cap:platform}
+
+This chapter describes the hardware and software components of the robot platform used for field validation. It covers the camera configuration, computing hardware, software architecture using ROS, and the deployment of the trained segmentation model for real-time inference.
+
+\section{Robot hardware and sensors}
+\label{sec:hardware}
+
+\subsection{Robot platform}
+\label{subsec:robot_platform}
+
+% TODO: Add robot platform description (e.g., mobile robot model, dimensions, drive system)
+
+\subsection{Camera configuration}
+\label{subsec:camera}
+
+% TODO: Add camera specifications
+% - Camera model
+% - Resolution and frame rate
+% - Mounting position and field of view
+% - Lens specifications
+
+\subsection{Computing platform}
+\label{subsec:computing}
+
+% TODO: Add computing hardware
+% - Onboard computer specifications
+% - GPU availability
+% - Power supply
+
+\section{Software architecture}
+\label{sec:software}
+
+\subsection{ROS integration}
+\label{subsec:ros}
+
+The software pipeline is implemented using the Robot Operating System (ROS). ROS provides a modular architecture where perception, geometric extraction, and control components communicate through topics and services.
+
+% TODO: Add ROS node diagram and topic structure
+
+\subsubsection{Perception node}
+\label{subsubsec:perception_node}
+
+The perception node receives camera images, runs the segmentation model, and publishes the path mask. Input images are preprocessed according to the training configuration before inference.
+
+% TODO: Add perception node details
+
+\subsubsection{Geometric extraction node}
+\label{subsubsec:geometric_node}
+
+The geometric extraction node subscribes to the segmentation mask, applies Method~3 or Method~4 from Chapter~\ref{cap:geometric_reference}, and publishes the navigation reference as a line or position message.
+
+% TODO: Add geometric node details
+
+\subsubsection{Control node}
+\label{subsubsec:control_node}
+
+The control node converts the navigation reference into velocity commands using proportional control based on lateral displacement and heading error.
+
+% TODO: Add control node details
+
+\subsection{Perception pipeline implementation}
+\label{subsec:perception_pipeline}
+
+% TODO: Add pipeline timing, synchronization, and data flow
+
+\subsection{Control interface}
+\label{subsec:control_interface}
+
+% TODO: Add control interface specifications
+
+\section{Deployment configuration}
+\label{sec:deployment}
+
+\subsection{Model export to ONNX}
+\label{subsec:onnx_export}
+
+The trained LR-ASPP model is exported to ONNX format for deployment. ONNX Runtime provides optimized inference across different hardware platforms. The export procedure preserves model weights and input/output specifications from the training checkpoint.
+
+% TODO: Add ONNX export procedure details
+
+\subsection{Real-time inference}
+\label{subsec:real_time_inference}
+
+The deployed model processes camera frames at the rate required for closed-loop control. Input preprocessing matches the training transformations. The segmentation mask is decoded and passed to the geometric extraction stage.
+
+% TODO: Add inference configuration and preprocessing details
+
+\subsection{Timing and latency}
+\label{subsec:timing}
+
+End-to-end latency includes image acquisition, preprocessing, segmentation inference, geometric extraction, and control computation. The total pipeline latency must remain below the control update period to maintain stable navigation.
+
+% TODO: Add measured latency breakdown
+% - Camera acquisition delay
+% - Segmentation inference time
+% - Geometric extraction time
+% - Control computation time
+% - Total end-to-end latency

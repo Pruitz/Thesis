@@ -1,0 +1,25 @@
+\chapter{Geometric Extraction of the Local Navigation Reference}
+\label{cap:geometric_reference}
+
+This chapter describes the two geometric extractors implemented in
+\texttt{pf\_\allowbreak straight\_\allowbreak prior3\_\allowbreak single.py}
+and
+\texttt{pf\_\allowbreak straight\_\allowbreak prior4\_\allowbreak single.py}.
+They are referred to as Method~3 and Method~4, respectively. Both convert
+a segmented corridor mask into a local navigation reference by extracting
+intervals in horizontal strips, associating their boundaries from bottom
+to top, and fitting the left and right edges separately. The reference
+is the mean of the two fitted edge lines, rather than a line fitted
+directly to interval midpoints.
+
+The methods share mask preparation, interval extraction, and residual-based
+line reweighting. They differ in the support used to select the initial
+interval, the association cost, the handling of missing observations,
+and the checks applied before accepting the output. This chapter explains
+the active implementations and their default parameters; comments that
+describe inactive or intended behavior are not treated as implemented
+operations. Each image is processed independently. Temporal filtering,
+conversion to velocity commands, and closed-loop evaluation belong to
+the robotic integration stage.
+
+\input{content/chapters/chapter4_geometric_content}

@@ -1,0 +1,347 @@
+\chapter{Segmentation: Architectures, Datasets, and Training}
+\label{cap:segmentation}
+
+The segmentation study began with a comparison of FCN, DeepLabV3, and
+LR-ASPP on manually annotated lettuce images. Manual segmentation was
+time-consuming, so this first comparison was limited to lettuce rather
+than repeated for every crop. Its outcome led to the adoption of LR-ASPP.
+
+SAM~3 was then used to generate training labels for lettuce, tomato, and
+cucumber images. The resulting multi-crop models differed in their output
+classes: plants and path plus background, four classes including covering
+material, or path and background alone. These models were evaluated
+against the manual lettuce masks. The crop coverage of the training data
+therefore differs from that of the reported evaluation set.
+
+This chapter describes the datasets and training procedure, followed by
+the offline comparisons that motivate the configuration selected for the
+robot. The performance of the trained networks is considered separately
+from the quality of the SAM~3 annotations themselves. The architecture results are reported from the available validation
+exports; the comparisons of supervision strategies still require checks
+on evaluation provenance. Geometric and closed-loop field experiments
+are discussed later in the thesis.
+
+\section{Image acquisition and class definition}
+\label{sec:c4_acquisition_classes}
+
+\subsection{Image sources and acquisition conditions}
+\label{subsec:c4_image_acquisition}
+
+% TODO: Add image sources, camera specifications, field conditions
+
+\subsection{Semantic classes and labeling targets}
+\label{subsec:c4_semantic_classes}
+
+Three distinct labeling configurations were evaluated for SAM~3:
+\begin{itemize}
+\item \textbf{Four-class configuration:} Segments background, plants, soil, and covering material. This configuration was also used for the lettuce models during architecture selection.
+\item \textbf{Two-foreground-class configuration:} Labels plants and path, with background as the third output class. This produces three total semantic categories.
+\item \textbf{Path-only configuration:} Binary segmentation with background and path as the two output labels. For robotic integration, the path mask is the relevant output. Segmenting soil alone does not identify a unique navigation corridor or establish that it is obstacle-free. The geometric methods in Chapter~\ref{cap:geometric_reference} use the mask to construct a local image-space reference.
+\end{itemize}
+
+\section{Dataset preparation}
+\label{sec:c4_datasets}
+
+\subsection{Lettuce dataset with manual annotation}
+\label{subsec:c4_lettuce}
+
+The manually annotated lettuce dataset, identified as \texttt{Data},
+contains 762 image--mask pairs distributed across eight folders. Its
+masks were prepared from the manual annotations stored in
+\texttt{annotations.json}. The same manual reference is used for the
+initial architecture comparison and for evaluating the models trained
+with SAM~3-generated multi-crop labels. Automatically annotated lettuce
+images belong to the latter training datasets, not to separate
+lettuce-only training configurations.
+
+\subsection{SAM~3-assisted annotation for multi-crop datasets}
+\label{subsec:c4_sam_annotation}
+
+The time required for manual labeling motivated the use of SAM~3 to
+prepare the multi-crop datasets. Initial use suggested faster mask
+generation, but the total annotation effort has not been measured in a
+systematic comparison that includes inspection and correction.
+
+The SAM~3-assisted labeling procedure covers lettuce, tomato, and
+cucumber images for the multi-crop training configurations. In this
+workflow, automatic segmentation is used to prepare labels offline; it
+is distinct from the segmentation model used during navigation.
+
+For the lettuce images annotated with two foreground classes, the reported
+text prompts are \texttt{plants} and \texttt{central farm path}. The
+four-class labeling additionally uses \texttt{plastic mulch film} for
+covering material. Background accounts for the remaining label in each
+configuration. These reported lettuce prompts do not establish the exact
+prompts used for every crop in the multi-crop datasets. The binary
+configuration retains only the path annotation; crop-specific prompts
+and mask-composition settings for each configuration must be documented
+from the corresponding labeling runs.
+
+\subsubsection{Tomato dataset}
+\label{subsubsec:c4_tomato}
+
+The tomato images were labeled using SAM~3 rather than the manual
+procedure used for the initial lettuce comparison. They contribute to
+the automatically annotated multi-crop training data. LR-ASPP was adopted
+after the comparison of the three candidate architectures on lettuce;
+no separate FCN, DeepLabV3, and LR-ASPP comparison was performed on tomato.
+
+\subsubsection{Cucumber dataset}
+\label{subsubsec:c4_cucumber}
+
+SAM~3 was also used to label the cucumber images, which contribute to
+the automatically annotated multi-crop training data. As for tomatoes,
+the architecture choice followed the comparison on manually annotated
+lettuce, rather than a separate comparison on cucumber.
+
+\subsection{Dataset partitioning}
+\label{subsec:c4_dataset_splits}
+
+The reported training runs use an 80\% training, 10\% validation, and
+10\% test partition with seed 42. The available \texttt{train\_model.py}
+implements these proportions by assigning the integer parts of the
+training and validation counts and leaving the remaining samples for
+test. Applied to 762 pairs, this rule gives 609 training, 76 validation,
+and 77 test samples. These counts describe the intended manual-dataset
+partition; the saved indices and image lists must establish the actual
+membership of each evaluated split.
+
+The test set is not used for gradient-based parameter updates. Checkpoint
+selection uses validation rather than test performance. A common seed
+alone does not ensure that differently sized or ordered datasets yield
+identical image partitions. Corresponding image identities must therefore
+be checked when comparing the manually supervised lettuce model with the
+automatically supervised multi-crop models, including whether a lettuce
+evaluation image appears in an automatic model's training set.
+
+The reported operational evaluation selects 42 images from the manual
+test split belonging to \texttt{insalata\_grande1},
+\texttt{insalata\_grande2}, and \texttt{insalata\_media1}. These folders
+represent the row conditions selected for the robot application. The
+42 images are a subset of the reported 77 test images, not an additional
+independent test set. Performance on this subset describes those selected
+conditions, rather than the full range of lettuce images.
+
+\section{Architecture comparison: FCN, DeepLabV3, and LR-ASPP}
+\label{sec:c4_architecture_comparison}
+
+This comparison addresses the architecture choice before changing the
+annotation procedure or crop coverage. FCN, DeepLabV3, and LR-ASPP were
+trained and evaluated using the manually annotated lettuce dataset.
+
+\subsection{Model selection and pretrained weights}
+\label{subsec:c4_model_selection}
+
+FCN, DeepLabV3, and LR-ASPP were chosen from the implementations available
+in TorchVision. All three were trained on the manually annotated lettuce
+dataset. Their selection was practical, rather than the outcome of a
+comparison with every available architecture.
+
+The implementation separates each network into a backbone, which extracts
+image features, and a segmentation head, which produces class scores at
+each output location. Transfer learning is implemented by loading
+pretrained parameters and adapting the output layers to the target
+labeling task, rather than initializing every network parameter from
+scratch.
+
+For FCN and DeepLabV3, the selected implementations use a ResNet-50
+backbone with pretrained segmentation weights. After these weights
+are loaded, the final convolution of the main classifier is replaced by
+a new $1\times1$ convolution with one output channel per target class.
+
+LR-ASPP is initialized differently. The implementation uses a
+MobileNetV3-Large backbone and requests its default pretrained weights
+through the \texttt{weights\_\allowbreak backbone} argument. However, the
+\texttt{weights} argument of the complete segmentation model is set to
+\texttt{None}. Consequently, the backbone is pretrained, whereas the
+LR-ASPP segmentation head is newly initialized for the requested number
+of classes.
+
+This distinction is relevant to the interpretation of the model
+comparison. The three configurations differ not only in architecture,
+but also in the extent of their pretrained initialization: FCN and
+DeepLabV3 retain pretrained segmentation-head layers, whereas LR-ASPP
+starts with a new segmentation head.
+
+\subsection{Training configuration}
+\label{subsec:c4_training_config}
+
+Training is organized into two stages. Before the first epoch, the
+backbone parameters are excluded from gradient-based updates by setting
+their \texttt{requires\_grad} attribute to \texttt{False}. The complete
+main classifier remains trainable, as does the auxiliary classifier when
+present.
+
+For the first ten epochs, AdamW is constructed using only the trainable
+parameters, with an initial learning rate of $10^{-3}$ and weight decay
+of $10^{-4}$. A cosine-annealing scheduler is stepped after each epoch,
+with a minimum learning rate of $10^{-6}$.
+
+At the end of epoch ten, the script enables gradients for all backbone
+parameters. Fine-tuning of the backbone therefore begins at epoch eleven,
+together with continued training of the segmentation heads. A new AdamW
+optimizer is constructed with separate parameter groups: the backbone
+starts this stage at a learning rate of $10^{-5}$, while the main and,
+where present, auxiliary classifiers start at $10^{-4}$. Weight decay
+remains $10^{-4}$.
+
+A checkpoint is saved as \texttt{best.pth} whenever the validation loss is lower than all previous
+values; \texttt{last.pth} stores the latest training state. Selection
+therefore uses minimum validation loss, not maximum test IoU or simply
+the last epoch.
+
+\subsection{Evaluation metrics and results}
+\label{subsec:c4_architecture_results}
+
+The comparison uses the three CSV records stored in
+\texttt{training insalata}: the FCN, DeepLabV3, and LR-ASPP
+\texttt{*\_\allowbreak validation\_\allowbreak metrics.csv} exports.
+Each contains aggregate metrics, the checkpoint epoch, and IoU values
+for background, plants, soil, and covering material. The reported mIoU
+agrees with the arithmetic mean of these four class IoUs, including
+background.
+
+Table~\ref{tab:c4_architecture_results} reports the exported metrics.
+Inference times have been converted from seconds to milliseconds.
+The FPS values equal the reciprocal of the mean recorded time; they
+are not measurements of the complete robot processing or control rate.
+Checkpoint epochs identify the evaluated weights, not training duration.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Architecture comparison from the manual lettuce validation
+    exports. Timing values are those recorded in the CSV files, not
+    end-to-end robot latency.}
+    \label{tab:c4_architecture_results}
+    \begin{tabular}{@{}l r r r r r@{}}
+        \toprule
+        Model & Epoch & mIoU & Path IoU &
+        \shortstack{Mean time\\(ms)} & FPS \\
+        \midrule
+        FCN & 38 & 0.9232 & 0.9621 & 58.24 & 17.17 \\
+        DeepLabV3 & 43 & 0.9228 & 0.9651 & 86.87 & 11.51 \\
+        LR-ASPP & 194 & 0.9108 & 0.9546 & 10.41 & 96.07 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+FCN and DeepLabV3 achieve mIoU values of 0.9232 and 0.9228, respectively,
+compared with 0.9108 for LR-ASPP. Using the unrounded CSV values, the
+LR-ASPP deficit is 1.24 percentage points relative to FCN and 1.19
+relative to DeepLabV3. Its mean recorded time is 10.41~ms, compared
+with 58.24~ms and 86.87~ms. These timings correspond to a 5.60-fold
+reduction relative to FCN and an 8.35-fold reduction relative to
+DeepLabV3.
+
+Table~\ref{tab:c4_architecture_class_iou} provides the class-level
+comparison. LR-ASPP has lower IoU than both alternatives in each class,
+although its soil/path IoU remains 0.9546. The data support a trade-off
+between accuracy and latency, not a claim of equal segmentation accuracy.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Per-class IoU from the same manual lettuce validation
+    exports. Plants, soil, and covering material correspond to
+    \texttt{pianta}, \texttt{suolo}, and \texttt{copertura} in these files.}
+    \label{tab:c4_architecture_class_iou}
+    \begin{tabular}{@{}l r r r r@{}}
+        \toprule
+        Model & Background & Plants & Soil/path & Covering material \\
+        \midrule
+        FCN & 0.9464 & 0.9280 & 0.9621 & 0.8565 \\
+        DeepLabV3 & 0.9464 & 0.9277 & 0.9651 & 0.8519 \\
+        LR-ASPP & 0.9394 & 0.9120 & 0.9546 & 0.8372 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Selection of LR-ASPP}
+\label{subsec:c4_lraspp_selection}
+
+LR-ASPP was adopted because the substantial reduction in recorded
+inference time justified accepting an mIoU approximately 1.2 percentage
+points below the other two configurations. It was not the most accurate
+model, but offered the practical accuracy--latency compromise sought for
+robot perception. FCN and DeepLabV3 had higher IoU but substantially
+longer recorded inference times. Subsequent SAM-supervised multi-crop
+training therefore used LR-ASPP while varying the output label set.
+
+This choice is based on the available offline comparison. The records
+do not establish a hardware-independent speed ranking or demonstrate
+that the integrated robot meets its control timing requirements.
+Those requirements must be assessed using the deployed model and the
+complete perception and control pipeline.
+
+\section{Supervision strategy comparison}
+\label{sec:c4_supervision_comparison}
+
+\subsection{Training configurations and evaluation targets}
+\label{subsec:c4_supervision_configurations}
+
+Table~\ref{tab:c4_supervision_configurations} summarizes the four training
+configurations considered in this comparison. This study is separate
+from the initial comparison of the three candidate architectures.
+The manual configuration is trained on lettuce only, whereas all three
+SAM-supervised configurations use multi-crop data and differ in their
+output label sets.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Training scope and target labels for the comparison of manual
+    and SAM~3-generated supervision. Class counts include background;
+    evaluation uses the manual lettuce reference.}
+    \label{tab:c4_supervision_configurations}
+    \begin{tabularx}{\textwidth}{@{}X X X@{}}
+        \toprule
+        Configuration & Training scope & Output labels \\
+        \midrule
+        Manual & Lettuce only (\texttt{Data}) &
+        Background, plants, path, covering material \\
+        SAM-generated, two foreground classes &
+        Multi-crop & Background, plants, path \\
+        SAM-generated, four classes &
+        Multi-crop & Background, plants, path, covering material \\
+        SAM-generated, binary (\texttt{allPlantsSAM}) &
+        Multi-crop & Background, path \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+Manual masks supply the ground truth for all comparisons. For path-only
+scoring, the target is the manual soil class and the predicted positive
+region is the corresponding path output of each model.
+
+\subsection{Evaluation results}
+\label{subsec:c4_supervision_results}
+
+\emph{Results to complete after provenance checks:} Present the four-class,
+two-foreground-class, and path-only comparisons on the documented lettuce
+evaluation set. Report per-class IoU and state which classes each average
+includes. Add a path-focused summary, identifying the checkpoint and split
+for each configuration.
+
+\subsection{Selection of binary path configuration}
+\label{subsec:c4_binary_selection}
+
+The binary configuration was selected because its target is directly
+aligned with path extraction and its observed behavior on the selected
+operational images supported that choice. The quantitative evidence and
+limitations are to be completed in this section. This is not a claim that the
+binary configuration outperforms the manually supervised model or that
+performance on the selected rows holds across the entire dataset.
+
+\section{Model export and inference configuration}
+\label{sec:c4_export_inference}
+
+\subsection{ONNX export}
+\label{subsec:c4_onnx_export}
+
+% TODO: Add ONNX export procedure
+
+\subsection{Inference inputs and outputs}
+\label{subsec:c4_inference_interface}
+
+% TODO: Add inference interface details
