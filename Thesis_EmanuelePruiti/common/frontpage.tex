@@ -2,8 +2,11 @@
 \newgeometry{top=4cm,left=3cm,right=3cm,bottom=4cm,heightrounded}
 \begin{titlepage}
 \centering
-%
-\includegraphics[width=110mm]{\thesisuniversitylogo}\\
+\IfFileExists{\thesisuniversitylogo}{%
+    \includegraphics[width=110mm]{\thesisuniversitylogo}\\
+}{%
+    \vspace{2cm} % Spazio riservato per il logo (aggiungere in images/logo/)
+}
 %
 \vspace{\stretch{2}}
 %

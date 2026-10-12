@@ -1,0 +1,28 @@
+# File temporanei e ausiliari generati da LaTeX
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.gl*
+*.idx
+*.ilg
+*.ind
+*.ist
+*.log
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.vrb
+*.lot
+*.lof
+
+# File temporanei di sistema e editor
+.DS_Store
+*~
+*.swp
