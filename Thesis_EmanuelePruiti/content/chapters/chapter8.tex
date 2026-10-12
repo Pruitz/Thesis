@@ -1,105 +1,112 @@
-\chapter{Conclusions and Future Work}
-\label{cap:conclusions}
+\chapter{Experimental Validation}
+\label{cap:experiments}
 
-This chapter summarizes the main findings, discusses the contributions and limitations of the work, and identifies directions for future research.
+This chapter reports the experimental evaluation of the segmentation models, geometric extractors, and integrated navigation system. It covers offline evaluation using recorded images and, if completed, closed-loop field trials.
 
-\section{Main contributions}
-\label{sec:contributions}
+\section{Offline evaluation protocol}
+\label{sec:offline_evaluation}
 
-This thesis investigated vision-based local guidance for agricultural row navigation through segmentation model selection, dataset preparation with model-assisted annotation, and geometric reference extraction. The main contributions are:
+\subsection{Segmentation metrics}
+\label{subsec:segmentation_metrics}
 
+Segmentation performance is measured using intersection over union (IoU) for each semantic class. For a class $c$, IoU is defined as:
+\begin{equation}
+    \operatorname{IoU}_c=
+    \frac{\operatorname{TP}_c}
+         {\operatorname{TP}_c+\operatorname{FP}_c+\operatorname{FN}_c},
+    \label{eq:iou}
+\end{equation}
+where true positives, false positives, and false negatives are computed against the manual reference masks.
+
+Mean IoU (mIoU) averages the per-class IoU values. For the four-class configuration, mIoU includes background, plants, path, and covering material. Path IoU is the task-specific metric most relevant for navigation.
+
+\subsubsection{Architecture comparison results}
+\label{subsubsec:architecture_results}
+
+The architecture comparison results reported in Section~\ref{subsec:c5_architecture_results} demonstrate that LR-ASPP achieves path IoU of 0.9546 with inference time of 10.41~ms, compared to FCN (0.9621, 58.24~ms) and DeepLabV3 (0.9651, 86.87~ms). The 1.2 percentage point mIoU deficit is offset by a 5--8$\times$ reduction in inference latency.
+
+\subsubsection{Supervision strategy results}
+\label{subsubsec:supervision_results}
+
+% TODO: Complete after provenance verification
+% - Compare manual 4-class vs SAM 4-class
+% - Compare manual 4-class vs SAM 3-class (plants+path)
+% - Compare manual vs SAM binary (path only)
+% - Report on full test set and operational subset
+
+\subsection{Geometric reference accuracy}
+\label{subsec:geometric_accuracy}
+
+Geometric reference quality is assessed by comparing Method~3 and Method~4 outputs on the same evaluation masks. Metrics include:
 \begin{itemize}
-\item \textbf{Architecture comparison for robotic segmentation:} FCN, DeepLabV3, and LR-ASPP were compared on manually annotated lettuce images. LR-ASPP was selected for its practical accuracy--speed trade-off, achieving path IoU of 0.9546 with 10.41~ms inference time compared to 58.24~ms and 86.87~ms for the other architectures. This 5--8$\times$ latency reduction supports real-time operation despite a 1.2 percentage point mIoU deficit.
-
-\item \textbf{SAM~3-assisted dataset preparation:} Multi-crop training datasets for lettuce, tomato, and cucumber were prepared using SAM~3 text-prompted segmentation. This reduced manual annotation effort, although systematic measurements of time savings and inspection requirements remain to be completed.
-
-\item \textbf{Evaluation of output label configurations:} Models with four-class, three-class, and binary path outputs were compared. The binary configuration aligns directly with the navigation task and was selected for robotic integration.
-
-\item \textbf{Edge-based geometric extractors:} Two methods for converting corridor masks into image-space navigation references were implemented. Both use horizontal strip extraction and independent fitting of left and right boundaries, differing in seed selection, association strategy, and validation checks.
+\item Reference line parameters (slope and intercept)
+\item Lateral deviation from manual reference (if available)
+\item Rejection rate (percentage of images where extraction fails validation)
+\item Computational time
 \end{itemize}
 
-\section{Conclusions on segmentation and annotation}
-\label{sec:segmentation_conclusions}
+% TODO: Add geometric comparison results
+% - Method 3 vs Method 4 on lettuce test set
+% - Effect of ROI, strip count, and parameter choices
+% - Success rate and failure modes
 
-The architecture comparison establishes that LR-ASPP is suitable for real-time agricultural navigation when inference speed is a constraint. Its segmentation accuracy on lettuce is sufficient for path extraction, and its reduced computational cost makes it deployable on robot hardware.
+\section{Field validation}
+\label{sec:field_validation}
 
-SAM~3-assisted annotation demonstrates that foundation models can reduce manual labeling effort for agricultural datasets. The quality of automatically generated masks and their effect on trained model performance depend on crop appearance, text prompt formulation, and the need for manual inspection. Future work should measure annotation time systematically, including review and correction, to quantify the actual savings.
+\subsection{Test conditions}
+\label{subsec:test_conditions}
 
-The choice of output label configuration affects both annotation effort and downstream geometric extraction. Binary path segmentation focuses the model directly on the navigation target, simplifying both the labeling task and the geometric stage. This comes at the cost of discarding plant and covering-material information that might be useful for other tasks.
+% TODO: If field trials completed, describe:
+% - Test location and crop type
+% - Row length and width
+% - Lighting and weather conditions
+% - Number of trials
 
-\section{Conclusions on geometric extraction}
-\label{sec:geometric_conclusions}
+\subsection{Closed-loop navigation results}
+\label{subsec:navigation_results}
 
-The geometric extractors convert segmentation masks into navigation references by selecting intervals from horizontal strips and fitting corridor boundaries independently. This approach shares the local-evidence structure of adaptive multi-ROI methods while using a simpler straight-line model.
+% TODO: If field trials completed, report:
+% - Lateral tracking error
+% - Success rate (percentage of row length navigated)
+% - Failure modes (loss of reference, collisions, controller instability)
+% - Comparison with baseline methods (if applicable)
 
-Method~3 and Method~4 differ in their association strategy and validation. Their relative performance depends on mask quality, row regularity, and parameter tuning. Both methods assume locally straight boundaries and do not handle curves or complex patterns. Validation checks reject outputs that fail quality thresholds, but the controller must handle cases where no valid reference is available.
+\subsection{Qualitative observations}
+\label{subsec:qualitative}
 
-% TODO: Expand with experimental comparison results
+% TODO: If field trials completed, discuss:
+% - Robustness to gaps and occlusions
+% - Behavior under shadow and lighting changes
+% - Limitations and edge cases
 
-\section{Limitations}
-\label{sec:limitations}
+\section{Discussion}
+\label{sec:discussion}
 
-The work is subject to several limitations:
+\subsection{Segmentation performance}
+\label{subsec:segmentation_discussion}
 
+The architecture comparison demonstrates that LR-ASPP provides a practical accuracy--speed trade-off for robotic deployment. Its path IoU of 0.9546 on manually annotated lettuce is sufficient for geometric extraction, while its inference time supports real-time operation.
+
+The supervision strategy comparison addresses the effort required for dataset preparation. SAM~3-assisted annotation reduces manual labeling time, but its quality and the need for inspection remain to be quantified systematically.
+
+% TODO: Expand discussion with supervision results
+
+\subsection{Geometric extraction performance}
+\label{subsec:geometric_discussion}
+
+Method~3 and Method~4 differ in their association strategy and validation checks. Their relative performance depends on mask quality, row structure, and parameter tuning.
+
+% TODO: Expand with geometric comparison results
+
+\subsection{Limitations}
+\label{subsec:limitations}
+
+The experiments are subject to several limitations:
 \begin{itemize}
-\item \textbf{Evaluation scope:} Segmentation models were evaluated on manually annotated lettuce. Multi-crop training includes tomato and cucumber, but their segmentation performance is not validated against manual references for those crops.
-
-\item \textbf{Annotation quality measurement:} The time required for SAM~3-assisted annotation has not been measured systematically. The comparison does not quantify inspection effort or the frequency of manual corrections.
-
-\item \textbf{Geometric model assumptions:} The extractors assume locally straight corridor boundaries. They do not handle curves, gaps, or complex row patterns that violate this assumption.
-
-\item \textbf{Field validation:} If closed-loop field trials were not completed, the integrated system's navigation performance under real operating conditions remains unvalidated. Offline segmentation IoU and geometric reference accuracy do not establish successful row following.
+\item Segmentation evaluation uses manually annotated lettuce as ground truth. Performance on other crops is inferred from multi-crop training but not directly validated against manual references for tomato or cucumber.
+\item Geometric extractors assume locally straight boundaries. They do not handle curves or complex row patterns.
+\item Offline evaluation does not establish closed-loop navigation performance. Segmentation IoU and geometric reference quality are necessary but not sufficient for successful field operation.
+\item If field trials were not completed, the integrated system's behavior under real navigation conditions remains unvalidated.
 \end{itemize}
 
-\section{Future work}
-\label{sec:future_work}
-
-Several directions for future research emerge from this work:
-
-\subsection{Dataset and annotation}
-\label{subsec:future_annotation}
-
-\begin{itemize}
-\item Measure annotation time systematically for manual and SAM~3-assisted workflows, including inspection and correction.
-\item Prepare manual ground-truth masks for tomato and cucumber to validate multi-crop model performance directly.
-\item Investigate active learning strategies to select images for manual annotation that improve model generalization most effectively.
-\item Explore other foundation models or fine-tuned SAM variants specialized for agricultural segmentation.
-\end{itemize}
-
-\subsection{Segmentation and model deployment}
-\label{subsec:future_segmentation}
-
-\begin{itemize}
-\item Evaluate additional lightweight architectures (e.g., BiSeNet, FastSCNN) for further latency reduction.
-\item Investigate quantization and model compression techniques to enable deployment on edge devices.
-\item Test temporal consistency methods that use previous frames to improve segmentation and reduce flickering.
-\item Explore uncertainty estimation to detect when segmentation confidence is low and fallback strategies are needed.
-\end{itemize}
-
-\subsection{Geometric extraction}
-\label{subsec:future_geometric}
-
-\begin{itemize}
-\item Extend the geometric model to handle curved paths using splines or piecewise linear segments.
-\item Investigate robust estimation techniques (e.g., RANSAC, M-estimators) for association and fitting under severe occlusions.
-\item Develop failure detection and recovery strategies when no valid reference can be extracted.
-\item Compare strip-based methods with alternative geometric representations (e.g., histogram methods, crop-edge detection).
-\end{itemize}
-
-\subsection{System integration and field validation}
-\label{subsec:future_integration}
-
-\begin{itemize}
-\item Complete closed-loop field trials to validate end-to-end navigation performance under variable lighting, growth stages, and row conditions.
-\item Measure lateral tracking error and success rate over extended distances and multiple crop types.
-\item Integrate temporal filtering and prediction to handle brief reference loss or occlusions.
-\item Investigate fusion with other sensors (e.g., depth, IMU) to improve robustness.
-\item Develop a complete autonomy system including global path planning, obstacle avoidance, and task-specific behaviors.
-\end{itemize}
-
-\section{Closing remarks}
-\label{sec:closing}
-
-This thesis addressed the segmentation, dataset preparation, and geometric extraction stages of vision-based agricultural navigation. The selection of LR-ASPP balances accuracy and speed for robotic deployment. SAM~3-assisted annotation reduces manual effort, and the geometric extractors convert masks into navigation references using horizontal strip selection and independent edge fitting.
-
-The work establishes a foundation for camera-based local guidance in structured crop environments. Future research should complete field validation, extend the geometric model to handle curves and gaps, and systematically measure annotation savings to guide dataset preparation strategies.
+% TODO: Update limitations based on completed experiments

@@ -1,539 +1,336 @@
-\chapter{Geometric Extraction of the Local Navigation Reference}
-\label{cap:geometric_reference}
+\chapter{Dataset Preparation and Comparative Model Training}
+\label{cap:segmentation}
+\label{cap:dataset_training}
 
-This chapter describes the two geometric extractors implemented in
-\texttt{pf\_\allowbreak straight\_\allowbreak prior3\_\allowbreak single.py}
-and
-\texttt{pf\_\allowbreak straight\_\allowbreak prior4\_\allowbreak single.py}.
-They are referred to as Method~3 and Method~4, respectively. Both convert
-a segmented corridor mask into a local navigation reference by extracting
-intervals in horizontal strips, associating their boundaries from bottom
-to top, and fitting the left and right edges separately. The reference
-is the mean of the two fitted edge lines, rather than a line fitted
-directly to interval midpoints.
+Following the theoretical analysis of deep learning architectures in Chapter~\ref{cap:architectures}, this chapter describes the datasets, annotation pipelines, and empirical training comparisons that guide the model configuration for robotic integration.
 
-The methods share mask preparation, interval extraction, and residual-based
-line reweighting. They differ in the support used to select the initial
-interval, the association cost, the handling of missing observations,
-and the checks applied before accepting the output. This chapter explains
-the active implementations and their default parameters; comments that
-describe inactive or intended behavior are not treated as implemented
-operations. Each image is processed independently. Temporal filtering,
-conversion to velocity commands, and closed-loop evaluation belong to
-the robotic integration stage.
+The experimental study began with an empirical comparison of FCN, DeepLabV3, and LR-ASPP on manually annotated lettuce images. Manual segmentation was time-consuming, so this first comparison was limited to lettuce rather than repeated across every target crop. Its outcome led to the adoption of LR-ASPP for embedded deployment.
 
+SAM~3 was subsequently used to scale up dataset preparation, generating multi-crop training labels across lettuce, tomato, and cucumber collections. The resulting models were evaluated across alternative output label configurations: three classes (plant, path, background), four classes (including covering material), and a binary path-only representation.
 
-\section{Input representation and edge-line models}
-\label{sec:c5_input}
+This chapter details image acquisition, dataset partitioning, training parameters, and offline benchmark evaluations. The performance of the trained networks is evaluated separately from the annotation quality of the raw SAM~3 masks. Subsequent chapters detail geometric navigation extraction and closed-loop robot validation.
 
-Both functions expect a two-dimensional label mask $M(y,x)$ of height $H$
-and width $W$. Image coordinates increase to the right in $x$ and downward
-in $y$. The argument \texttt{path\_class} identifies the class from which
-corridor intervals are extracted; its default is 1 in both files. A
-binary input can therefore use 1 for the target region and 0 elsewhere.
-For a multiclass segmentation mask, this argument must match the actual
-label encoding, or the mask must first be converted appropriately. The
-extractors do not infer the class mapping or use a separate plant class.
-A target-region label is not, by itself, a guarantee of traversable space.
+\section{Image acquisition and class definition}
+\label{sec:c5_acquisition_classes}
 
-The left and right boundaries are represented by
-\begin{equation}
-    x_L(y)=m_Ly+q_L, \qquad x_R(y)=m_Ry+q_R.
-    \label{eq:c5_edges}
-\end{equation}
-Treating $x$ as a function of $y$ permits vertical image lines without an
-infinite slope. The center reference is
-\begin{equation}
-    x_C(y)=\frac{x_L(y)+x_R(y)}{2}=m_Cy+q_C,
-    \qquad m_C=\frac{m_L+m_R}{2},\quad q_C=\frac{q_L+q_R}{2}.
-    \label{eq:c5_line}
-\end{equation}
-Thus, both methods assume locally straight image-space boundaries.
-The models do not reconstruct terrain or estimate a metric trajectory.
-Their residuals and width estimates are in pixels, not lateral distances
-in meters. The two edges need not be parallel: their separation can
-change linearly with image height.
+\subsection{Image sources and acquisition conditions}
+\label{subsec:c5_image_acquisition}
 
-At each image height, the reference lies halfway between the two
-predicted boundaries. This construction is not generally equivalent to
-fitting the observed interval midpoints: the two edge fits can exclude
-different border-touching samples and assign different residual weights.
-Keeping the boundaries separate allows each visible side to contribute
-its own observations, although both sides must have enough samples.
+% TODO: Add image sources, camera specifications, field conditions
 
-The shared processing stages are:
-\begin{enumerate}
-    \item select a lower region of interest and clean the target-class mask;
-    \item extract and merge projected intervals in horizontal strips;
-    \item select a seed using the method-specific support and priority rules;
-    \item associate interval boundaries upward through the image;
-    \item fit the non-clipped left and right boundaries independently;
-    \item calculate quality indicators and rasterize the center reference,
-    with method-specific validation and output rules.
-\end{enumerate}
+\subsection{Semantic classes and labeling targets}
+\label{subsec:c5_semantic_classes}
 
-\section{Region of interest and mask preparation}
-\label{sec:c5_roi}
+Three distinct labeling configurations were evaluated for SAM~3:
+\begin{itemize}
+\item \textbf{Four-class configuration:} Segments background, plants, soil, and covering material. This configuration was also used for the lettuce models during architecture selection.
+\item \textbf{Two-foreground-class configuration:} Labels plants and path, with background as the third output class. This produces three total semantic categories.
+\item \textbf{Path-only configuration:} Binary segmentation with background and path as the two output labels. For robotic integration, the path mask is the relevant output. Segmenting soil alone does not identify a unique navigation corridor or establish that it is obstacle-free. The geometric methods in Chapter~\ref{cap:geometric_reference} use the mask to construct a local image-space reference.
+\end{itemize}
 
-The ROI begins at $y_0=\lfloor\rho H\rfloor$ and extends to the bottom
-of the image. The default starting ratio is $\rho=0.20$ for Method~3
-and $\rho=0.30$ for Method~4. The binary target mask is
-\begin{equation}
-    B(y,x)=\mathbf{1}\{M(y_0+y,x)=\texttt{path\_class}\},
-    \qquad 0\leq y<H_R=H-y_0.
-\end{equation}
-Both implementations apply opening with a $5\times5$ elliptical kernel,
-then closing with a $9\times9$ rectangular kernel. Connected components
-with fewer than 500 pixels are removed; all sufficiently large components
-are retained, not only the largest one.
+\section{Dataset preparation}
+\label{sec:c5_datasets}
 
-Let $\widetilde B$ denote the cleaned binary ROI mask. It supplies both
-interval extraction and local support in the new methods. Unlike the
-previous midpoint-based implementation, these support calculations do
-not use the original multiclass mask to compute separate soil and plant
-ratios. Method~3 additionally consults the original input labels when
-assessing the rasterized centerline. Method~4 does not perform that
-centerline-label assessment.
+\subsection{Lettuce dataset with manual annotation}
+\label{subsec:c5_lettuce}
 
-Morphology and interval merging can bridge interruptions or change region
-connectivity. Consequently, support in $\widetilde B$ measures agreement
-with the processed mask, not independently verified scene geometry.
-Kernel sizes, component areas, and distance thresholds are in input-mask
-pixels and depend on image resolution and camera configuration.
+The manually annotated lettuce dataset, identified as \texttt{Data},
+contains 762 image--mask pairs distributed across eight folders. Its
+masks were prepared from the manual annotations stored in
+\texttt{annotations.json}. The same manual reference is used for the
+initial architecture comparison and for evaluating the models trained
+with SAM~3-generated multi-crop labels. Automatically annotated lettuce
+images belong to the latter training datasets, not to separate
+lettuce-only training configurations.
 
-\section{Horizontal strips and candidate intervals}
-\label{sec:c5_candidates}
+\subsection{SAM~3-assisted annotation for multi-crop datasets}
+\label{subsec:c5_sam_annotation}
 
-\subsection{Strip construction and column projection}
-\label{subsec:c5_strips}
+The time required for manual labeling motivated the use of SAM~3 to
+prepare the multi-crop datasets. Initial use suggested faster mask
+generation, but the total annotation effort has not been measured in a
+systematic comparison that includes inspection and correction.
 
-Both methods use $N=24$ strips by default, indexed from bottom to top.
-Their height is $h=\max(1,\lfloor H_R/N\rfloor)$. For strip index $s$,
-the ROI-relative bounds are
-\begin{equation}
-    y_s^- = \max(0,H_R-(s+1)h),\qquad
-    y_s^+ = \min(H_R,H_R-sh),
-\end{equation}
-with the lower image row bound $y_s^+$ excluded. Empty strips are skipped.
-The representative full-image coordinate is
-$y_s=y_0+(y_s^-+y_s^+)/2$, following the code's bound-based convention.
-Integer division may leave a remainder above the constructed strips.
+The SAM~3-assisted labeling procedure covers lettuce, tomato, and
+cucumber images for the multi-crop training configurations. In this
+workflow, automatic segmentation is used to prepare labels offline; it
+is distinct from the segmentation model used during navigation.
 
-For example, with $H_R=157$ and $N=24$, the strips cover the lowest
-$24\times6=144$ ROI rows. The upper 13 ROI rows do not supply candidates;
-the ROI and the region actually sampled by the strips are therefore not
-identical.
+For the lettuce images annotated with two foreground classes, the reported
+text prompts are \texttt{plants} and \texttt{central farm path}. The
+four-class labeling additionally uses \texttt{plastic mulch film} for
+covering material. Background accounts for the remaining label in each
+configuration. These reported lettuce prompts do not establish the exact
+prompts used for every crop in the multi-crop datasets. The binary
+configuration retains only the path annotation; crop-specific prompts
+and mask-composition settings for each configuration must be documented
+from the corresponding labeling runs.
 
-Within each strip, the cleaned mask is summed vertically. A column is
-active whenever its sum exceeds zero, so even one target pixel activates
-that column. Contiguous active columns form raw intervals. Neighboring
-intervals are merged when the number of inactive columns between them
-is at most \texttt{max\_interval\_gap}, whose default is 30 pixels.
-For a merged interval $[\ell_i,r_i]$, the width is
-\begin{equation}
-    d_i=r_i-\ell_i+1.
-    \label{eq:c5_interval}
-\end{equation}
-Intervals narrower than 8 pixels are discarded. There is no fixed maximum
-interval width in either new method. Instead, an interval touching both
-image margins is rejected if the mean of the entire cleaned binary strip
-is below 0.70. With \texttt{border\_margin}=2, the flags are
-\begin{equation}
-    t_{L,i}=\mathbf{1}\{\ell_i\leq2\},\qquad
-    t_{R,i}=\mathbf{1}\{r_i\geq W-1-2\}.
-\end{equation}
-These flags indicate possible truncation by the image boundary, rather
-than verified physical corridor edges.
+\subsubsection{Tomato dataset}
+\label{subsubsec:c5_tomato}
 
-Column projection merges evidence across different vertical locations;
-a merged interval can also contain horizontal gaps. Neither its width
-nor its endpoints prove that its rectangular interior is entirely target
-class. This matters when interpreting intervals around occlusions or
-fragmented segmentation.
+The tomato images were labeled using SAM~3 rather than the manual
+procedure used for the initial lettuce comparison. They contribute to
+the automatically annotated multi-crop training data. LR-ASPP was adopted
+after the comparison of the three candidate architectures on lettuce;
+no separate FCN, DeepLabV3, and LR-ASPP comparison was performed on tomato.
 
-\subsection{Method-specific local support}
-\label{subsec:c5_support}
+\subsubsection{Cucumber dataset}
+\label{subsubsec:c5_cucumber}
 
-Method~3 computes central support $u_i$ in a band around the rounded
-interval midpoint. With default half-width 5, the band contains up to
-11 columns and spans the strip height. Its value is the mean of
-$\widetilde B$ inside the band, clipped at the image boundaries.
-Candidates must satisfy $u_i\geq0.27$ for both seed selection and
-subsequent association.
+SAM~3 was also used to label the cucumber images, which contribute to
+the automatically annotated multi-crop training data. As for tomatoes,
+the architecture choice followed the comparison on manually annotated
+lettuce, rather than a separate comparison on cucumber.
 
-This central band checks whether the projected interval contains target
-pixels near its midpoint, which is useful when merging has joined two
-regions across a gap. It does not check the whole interval or establish
-that both endpoints are reliable.
+\subsection{Dataset partitioning}
+\label{subsec:c5_dataset_splits}
 
-Method~4 instead computes $u_{L,i}$ and $u_{R,i}$ in separate bands
-centered on $\ell_i$ and $r_i$. The effective half-width is
-$\max(2,\texttt{local\_band\_half\_width})$, equal to 5 by default.
-These means quantify target-pixel occupancy around each boundary; they
-are not boundary-detection probabilities. Because a band straddles a
-boundary, it need not be entirely target class even for a clean interval.
+The reported training runs use an 80\% training, 10\% validation, and
+10\% test partition with seed 42. The available \texttt{train\_model.py}
+implements these proportions by assigning the integer parts of the
+training and validation counts and leaving the remaining samples for
+test. Applied to 762 pairs, this rule gives 609 training, 76 validation,
+and 77 test samples. These counts describe the intended manual-dataset
+partition; the saved indices and image lists must establish the actual
+membership of each evaluated split.
 
-In Method~4, edge support ranks seed candidates and contributes to the
-final quality score. It is not an acceptance threshold and does not
-weight the line fit. In particular, \texttt{min\_edge\_support}=0.20
-is present in the signature but unused in the active implementation.
+The test set is not used for gradient-based parameter updates. Checkpoint
+selection uses validation rather than test performance. A common seed
+alone does not ensure that differently sized or ordered datasets yield
+identical image partitions. Corresponding image identities must therefore
+be checked when comparing the manually supervised lettuce model with the
+automatically supervised multi-crop models, including whether a lettuce
+evaluation image appears in an automatic model's training set.
 
-\section{Initialization and bottom-up association}
-\label{sec:c5_selection}
+The reported operational evaluation selects 42 images from the manual
+test split belonging to \texttt{insalata\_grande1},
+\texttt{insalata\_grande2}, and \texttt{insalata\_media1}. These folders
+represent the row conditions selected for the robot application. The
+42 images are a subset of the reported 77 test images, not an additional
+independent test set. Performance on this subset describes those selected
+conditions, rather than the full range of lettuce images.
 
-\subsection{Method 3: lowest supported seed}
-\label{subsec:c5_seed3}
+\section{Architecture comparison: FCN, DeepLabV3, and LR-ASPP}
+\label{sec:c5_architecture_comparison}
 
-Method~3 searches the first six constructed strips from the bottom, or
-all available strips if fewer exist. It selects the lowest strip with at
-least one candidate satisfying $u_i\geq0.27$. Within that strip, it
-minimizes distance between the interval midpoint and $(W-1)/2$; ties
-favor the widest interval. There is no consecutive-run eligibility test.
+This comparison addresses the architecture choice before changing the
+annotation procedure or crop coverage. FCN, DeepLabV3, and LR-ASPP were
+trained and evaluated using the manually annotated lettuce dataset.
 
-Let $\ell_{\mathrm{prev}},r_{\mathrm{prev}},d_{\mathrm{prev}}$ denote
-the last accepted interval. In each strip above the seed, define
-\begin{equation}
-    \delta_i=\max\bigl(|\ell_i-\ell_{\mathrm{prev}}|,
-                            |r_i-r_{\mathrm{prev}}|\bigr),\qquad
-    D_3=\max(42,0.5d_{\mathrm{prev}}).
-\end{equation}
-Among candidates with adequate central support and $\delta_i\leq D_3$,
-the method minimizes
-\begin{equation}
-    J_{3,i}=\delta_i+0.1|d_i-d_{\mathrm{prev}}|.
-    \label{eq:c5_cost3}
-\end{equation}
-A strip without an admissible candidate is skipped, leaving the previous
-interval unchanged. There is no maximum number of consecutive missed
-strips, and the jump threshold is not increased to account for a longer
-vertical gap. Strips below the selected seed are not revisited.
+\subsection{Model selection and pretrained weights}
+\label{subsec:c5_model_selection}
 
-\subsection{Method 4: edge-support seed and gap-limited association}
-\label{subsec:c5_seed4}
+FCN, DeepLabV3, and LR-ASPP were chosen from the implementations available
+in TorchVision. All three were trained on the manually annotated lettuce
+dataset. Their selection was practical, rather than the outcome of a
+comparison with every available architecture.
 
-Method~4 pools all candidates in the first six constructed strips. It
-maximizes $\min(u_{L,i},u_{R,i})$, then interval width. Unlike Method~3,
-it does not prioritize proximity to the image center or explicitly choose
-the lowest eligible strip. Exact ties retain the first candidate in the
-bottom-up, left-to-right traversal. No minimum-support threshold is
-applied, so even a weakly supported candidate can initialize tracking.
+The implementation separates each network into a backbone, which extracts
+image features, and a segmentation head, which produces class scores at
+each output location. Transfer learning is implemented by loading
+pretrained parameters and adapting the output layers to the target
+labeling task, rather than initializing every network parameter from
+scratch.
 
-The boundary displacement $\delta_i$ is defined as above, but the jump
-limit and association cost are
-\begin{equation}
-    D_4=\max(28,0.5d_{\mathrm{prev}}),\qquad
-    J_{4,i}=\delta_i+0.4|d_i-d_{\mathrm{prev}}|.
-    \label{eq:c5_cost4}
-\end{equation}
-Only the displacement limit determines admissibility; edge support does
-not enter this cost or an additional tracking gate. Compared with
-Method~3, the default lower bound on allowable displacement is smaller
-and width change has a larger cost coefficient. For wide intervals,
-the width-dependent term can dominate the jump limit in either method.
+For FCN and DeepLabV3, the selected implementations use a ResNet-50
+backbone with pretrained segmentation weights. After these weights
+are loaded, the final convolution of the main classifier is replaced by
+a new $1\times1$ convolution with one output channel per target class.
 
-A counter records consecutive strips without a compatible candidate and
-resets after each successful association. With
-\texttt{max\_gap\_strips}=3, tracking stops on the fourth consecutive
-miss. Stopping does not directly return \texttt{lost}: the accumulated
-points proceed to fitting if at least three are available. The maximum
-miss count, including the miss that triggers stopping, enters the quality
-score. The previous interval remains unchanged during gaps.
+LR-ASPP is initialized differently. The implementation uses a
+MobileNetV3-Large backbone and requests its default pretrained weights
+through the \texttt{weights\_\allowbreak backbone} argument. However, the
+\texttt{weights} argument of the complete segmentation model is set to
+\texttt{None}. Consequently, the backbone is pretrained, whereas the
+LR-ASPP segmentation head is newly initialized for the requested number
+of classes.
 
-The stopping rule and gap penalty have different effects: three misses
-are tolerated for continued association, but already reduce the gap
-score to zero. A fourth miss stops the search without automatically
-rejecting a reference supported by the observations collected earlier.
+This distinction is relevant to the interpretation of the model
+comparison. The three configurations differ not only in architecture,
+but also in the extent of their pretrained initialization: FCN and
+DeepLabV3 retain pretrained segmentation-head layers, whereas LR-ASPP
+starts with a new segmentation head.
 
-Both methods perform greedy spatial association within one frame, not
-temporal tracking. Each accepted interval contributes two boundary
-observations, and at least three accepted intervals are required before
-the edge-fitting stage.
+\subsection{Training configuration}
+\label{subsec:c5_training_config}
 
-\section{Separate robust fitting of the corridor edges}
-\label{sec:c5_fitting}
+Training is organized into two stages. Before the first epoch, the
+backbone parameters are excluded from gradient-based updates by setting
+their \texttt{requires\_grad} attribute to \texttt{False}. The complete
+main classifier remains trainable, as does the auxiliary classifier when
+present.
 
-\subsection{Excluding image-boundary observations}
-\label{subsec:c5_edge_samples}
+For the first ten epochs, AdamW is constructed using only the trainable
+parameters, with an initial learning rate of $10^{-3}$ and weight decay
+of $10^{-4}$. A cosine-annealing scheduler is stepped after each epoch,
+with a minimum learning rate of $10^{-6}$.
 
-The left fit uses only accepted intervals not flagged as touching the
-left image margin. The right fit independently excludes intervals
-flagged as touching the right margin. At least two observations per edge
-must remain. The two fits can therefore use different strips and span
-different vertical ranges. A clipped boundary is not replaced by a
-one-sided centerline estimate: if either edge lacks sufficient samples,
-both implementations return an empty output with \texttt{lost} status.
+At the end of epoch ten, the script enables gradients for all backbone
+parameters. Fine-tuning of the backbone therefore begins at epoch eleven,
+together with continued training of the segmentation heads. A new AdamW
+optimizer is constructed with separate parameter groups: the backbone
+starts this stage at a learning rate of $10^{-5}$, while the main and,
+where present, auxiliary classifiers start at $10^{-4}$. Weight decay
+remains $10^{-4}$.
 
-The retained samples are interval endpoints from the cleaned column
-projection. They are not points obtained by a dedicated edge detector.
-Excluding border-touching samples reduces the influence of image
-truncation, but does not establish the correctness of the remaining
-boundaries.
+A checkpoint is saved as \texttt{best.pth} whenever the validation loss is lower than all previous
+values; \texttt{last.pth} stores the latest training state. Selection
+therefore uses minimum validation loss, not maximum test IoU or simply
+the last epoch.
 
-\subsection{Residual-based reweighting}
-\label{subsec:c5_robust_fit}
+\subsection{Evaluation metrics and results}
+\label{subsec:c5_architecture_results}
 
-Both methods start each edge fit with uniform weights. There is no
-semantic, interval-width, or vertical-position base weighting. For an
-edge sample $(x_i,y_i)$, four reweighting iterations are performed by
-default, with scale $\sigma=18$ pixels:
-\begin{equation}
-    e_i^{(t)}=x_i-m^{(t)}y_i-q^{(t)},\qquad
-    w_i^{(t+1)}=\frac{1}{1+(e_i^{(t)}/\sigma)^2}.
-    \label{eq:c5_reweight}
-\end{equation}
-Each iteration calls \texttt{numpy.polyfit} with degree one and updated
-weights. Its weights multiply unsquared residuals
-\cite{numpyPolyfitDocumentation}; the fitted objective at that iteration is
-\begin{equation}
-    (m,q)=\mathop{\arg\min}_{m,q}
-        \sum_i \left[w_i(x_i-my_i-q)\right]^2.
-    \label{eq:c5_objective}
-\end{equation}
-Thus, the effective coefficient of each squared residual is $w_i^2$,
-not $w_i$. The implementation should not be interpreted as a different
-standard robust-loss estimator solely from the form of its weight rule.
-Weights are recomputed from the current model rather than accumulated
-across iterations; no convergence-based stopping criterion is used.
-Method~3 additionally checks for negligible total weights in its helper.
+The comparison uses the three CSV records stored in
+\texttt{training insalata}: the FCN, DeepLabV3, and LR-ASPP
+\texttt{*\_\allowbreak validation\_\allowbreak metrics.csv} exports.
+Each contains aggregate metrics, the checkpoint epoch, and IoU values
+for background, plants, soil, and covering material. The reported mIoU
+agrees with the arithmetic mean of these four class IoUs, including
+background.
 
-The final residual for each retained sample is its absolute horizontal
-deviation from the corresponding fitted edge. Define $\bar e$ as the
-mean over the concatenated left and right residual arrays, and
-\begin{equation}
-    F=\operatorname{clip}(1-\bar e/\sigma,0,1).
-    \label{eq:c5_fit_score}
-\end{equation}
-Edges with more retained samples contribute more terms to this mean.
-Reweighting reduces the influence of inconsistent points but cannot
-correct an erroneous association chain that supports a coherent wrong
-line. It does not impose parallel edges or estimate genuine path curvature.
-
-\section{Quality indicators, validation, and image-space output}
-\label{sec:c5_output}
-
-\subsection{Method 3: centerline support after rasterization}
-\label{subsec:c5_output3}
-
-Method~3 constructs the mean edge line and rasterizes it from the top
-of the highest accepted strip to the exclusive lower bound of the seed
-strip. It does not extend the line below an elevated seed. Within this
-range, it fills rows across skipped strips as well. Predicted horizontal
-positions are clipped to $[0,W-1]$ and converted to integers; dilation
-with a $3\times3$ elliptical kernel thickens the line. Dilation may extend
-the nonzero output slightly beyond the pre-dilation row range.
-
-Before dilation, the original input labels are checked in a band of
-half-width 3 around each rasterized point. Let $P$ be the fraction of
-pixels equal to \texttt{path\_class} across these clipped bands, and
-$T$ the number of accepted intervals divided by the number of constructed
-strips. The score is
-\begin{equation}
-    C_3=0.50T+0.30P+0.20F.
-    \label{eq:c5_confidence3}
-\end{equation}
-The status is \texttt{lost} if $C_3<0.38$ or $T<0.25$,
-\texttt{degraded} if neither condition holds but $C_3<0.60$, and
-\texttt{ok} otherwise. These checks follow rasterization: a result marked
-\texttt{lost} can still contain a nonempty centerline matrix. No explicit
-edge-order or positive-width test is applied.
-
-The diagnostic dictionary includes both edge models, the centerline
-model, row bounds, residual and support indicators, clipped-point counts,
-and the cleaned full-image ROI mask. Early selection or fitting failures
-instead return a zero matrix and a reason string, with additional details
-in some branches.
-
-\subsection{Method 4: geometric checks and a composite score}
-\label{subsec:c5_output4}
-
-Method~4 validates the fitted boundaries before constructing the output.
-At 16 evenly spaced heights covering the combined range of retained
-edge samples, it evaluates
-\begin{equation}
-    D(y)=x_R(y)-x_L(y).
-\end{equation}
-All sampled widths must be strictly positive. The median of these
-sampled widths is returned as \texttt{width}. This check concerns the
-sampled observation range, not any extrapolation below it.
-
-A separate indicator uses all accepted intervals, including those with
-border-touching endpoints. For $K$ intervals in association order, let
-$z_j=r_j-\ell_j$; unlike extraction width $d_j$, this quantity omits the
-inclusive-endpoint $+1$. The width-irregularity indicator is
-\begin{equation}
-    E_D=\frac{Q_{0.90}\left(\{|z_{j+2}-2z_{j+1}+z_j|\}_{j=1}^{K-2}\right)}
-                   {\max(\operatorname{median}_j|z_j|,1)},
-    \qquad A=\operatorname{clip}(1-E_D/0.30,0,1),
-    \label{eq:c5_width_score}
-\end{equation}
-where $Q_{0.90}$ is the 90th percentile. These are second differences in
-sample order, not derivatives normalized by vertical distance. If strips
-are skipped, sample spacing is unequal; even a width varying linearly
-with image height need not yield zero second differences. The indicator
-therefore measures an implementation-specific irregularity, not a
-perspective-invariant physical curvature.
-
-Let $S$ be the mean of the left support values used by the left fit and
-the right support values used by the right fit, pooled together. With
-maximum consecutive miss count $g_{\max}$ and allowed gap $g_a=3$,
-\begin{equation}
-    G=\operatorname{clip}(1-g_{\max}/\max(g_a,1),0,1),\qquad
-    C_4=0.25T+0.20S+0.25F+0.20A+0.10G.
-    \label{eq:c5_confidence4}
-\end{equation}
-The result is \texttt{lost} if the positive-width check fails,
-$\bar e>2\sigma$, or $C_4<0.38$. Otherwise, it is \texttt{degraded}
-for $C_4<0.60$ and \texttt{ok} for $C_4\geq0.60$.
-There is no separate $T<0.25$ rejection rule in Method~4.
-
-A result marked \texttt{lost} returns a zero output matrix before
-rasterization, with no centerline model in the post-fit rejection branch.
-For an accepted result, the mean edge line is rasterized from the top of
-the highest accepted strip to the bottom of the image, then dilated as
-in Method~3. This can extrapolate below the seed. It does not check target
-labels along the rendered centerline, and the edge-order check does not
-cover the entire rendered range when that range exceeds the sampled
-observation range.
-
-Diagnostics report the edge and centerline models, mean residual,
-support, tracking fraction, median fitted width, width irregularity,
-maximum gap, row bounds, and cleaned ROI mask. Earlier failures return
-\texttt{lost} with reason strings such as \texttt{no\_seed\_candidate},
-\texttt{tracking\_failed}, or \texttt{insufficient\_edge\_points}.
-
-\subsection{Interpretation of status and confidence}
-\label{subsec:c5_failures}
-
-The two confidence values are heuristic scores with different components;
-they are not calibrated probabilities and should not be compared as if
-an identical numerical value represented identical reference quality.
-Method~3 assesses original-mask support along the centerline, whereas
-Method~4 combines processed-mask edge support with geometric and gap
-indicators. Neither verifies obstacle-free passage.
-
-A downstream controller must inspect the returned status. In particular,
-a nonempty Method~3 output does not necessarily denote accepted guidance.
-Both methods can also clip an out-of-image prediction onto an image
-border. Neither function specifies a robot stopping or recovery policy.
-Malformed inputs, unsuitable parameter values, or numerical exceptions
-are not comprehensively handled by the explicit failure branches.
-
-\section{Default configurations and comparison}
-\label{sec:c5_discussion}
-
-Table~\ref{tab:c5_defaults} distinguishes shared defaults from
-method-specific settings. These are the defaults of the supplied files,
-not a statement that a controller uses them or that they are
-experimentally optimal. Overrides and mask encodings must be recorded
-for each experiment.
+Table~\ref{tab:c5_architecture_results} reports the exported metrics.
+Inference times have been converted from seconds to milliseconds.
+The FPS values equal the reciprocal of the mean recorded time; they
+are not measurements of the complete robot processing or control rate.
+Checkpoint epochs identify the evaluated weights, not training duration.
 
 \begin{table}[htbp]
     \centering
     \small
-    \caption{Default configurations of the two edge-based extractors.
-    Distances and areas are expressed in input-mask pixels.}
-    \label{tab:c5_defaults}
-    \begin{tabularx}{\textwidth}{@{}X l l@{}}
+    \caption{Architecture comparison from the manual lettuce validation
+    exports. Timing values are those recorded in the CSV files, not
+    end-to-end robot latency.}
+    \label{tab:c5_architecture_results}
+    \begin{tabular}{@{}l r r r r r@{}}
         \toprule
-        Setting & Method 3 & Method 4 \\
+        Model & Epoch & mIoU & Path IoU &
+        \shortstack{Mean time\\(ms)} & FPS \\
         \midrule
-        Target-class identifier & 1 & 1 \\
-        ROI starting ratio & 0.20 & 0.30 \\
-        Number of strips & 24 & 24 \\
-        Opening / closing kernels & $5\times5$ / $9\times9$ & Same \\
-        Minimum component area & 500 & 500 \\
-        Minimum interval width & 8 & 8 \\
-        Maximum merged gap & 30 & 30 \\
-        Image-border margin & 2 & 2 \\
-        Full-strip occupancy gate & 0.70 & 0.70 \\
-        Local support-band half-width & 5 & 5 \\
-        Seed search window & 6 strips & 6 strips \\
-        Central support threshold & 0.27 & Not used \\
-        Minimum edge support threshold & Not used & Inactive parameter \\
-        Jump-limit lower bound & 42 & 28 \\
-        Width-change cost coefficient & 0.1 & 0.4 \\
-        Consecutive misses allowed & No fixed limit & 3 \\
-        Residual scale / iterations & 18 / 4 & 18 / 4 \\
-        Centerline assessment half-width & 3 & Not used \\
-        Width-error score scale & Not used & 0.30 \\
-        Lost / acceptable score thresholds & 0.38 / 0.60 & 0.38 / 0.60 \\
-        Minimum tracking fraction gate & 0.25 & Not used \\
-        Output dilation kernel & $3\times3$ & $3\times3$ \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-The principal difference is not the line model but the selection and
-validation surrounding it. Method~3 favors a supported interval near the
-image center in the lowest eligible strip, accepts arbitrarily long
-association gaps, and evaluates the rendered line against the original
-mask. Method~4 favors joint support of the two boundaries across the
-bottom search window, limits consecutive gaps, penalizes width changes
-more strongly, and rejects outputs failing its geometric or score checks.
-These choices can affect different failure cases, but they do not establish
-that one method is more accurate or faster without evaluation.
-
-Both methods can merge separated regions, follow an incorrect but
-consistent interval chain, or infer a line through an unobserved gap.
-A wide or well-supported interval is not necessarily the intended row.
-The two-line representation retains boundary information separately,
-but requires sufficient non-clipped samples on both sides. Independent
-edge fits may be supported over different height ranges, and their mean
-can include extrapolation of one or both boundaries.
-
-Evaluation should separately assess interval association, edge fitting,
-centerline accuracy, rejection behavior, and closed-loop motion.
-A controlled comparison should use the same input masks and first align
-shared settings such as ROI and strip count, so differences are not
-attributed solely to algorithmic rules when input regions also differ.
-Useful component comparisons include seed priority, width-change cost,
-gap stopping, and post-fit validation. The descriptions here specify
-implemented behavior, not results of those comparisons.
-
-\section{Effect of strip height and number}
-\label{sec:c5_strip_height}
-
-The strip count controls vertical sampling and the maximum number of
-interval observations. More strips provide thinner vertical regions and
-potentially more points per boundary fit. Taller strips aggregate more
-mask pixels but mix evidence from different image heights, and column
-projection can conceal interruptions. Increased strip height does not
-guarantee more reliable boundary estimates or a numerically better fit.
-
-For a $224\times224$ input, Method~3 has $y_0=44$ and $H_R=180$;
-Method~4 has $y_0=67$ and $H_R=157$. Table~\ref{tab:c5_strip_tradeoff}
-uses the exact integer-division rule for these illustrative dimensions,
-rather than assuming the same ROI height for both methods. At $N=24$,
-the strip heights are 7 and 6 pixels, respectively. A fit can use fewer
-than $N$ points because of seed location, missed strips, early stopping,
-or border-point exclusion; the two edges can have different sample counts.
-
-\begin{table}[htbp]
-    \centering
-    \small
-    \caption{Strip heights for an illustrative $224\times224$ mask and
-    the default ROI ratios. The point count is an upper bound per edge,
-    not a guaranteed number of fitted samples.}
-    \label{tab:c5_strip_tradeoff}
-    \begin{tabular}{@{}c c c c@{}}
-        \toprule
-        Strips $N$ & Method 3 height & Method 4 height & Max. edge samples \\
-        \midrule
-        24 & 7 px & 6 px & 24 \\
-        20 & 9 px & 7 px & 20 \\
-        16 & 11 px & 9 px & 16 \\
-        12 & 15 px & 13 px & 12 \\
-        8 & 22 px & 19 px & 8 \\
+        FCN & 38 & 0.9232 & 0.9621 & 58.24 & 17.17 \\
+        DeepLabV3 & 43 & 0.9228 & 0.9651 & 86.87 & 11.51 \\
+        LR-ASPP & 194 & 0.9108 & 0.9546 & 10.41 & 96.07 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Changing $N$ also changes the vertical extent of a fixed six-strip seed
-window and, in Method~4, the extent of a three-strip tolerated gap. These
-settings should therefore be considered together. The width-irregularity
-indicator depends on the sampling sequence, while tracking fractions
-use the number of constructed strips as their denominator. Selecting
-$N$ requires evaluating boundary and centerline errors, accepted-point
-counts, rejection rates, and processing time under the intended image
-resolution and field conditions. No optimal strip count is inferred from
-the implementation alone.
+FCN and DeepLabV3 achieve mIoU values of 0.9232 and 0.9228, respectively,
+compared with 0.9108 for LR-ASPP. Using the unrounded CSV values, the
+LR-ASPP deficit is 1.24 percentage points relative to FCN and 1.19
+relative to DeepLabV3. Its mean recorded time is 10.41~ms, compared
+with 58.24~ms and 86.87~ms. These timings correspond to a 5.60-fold
+reduction relative to FCN and an 8.35-fold reduction relative to
+DeepLabV3.
+
+Table~\ref{tab:c5_architecture_class_iou} provides the class-level
+comparison. LR-ASPP has lower IoU than both alternatives in each class,
+although its soil/path IoU remains 0.9546. The data support a trade-off
+between accuracy and latency, not a claim of equal segmentation accuracy.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Per-class IoU from the same manual lettuce validation
+    exports. Plants, soil, and covering material correspond to
+    \texttt{pianta}, \texttt{suolo}, and \texttt{copertura} in these files.}
+    \label{tab:c5_architecture_class_iou}
+    \begin{tabular}{@{}l r r r r@{}}
+        \toprule
+        Model & Background & Plants & Soil/path & Covering material \\
+        \midrule
+        FCN & 0.9464 & 0.9280 & 0.9621 & 0.8565 \\
+        DeepLabV3 & 0.9464 & 0.9277 & 0.9651 & 0.8519 \\
+        LR-ASPP & 0.9394 & 0.9120 & 0.9546 & 0.8372 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Selection of LR-ASPP}
+\label{subsec:c5_lraspp_selection}
+
+LR-ASPP was adopted because the substantial reduction in recorded
+inference time justified accepting an mIoU approximately 1.2 percentage
+points below the other two configurations. It was not the most accurate
+model, but offered the practical accuracy--latency compromise sought for
+robot perception. FCN and DeepLabV3 had higher IoU but substantially
+longer recorded inference times. Subsequent SAM-supervised multi-crop
+training therefore used LR-ASPP while varying the output label set.
+
+This choice is based on the available offline comparison. The records
+do not establish a hardware-independent speed ranking or demonstrate
+that the integrated robot meets its control timing requirements.
+Those requirements must be assessed using the deployed model and the
+complete perception and control pipeline.
+
+\section{Supervision strategy comparison}
+\label{sec:c5_supervision_comparison}
+
+\subsection{Training configurations and evaluation targets}
+\label{subsec:c5_supervision_configurations}
+
+Table~\ref{tab:c5_supervision_configurations} summarizes the four training
+configurations considered in this comparison. This study is separate
+from the initial comparison of the three candidate architectures.
+The manual configuration is trained on lettuce only, whereas all three
+SAM-supervised configurations use multi-crop data and differ in their
+output label sets.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Training scope and target labels for the comparison of manual
+    and SAM~3-generated supervision. Class counts include background;
+    evaluation uses the manual lettuce reference.}
+    \label{tab:c5_supervision_configurations}
+    \begin{tabularx}{\textwidth}{@{}X X X@{}}
+        \toprule
+        Configuration & Training scope & Output labels \\
+        \midrule
+        Manual & Lettuce only (\texttt{Data}) &
+        Background, plants, path, covering material \\
+        SAM-generated, two foreground classes &
+        Multi-crop & Background, plants, path \\
+        SAM-generated, four classes &
+        Multi-crop & Background, plants, path, covering material \\
+        SAM-generated, binary (\texttt{allPlantsSAM}) &
+        Multi-crop & Background, path \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+Manual masks supply the ground truth for all comparisons. For path-only
+scoring, the target is the manual soil class and the predicted positive
+region is the corresponding path output of each model.
+
+\subsection{Evaluation results}
+\label{subsec:c5_supervision_results}
+
+\emph{Results to complete after provenance checks:} Present the four-class,
+two-foreground-class, and path-only comparisons on the documented lettuce
+evaluation set. Report per-class IoU and state which classes each average
+includes. Add a path-focused summary, identifying the checkpoint and split
+for each configuration.
+
+\subsection{Selection of binary path configuration}
+\label{subsec:c5_binary_selection}
+
+The binary configuration was selected because its target is directly
+aligned with path extraction and its observed behavior on the selected
+operational images supported that choice. The quantitative evidence and
+limitations are to be completed in this section. This is not a claim that the
+binary configuration outperforms the manually supervised model or that
+performance on the selected rows holds across the entire dataset.
+
+\section{Model export and inference configuration}
+\label{sec:c5_export_inference}
+
+\subsection{ONNX export}
+\label{subsec:c5_onnx_export}
+
+% TODO: Add ONNX export procedure
+
+\subsection{Inference inputs and outputs}
+\label{subsec:c5_inference_interface}
+
+% TODO: Add inference interface details

@@ -1,112 +1,99 @@
-\chapter{Experimental Validation}
-\label{cap:experiments}
+\chapter{Robot Platform and Integration}
+\label{cap:platform}
 
-This chapter reports the experimental evaluation of the segmentation models, geometric extractors, and integrated navigation system. It covers offline evaluation using recorded images and, if completed, closed-loop field trials.
+This chapter describes the hardware and software components of the robot platform used for field validation. It covers the camera configuration, computing hardware, software architecture using ROS, and the deployment of the trained segmentation model for real-time inference.
 
-\section{Offline evaluation protocol}
-\label{sec:offline_evaluation}
+\section{Robot hardware and sensors}
+\label{sec:hardware}
 
-\subsection{Segmentation metrics}
-\label{subsec:segmentation_metrics}
+\subsection{Robot platform}
+\label{subsec:robot_platform}
 
-Segmentation performance is measured using intersection over union (IoU) for each semantic class. For a class $c$, IoU is defined as:
-\begin{equation}
-    \operatorname{IoU}_c=
-    \frac{\operatorname{TP}_c}
-         {\operatorname{TP}_c+\operatorname{FP}_c+\operatorname{FN}_c},
-    \label{eq:iou}
-\end{equation}
-where true positives, false positives, and false negatives are computed against the manual reference masks.
+% TODO: Add robot platform description (e.g., mobile robot model, dimensions, drive system)
 
-Mean IoU (mIoU) averages the per-class IoU values. For the four-class configuration, mIoU includes background, plants, path, and covering material. Path IoU is the task-specific metric most relevant for navigation.
+\subsection{Camera configuration}
+\label{subsec:camera}
 
-\subsubsection{Architecture comparison results}
-\label{subsubsec:architecture_results}
+% TODO: Add camera specifications
+% - Camera model
+% - Resolution and frame rate
+% - Mounting position and field of view
+% - Lens specifications
 
-The architecture comparison results reported in Section~\ref{subsec:c4_architecture_results} demonstrate that LR-ASPP achieves path IoU of 0.9546 with inference time of 10.41~ms, compared to FCN (0.9621, 58.24~ms) and DeepLabV3 (0.9651, 86.87~ms). The 1.2 percentage point mIoU deficit is offset by a 5--8$\times$ reduction in inference latency.
+\subsection{Computing platform}
+\label{subsec:computing}
 
-\subsubsection{Supervision strategy results}
-\label{subsubsec:supervision_results}
+% TODO: Add computing hardware
+% - Onboard computer specifications
+% - GPU availability
+% - Power supply
 
-% TODO: Complete after provenance verification
-% - Compare manual 4-class vs SAM 4-class
-% - Compare manual 4-class vs SAM 3-class (plants+path)
-% - Compare manual vs SAM binary (path only)
-% - Report on full test set and operational subset
+\section{Software architecture}
+\label{sec:software}
 
-\subsection{Geometric reference accuracy}
-\label{subsec:geometric_accuracy}
+\subsection{ROS integration}
+\label{subsec:ros}
 
-Geometric reference quality is assessed by comparing Method~3 and Method~4 outputs on the same evaluation masks. Metrics include:
-\begin{itemize}
-\item Reference line parameters (slope and intercept)
-\item Lateral deviation from manual reference (if available)
-\item Rejection rate (percentage of images where extraction fails validation)
-\item Computational time
-\end{itemize}
+The software pipeline is implemented using the Robot Operating System (ROS). ROS provides a modular architecture where perception, geometric extraction, and control components communicate through topics and services.
 
-% TODO: Add geometric comparison results
-% - Method 3 vs Method 4 on lettuce test set
-% - Effect of ROI, strip count, and parameter choices
-% - Success rate and failure modes
+% TODO: Add ROS node diagram and topic structure
 
-\section{Field validation}
-\label{sec:field_validation}
+\subsubsection{Perception node}
+\label{subsubsec:perception_node}
 
-\subsection{Test conditions}
-\label{subsec:test_conditions}
+The perception node receives camera images, runs the segmentation model, and publishes the path mask. Input images are preprocessed according to the training configuration before inference.
 
-% TODO: If field trials completed, describe:
-% - Test location and crop type
-% - Row length and width
-% - Lighting and weather conditions
-% - Number of trials
+% TODO: Add perception node details
 
-\subsection{Closed-loop navigation results}
-\label{subsec:navigation_results}
+\subsubsection{Geometric extraction node}
+\label{subsubsec:geometric_node}
 
-% TODO: If field trials completed, report:
-% - Lateral tracking error
-% - Success rate (percentage of row length navigated)
-% - Failure modes (loss of reference, collisions, controller instability)
-% - Comparison with baseline methods (if applicable)
+The geometric extraction node subscribes to the segmentation mask, applies Method~3 or Method~4 from Chapter~\ref{cap:geometric_reference}, and publishes the navigation reference as a line or position message.
 
-\subsection{Qualitative observations}
-\label{subsec:qualitative}
+% TODO: Add geometric node details
 
-% TODO: If field trials completed, discuss:
-% - Robustness to gaps and occlusions
-% - Behavior under shadow and lighting changes
-% - Limitations and edge cases
+\subsubsection{Control node}
+\label{subsubsec:control_node}
 
-\section{Discussion}
-\label{sec:discussion}
+The control node converts the navigation reference into velocity commands using proportional control based on lateral displacement and heading error.
 
-\subsection{Segmentation performance}
-\label{subsec:segmentation_discussion}
+% TODO: Add control node details
 
-The architecture comparison demonstrates that LR-ASPP provides a practical accuracy--speed trade-off for robotic deployment. Its path IoU of 0.9546 on manually annotated lettuce is sufficient for geometric extraction, while its inference time supports real-time operation.
+\subsection{Perception pipeline implementation}
+\label{subsec:perception_pipeline}
 
-The supervision strategy comparison addresses the effort required for dataset preparation. SAM~3-assisted annotation reduces manual labeling time, but its quality and the need for inspection remain to be quantified systematically.
+% TODO: Add pipeline timing, synchronization, and data flow
 
-% TODO: Expand discussion with supervision results
+\subsection{Control interface}
+\label{subsec:control_interface}
 
-\subsection{Geometric extraction performance}
-\label{subsec:geometric_discussion}
+% TODO: Add control interface specifications
 
-Method~3 and Method~4 differ in their association strategy and validation checks. Their relative performance depends on mask quality, row structure, and parameter tuning.
+\section{Deployment configuration}
+\label{sec:deployment}
 
-% TODO: Expand with geometric comparison results
+\subsection{Model export to ONNX}
+\label{subsec:onnx_export}
 
-\subsection{Limitations}
-\label{subsec:limitations}
+The trained LR-ASPP model is exported to ONNX format for deployment. ONNX Runtime provides optimized inference across different hardware platforms. The export procedure preserves model weights and input/output specifications from the training checkpoint.
 
-The experiments are subject to several limitations:
-\begin{itemize}
-\item Segmentation evaluation uses manually annotated lettuce as ground truth. Performance on other crops is inferred from multi-crop training but not directly validated against manual references for tomato or cucumber.
-\item Geometric extractors assume locally straight boundaries. They do not handle curves or complex row patterns.
-\item Offline evaluation does not establish closed-loop navigation performance. Segmentation IoU and geometric reference quality are necessary but not sufficient for successful field operation.
-\item If field trials were not completed, the integrated system's behavior under real navigation conditions remains unvalidated.
-\end{itemize}
+% TODO: Add ONNX export procedure details
 
-% TODO: Update limitations based on completed experiments
+\subsection{Real-time inference}
+\label{subsec:real_time_inference}
+
+The deployed model processes camera frames at the rate required for closed-loop control. Input preprocessing matches the training transformations. The segmentation mask is decoded and passed to the geometric extraction stage.
+
+% TODO: Add inference configuration and preprocessing details
+
+\subsection{Timing and latency}
+\label{subsec:timing}
+
+End-to-end latency includes image acquisition, preprocessing, segmentation inference, geometric extraction, and control computation. The total pipeline latency must remain below the control update period to maintain stable navigation.
+
+% TODO: Add measured latency breakdown
+% - Camera acquisition delay
+% - Segmentation inference time
+% - Geometric extraction time
+% - Control computation time
+% - Total end-to-end latency
