@@ -28,11 +28,20 @@ The architecture comparison results reported in Section~\ref{subsec:c5_architect
 \subsubsection{Supervision strategy results}
 \label{subsubsec:supervision_results}
 
-% TODO: Complete after provenance verification
-% - Compare manual 4-class vs SAM 4-class
-% - Compare manual 4-class vs SAM 3-class (plants+path)
-% - Compare manual vs SAM binary (path only)
-% - Report on full test set and operational subset
+\placeholderfigure{fig:segmentation_comparison_crops}%
+{Visual comparison of semantic segmentation outputs across crop types and network architectures}%
+{Immagini di test per le colture di lattuga, pomodoro e cetriolo, con confronto affiancato: immagine RGB acquisita, maschera di ground truth e segmentazioni predette da FCN, DeepLabV3 e LR-ASPP.}%
+{6cm}
+
+\todobox{Risultati comparativi delle strategie di supervisione}{%
+Inserire la tabella comparativa e commentare i risultati delle strategie di annotazione sul test set:
+\begin{itemize}
+  \item Confronto tra modello addestrato su maschere manuali a 4 classi vs modello addestrato su maschere generate da SAM~3 a 4 classi.
+  \item Valutazione della configurazione a 3 classi (piante, sentiero, sfondo) e della configurazione binaria (solo sentiero).
+  \item Analisi delle prestazioni sia sull'intero test set che sul sottoinsieme operativo di navigazione.
+  \item Discussione dell'efficacia di SAM~3 nel ridurre il tempo di annotazione rispetto alla qualit\`a finale della maschera.
+\end{itemize}
+}
 
 \subsection{Geometric reference accuracy}
 \label{subsec:geometric_accuracy}
@@ -45,10 +54,19 @@ Geometric reference quality is assessed by comparing Method~3 and Method~4 outpu
 \item Computational time
 \end{itemize}
 
-% TODO: Add geometric comparison results
-% - Method 3 vs Method 4 on lettuce test set
-% - Effect of ROI, strip count, and parameter choices
-% - Success rate and failure modes
+\placeholderfigure{fig:geometric_extraction_comparison}%
+{Comparative evaluation of geometric line fitting between Method~3 and Method~4}%
+{Confronto qualitativo dell'estrazione della linea di guida su maschere di test in tre scenari: (a) filare uniforme; (b) filare con buchi/interruzioni di piante; (c) filare con ombre e riflessi intensi. Evidenziare la stima dei bordi sinistro/destro e l'asse centrale di navigazione.}%
+{5.5cm}
+
+\todobox{Confronto quantitativo Metodo 3 vs Metodo 4}{%
+Riportare i dati di benchmarking geometrico:
+\begin{itemize}
+  \item Tabella di confronto tra Metodo~3 e Metodo~4 sul dataset di test di lattuga: tasso di reiezione (percentuale di frame scartati per validazione fallita), deviazione laterale media rispetto all'asse reale, e tempo medio di esecuzione per frame.
+  \item Impatto dei parametri operativi: altezza e numero delle strisce orizzontali, soglie di supporto e ampiezza della Region of Interest (ROI).
+  \item Analisi delle modalit\`a di fallimento tipiche per ciascun metodo.
+\end{itemize}
+}
 
 \section{Field validation}
 \label{sec:field_validation}
@@ -56,28 +74,43 @@ Geometric reference quality is assessed by comparing Method~3 and Method~4 outpu
 \subsection{Test conditions}
 \label{subsec:test_conditions}
 
-% TODO: If field trials completed, describe:
-% - Test location and crop type
-% - Row length and width
-% - Lighting and weather conditions
-% - Number of trials
+\todobox{Descrizione delle condizioni sperimentali in campo}{%
+Dettagliare lo scenario delle prove sperimentali (o delle sequenze video di prova):
+\begin{itemize}
+  \item Localit\`a del test, tipologia di coltura, sesto d'impianto (distanza tra i filari e altezza delle piante).
+  \item Lunghezza del percorso navigato, tipologia del fondo (terreno lavorato, teli plastici pacciamanti, presenza di malerbe).
+  \item Condizioni meteorologiche e di luce (sole diretto, cielo coperto, ombre proiettate dalla vegetazione) e numero di ripetizioni effettuate.
+\end{itemize}
+}
 
 \subsection{Closed-loop navigation results}
 \label{subsec:navigation_results}
 
-% TODO: If field trials completed, report:
-% - Lateral tracking error
-% - Success rate (percentage of row length navigated)
-% - Failure modes (loss of reference, collisions, controller instability)
-% - Comparison with baseline methods (if applicable)
+\placeholderfigure{fig:navigation_tracking_errors}%
+{Lateral tracking error and heading error profiles during inter-row autonomous navigation}%
+{Grafico dell'errore di inseguimento laterale $e_y$ (cm) e dell'errore di orientamento $e_\theta$ (gradi) registrati nel tempo durante la navigazione del robot mobile all'interno dei filari coltivati.}%
+{5cm}
+
+\todobox{Risultati quantitativi di navigazione ad anello chiuso}{%
+Riportare le metriche di guida e controllo:
+\begin{itemize}
+  \item Errore di tracking laterale medio e massimo (Root Mean Square Error, RMSE in cm rispetto alla linea di mezzeria del filare).
+  \item Tasso di successo della missione (percentuale di filare percorso senza uscite di rotta o collisioni con le colture).
+  \item Analisi degli eventi critici: perdita momentanea della visuale del sentiero, reazione del filtro particellare e tempo di recupero della traiettoria.
+\end{itemize}
+}
 
 \subsection{Qualitative observations}
 \label{subsec:qualitative}
 
-% TODO: If field trials completed, discuss:
-% - Robustness to gaps and occlusions
-% - Behavior under shadow and lighting changes
-% - Limitations and edge cases
+\todobox{Osservazioni qualitative sul comportamento del sistema}{%
+Discutere gli aspetti qualitativi emersi durante i test:
+\begin{itemize}
+  \item Robustezza dell'inseguimento in presenza di interruzioni (gaps) nella fila di piante.
+  \item Comportamento del sistema al variare dell'illuminazione (zone d'ombra vs zone fortemente soleggiate).
+  \item Casi limite riscontrati (es. testate del campo o biforcazioni del corridoio).
+\end{itemize}
+}
 
 \section{Discussion}
 \label{sec:discussion}
@@ -89,14 +122,10 @@ The architecture comparison demonstrates that LR-ASPP provides a practical accur
 
 The supervision strategy comparison addresses the effort required for dataset preparation. SAM~3-assisted annotation reduces manual labeling time, but its quality and the need for inspection remain to be quantified systematically.
 
-% TODO: Expand discussion with supervision results
-
 \subsection{Geometric extraction performance}
 \label{subsec:geometric_discussion}
 
 Method~3 and Method~4 differ in their association strategy and validation checks. Their relative performance depends on mask quality, row structure, and parameter tuning.
-
-% TODO: Expand with geometric comparison results
 
 \subsection{Limitations}
 \label{subsec:limitations}
@@ -108,5 +137,3 @@ The experiments are subject to several limitations:
 \item Offline evaluation does not establish closed-loop navigation performance. Segmentation IoU and geometric reference quality are necessary but not sufficient for successful field operation.
 \item If field trials were not completed, the integrated system's behavior under real navigation conditions remains unvalidated.
 \end{itemize}
-
-% TODO: Update limitations based on completed experiments

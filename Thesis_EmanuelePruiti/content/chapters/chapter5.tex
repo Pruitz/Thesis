@@ -16,7 +16,19 @@ This chapter details image acquisition, dataset partitioning, training parameter
 \subsection{Image sources and acquisition conditions}
 \label{subsec:c5_image_acquisition}
 
-% TODO: Add image sources, camera specifications, field conditions
+\placeholderfigure{fig:crop_dataset_samples}%
+{Dataset sample images and semantic ground-truth masks across crop species}%
+{Esempi visivi dei dataset di lattuga, pomodoro e cetriolo, con le corrispondenti maschere semantiche a quattro classi (piante, suolo/sentiero, telo plastico pacciamante, sfondo) e configurazione binaria di sentiero.}%
+{5.5cm}
+
+\todobox{Origine delle immagini e condizioni di acquisizione}{%
+Specificare la sorgente dei dati e le modalit\`a di raccolta:
+\begin{itemize}
+  \item Dispositivo di ripresa utilizzato (risoluzione e ottica), quota di acquisizione e angolazione.
+  \item Condizioni operative nei campi (aziende agricole o serre sperimentali, condizioni meteo e fasce orarie).
+  \item Numero complessivo di immagini raccolte per lattuga, pomodoro e cetriolo.
+\end{itemize}
+}
 
 \subsection{Semantic classes and labeling targets}
 \label{subsec:c5_semantic_classes}
@@ -65,6 +77,11 @@ prompts used for every crop in the multi-crop datasets. The binary
 configuration retains only the path annotation; crop-specific prompts
 and mask-composition settings for each configuration must be documented
 from the corresponding labeling runs.
+
+\placeholderfigure{fig:sam3_annotation_pipeline}%
+{SAM~3 zero-shot promptable annotation and mask refinement workflow}%
+{Diagramma del processo di annotazione assistita: selezione dei prompt visivi e testuali (\texttt{"plants"}, \texttt{"central farm path"}, \texttt{"plastic mulch film"}), generazione automatica delle maschere grezze da SAM~3 e successiva fase di revisione e composizione.}%
+{5cm}
 
 \subsubsection{Tomato dataset}
 \label{subsubsec:c5_tomato}
@@ -178,6 +195,11 @@ A checkpoint is saved as \texttt{best.pth} whenever the validation loss is lower
 values; \texttt{last.pth} stores the latest training state. Selection
 therefore uses minimum validation loss, not maximum test IoU or simply
 the last epoch.
+
+\placeholderfigure{fig:training_loss_curves}%
+{Training loss and validation mIoU progression across epochs for FCN, DeepLabV3, and LR-ASPP}%
+{Curve di apprendimento durante le epoche di addestramento: andamento della Cross-Entropy Loss e della Mean IoU su set di validazione per le tre architetture candidate sul dataset di lattuga.}%
+{4.5cm}
 
 \subsection{Evaluation metrics and results}
 \label{subsec:c5_architecture_results}
@@ -328,9 +350,18 @@ performance on the selected rows holds across the entire dataset.
 \subsection{ONNX export}
 \label{subsec:c5_onnx_export}
 
-% TODO: Add ONNX export procedure
+\todobox{Procedura di esportazione del modello in formato ONNX}{%
+Documentare i parametri dello script Python di export:
+\begin{itemize}
+  \item Versione di PyTorch e versione Opset di ONNX utilizzata.
+  \item Definizione della forma del tensore d'ingresso (batch fisso a 1, 3 canali colore, altezza e larghezza $H \times W$).
+  \item Inclusione o esclusione della testa di softmax/argmax nel grafo computazionale del modello ONNX esportato.
+\end{itemize}
+}
 
 \subsection{Inference inputs and outputs}
 \label{subsec:c5_inference_interface}
 
-% TODO: Add inference interface details
+\todobox{Interfaccia di inferenza e specifiche dei tensori}{%
+Descrivere le specifiche del tensore d'ingresso (range di normalizzazione $[0, 1]$ o normalizzazione con media e deviazione standard di ImageNet) e del tensore di uscita (mappa delle probabilit\`a o indici di classe discreti a risoluzione originale).
+}

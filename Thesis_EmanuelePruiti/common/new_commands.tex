@@ -27,3 +27,34 @@
 \let\oldnorm\norm
 \def\norm{\@ifstar{\oldnorm}{\oldnorm*}}
 \makeatother
+
+% Box visibile nel PDF per indicare contenuti da inserire o espandere
+\newcommand{\todobox}[2]{%
+\par\noindent\fcolorbox{blue!70!black}{blue!4}{%
+\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+  \vspace{3pt}
+  \noindent\textcolor{blue!80!black}{\textbf{\textsf{\small $\blacktriangleright$ DA COMPLETARE: #1}}}\par\vspace{3pt}
+  \small\sffamily #2
+  \vspace{3pt}
+\end{minipage}%
+}\par\vspace{6pt}%
+}
+
+% Placeholder visibile nel PDF per figure, diagrammi e fotografie da aggiungere
+\newcommand{\placeholderfigure}[4]{%
+\begin{figure}[htbp]
+  \centering
+  \fcolorbox{gray!60}{gray!8}{%
+    \begin{minipage}[c][#4][c]{0.88\linewidth}
+      \centering
+      \vspace{4pt}
+      \textcolor{gray!80}{\Large\textbf{\textsf{[SPAZIO FIGURA / SCHEMA]}}}\par\vspace{6pt}
+      \textcolor{black!80}{\textbf{\textsf{#2}}}\par\vspace{6pt}
+      \small\textcolor{gray!80}{#3}
+      \vspace{4pt}
+    \end{minipage}%
+  }%
+  \caption{#2}
+  \label{#1}
+\end{figure}
+}

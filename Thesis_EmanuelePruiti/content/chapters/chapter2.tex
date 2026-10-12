@@ -37,8 +37,28 @@ The guidance pipeline converts image observations into a reference suitable for 
 
 Straight-line models assume locally linear boundaries and produce simple references for proportional control. They do not capture distant curves or complex row patterns, but are computationally efficient and suitable for short prediction horizons.
 
+\placeholderfigure{fig:field_corridor_geometry}%
+{Agricultural inter-row environment, vehicle frames, and geometric error definition}%
+{Schema geometrico dei sistemi di coordinate: terna fissa $\{W\}$, terna robot $\{R\}$, terna ottica della telecamera $\{C\}$ e piano immagine $\{I\}$. Rappresentazione grafica dell'offset laterale $e_y$ rispetto alla linea centrale del corridoio e dell'errore di orientamento $e_\theta$.}%
+{5.5cm}
+
+\todobox{Modello cinematico unicycle e formulazione analitica degli errori}{%
+Integrare la formalizzazione matematica del veicolo e del controllo:
+\begin{itemize}
+  \item Modello cinematico a unicycle per robot a guida differenziale: $\dot{x} = v \cos\theta$, $\dot{y} = v \sin\theta$, $\dot{\theta} = \omega$.
+  \item Trasformazione rigida e proiettiva tra coordinate pixel $(u, v)$ nel piano immagine e coordinate metriche nel frame robot $\{R\}$.
+  \item Definizione rigorosa dell'offset laterale $e_y$ e dell'heading error $e_\theta$ calcolati rispetto alla retta di mezzeria stimata.
+  \item Formulazione della legge di guida proporzionale / Stanley per la determinazione della velocit\`a angolare $\omega = K_p e_y + K_\theta e_\theta$.
+\end{itemize}
+}
+
 \section{The segmentation-to-control pipeline}
 \label{sec:pipeline_structure}
+
+\placeholderfigure{fig:overall_system_pipeline}%
+{Complete vision-based local guidance pipeline from camera stream to actuator commands}%
+{Schema a blocchi dell'architettura di navigazione: flusso continuo dall'acquisizione delle immagini monoculari, attraverso la rete di segmentazione semantica, l'estrazione geometrica dei bordi del corridoio, il calcolo degli errori di guida e la generazione dei comandi di velocit\`a $(v, \omega)$.}%
+{4.5cm}
 
 \subsection{Perception stage}
 \label{subsec:perception_stage}

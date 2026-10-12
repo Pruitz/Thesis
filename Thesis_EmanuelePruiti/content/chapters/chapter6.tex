@@ -138,6 +138,11 @@ Intervals narrower than 8 pixels are discarded. There is no fixed maximum
 interval width in either new method. Instead, an interval touching both
 image margins is rejected if the mean of the entire cleaned binary strip
 is below 0.70. With \texttt{border\_margin}=2, the flags are
+
+\placeholderfigure{fig:geometric_strips_projection}%
+{Horizontal strip decomposition and column-wise projection for path interval detection}%
+{Schema illustrativo della decomposizione della maschera binaria di navigazione in $N=24$ strisce orizzontali e relativa proiezione delle colonne attive per l'identificazione degli intervalli di corridoio.}%
+{5cm}
 \begin{equation}
     t_{L,i}=\mathbf{1}\{\ell_i\leq2\},\qquad
     t_{R,i}=\mathbf{1}\{r_i\geq W-1-2\}.
@@ -295,6 +300,11 @@ standard robust-loss estimator solely from the form of its weight rule.
 Weights are recomputed from the current model rather than accumulated
 across iterations; no convergence-based stopping criterion is used.
 Method~3 additionally checks for negligible total weights in its helper.
+
+\placeholderfigure{fig:robust_edge_fitting}%
+{Robust line fitting of corridor boundaries and centerline construction}%
+{Diagramma del processo di fitting robusto separato dei bordi sinistro ($x_L$) e destro ($x_R$) tramite re-weighting iterativo dei residui con fattore lorentziano ($\sigma=18$~px) e calcolo dell'asse centrale di guida $x_C(y)$.}%
+{5cm}
 
 The final residual for each retained sample is its absolute horizontal
 deviation from the corresponding fitted edge. Define $\bar e$ as the

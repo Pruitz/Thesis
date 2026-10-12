@@ -34,7 +34,14 @@ The geometric extractors convert segmentation masks into navigation references b
 
 Method~3 and Method~4 differ in their association strategy and validation. Their relative performance depends on mask quality, row regularity, and parameter tuning. Both methods assume locally straight boundaries and do not handle curves or complex patterns. Validation checks reject outputs that fail quality thresholds, but the controller must handle cases where no valid reference is available.
 
-% TODO: Expand with experimental comparison results
+\todobox{Sintesi quantitativa finale dell'estrazione geometrica e navigazione}{%
+Sintetizzare i dati conclusivi:
+\begin{itemize}
+  \item Margine di precisione medio dell'asse stimato (scostamento in pixel e in centimetri).
+  \item Tasso medio di affidabilit\`a e di reiezione dei frame lungo i test eseguiti.
+  \item Conferma della sostenibilit\`a del controllo a 20 Hz su piattaforma embedded Jetson in condizioni di campo.
+\end{itemize}
+}
 
 \section{Limitations}
 \label{sec:limitations}

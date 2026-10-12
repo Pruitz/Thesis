@@ -56,7 +56,12 @@ Upsampling directly from stride 32 produces blurry boundaries. Long et al. there
     \item \textbf{FCN-16s:} Combines the $2\times$ upsampled stride-32 score map with predictions extracted from the stride-16 stage (e.g., \texttt{conv4}), then applies $16\times$ upsampling.
     \item \textbf{FCN-8s:} Combines the $2\times$ upsampled FCN-16s score map with predictions extracted from the stride-8 stage (e.g., \texttt{conv3}), followed by an $8\times$ upsampling step.
 \end{itemize}
-The implementation used in this work couples an FCN segmentation head with a ResNet-50 backbone.
+The implementation used in this work couples an FCN segmentation head with a ResNet-50 backbone. Figure~\ref{fig:fcn_architecture} illustrates the fully convolutional transformation and skip connection mechanism.
+
+\placeholderfigure{fig:fcn_architecture}%
+{Fully Convolutional Network (FCN) architecture with skip connections}%
+{Schema a blocchi dell'architettura FCN: estrazione di feature a diversi stride dal backbone (ResNet-50) e upsampling tramite deconvolution combinando FCN-32s, FCN-16s e FCN-8s.}%
+{4.5cm}
 
 \section{DeepLabV3 and atrous convolutions}
 \label{sec:deeplabv3_arch}
@@ -96,7 +101,12 @@ The outputs of all five branches are concatenated along the channel dimension, r
     F_{\text{concat}} = \left[ F_{1\times1}, \; F_{\text{atrous}, r_1}, \; F_{\text{atrous}, r_2}, \; F_{\text{atrous}, r_3}, \; F_{\text{image\_pool}} \right].
     \label{eq:aspp_concat}
 \end{equation}
-Finally, a $1 \times 1$ convolution with 256 filters, batch normalization, and dropout (with probability 0.5) projects $F_{\text{concat}}$ to 256 channels, followed by a $1 \times 1$ classification layer and bilinear upsampling to image resolution $H \times W$.
+Finally, a $1 \times 1$ convolution with 256 filters, batch normalization, and dropout (with probability 0.5) projects $F_{\text{concat}}$ to 256 channels, followed by a $1 \times 1$ classification layer and bilinear upsampling to image resolution $H \times W$. The ASPP parallel branch layout is depicted in Figure~\ref{fig:deeplabv3_aspp}.
+
+\placeholderfigure{fig:deeplabv3_aspp}%
+{DeepLabV3 architecture and Atrous Spatial Pyramid Pooling (ASPP) module}%
+{Diagramma dell'ASPP: convoluzione $1 \times 1$, tre rami atrous paralleli con dilation rates $r \in \{6, 12, 18\}$, branch di image pooling globale, concatenazione e proiezione finale a 256 canali.}%
+{5cm}
 
 \section{MobileNetV3 and the Lite Reduced ASPP (LR-ASPP) head}
 \label{sec:mobilenet_lraspp}
@@ -224,7 +234,12 @@ The processing steps of LR-ASPP proceed as follows:
     \item A final $1 \times 1$ convolutional classifier projects $F_{\text{fused}}$ to $C$ class logits, followed by an $8\times$ bilinear upsampling step back to the original image dimensions $H \times W$.
 \end{enumerate}
 
-By discarding multiple parallel dilated convolutions in favor of a single gated global pooling path and direct stride-8 feature addition, LR-ASPP reduces computational operations while retaining global scene context and boundary localization.
+By discarding multiple parallel dilated convolutions in favor of a single gated global pooling path and direct stride-8 feature addition, LR-ASPP reduces computational operations while retaining global scene context and boundary localization. The inverted residual building block and LR-ASPP topology are summarized in Figure~\ref{fig:mobilenetv3_lraspp}.
+
+\placeholderfigure{fig:mobilenetv3_lraspp}%
+{MobileNetV3 Inverted Residual block and Lite Reduced ASPP (LR-ASPP) head}%
+{Schema strutturale di MobileNetV3 con LR-ASPP: (a) blocco Inverted Residual con Depthwise Separable Convolution, modulo Squeeze-and-Excitation (SE) e Hard-Swish; (b) decoder LR-ASPP con ramo di global context gating e fusione delle feature a stride 8.}%
+{5.5cm}
 
 \section{Segment Anything Model 3 (SAM~3) for dataset annotation}
 \label{sec:sam3_theory}
@@ -242,6 +257,13 @@ SAM~3 consists of three primary components:
     \item \textbf{Prompt Encoder:} Embeds sparse prompts (spatial coordinate points, bounding boxes) through positional encodings summed with learned prompt-type embeddings. Text prompts are embedded using a frozen contrastive text encoder (such as CLIP or an aligned concept encoder) that maps target category descriptions (e.g., \texttt{"lettuce plant"}, \texttt{"navigable soil path"}) to the prompt feature space.
     \item \textbf{Two-Way Mask Decoder:} A lightweight transformer decoder that alternates self-attention among prompt tokens and cross-attention between prompt tokens and the image embedding in both directions. The updated tokens are mapped via linear layers to dynamic filter kernels, which are applied to an upsampled feature map via point-wise dot product to produce candidate segmentation masks and associated IoU confidence scores.
 \end{enumerate}
+
+Figure~\ref{fig:sam3_architecture} illustrates the interaction between the image encoder, prompt encoder, and two-way mask decoder.
+
+\placeholderfigure{fig:sam3_architecture}%
+{Segment Anything Model 3 (SAM~3) promptable segmentation architecture}%
+{Diagramma di flusso di SAM~3: elaborazione dell'immagine ad alta risoluzione tramite heavy Image Encoder (ViT), codifica dei prompt sparsi e testuali (Prompt Encoder) e decodifica rapida tramite Two-Way Mask Decoder.}%
+{5cm}
 
 \subsection{Operational distinction from onboard models}
 \label{subsec:sam3_role}

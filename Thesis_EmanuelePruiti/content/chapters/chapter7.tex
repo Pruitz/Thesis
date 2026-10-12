@@ -9,24 +9,45 @@ This chapter describes the hardware and software components of the robot platfor
 \subsection{Robot platform}
 \label{subsec:robot_platform}
 
-% TODO: Add robot platform description (e.g., mobile robot model, dimensions, drive system)
+\todobox{Specifiche della piattaforma robotica mobile}{%
+Descrivere il modello del robot mobile impiegato per le prove (es. piattaforma UGV a guida differenziale o 4WD):
+\begin{itemize}
+  \item Dimensioni fisiche d'ingombro (lunghezza, larghezza di carreggiata per il passaggio tra i filari, altezza da terra del telaio).
+  \item Tipologia di trazione, attuatori elettrici, ruote motrici e ruote pivottanti di supporto.
+  \item Peso totale, capacità di carico utile (payload) e velocità operativa nominale di avanzamento.
+\end{itemize}
+}
 
 \subsection{Camera configuration}
 \label{subsec:camera}
 
-% TODO: Add camera specifications
-% - Camera model
-% - Resolution and frame rate
-% - Mounting position and field of view
-% - Lens specifications
+\placeholderfigure{fig:robot_camera_setup}%
+{Physical mobile robot platform and front camera mounting setup}%
+{Fotografia della piattaforma mobile con indicazione della telecamera RGB frontale, dell'altezza di montaggio $h$ dal terreno, dell'angolo di inclinazione (pitch) verso il suolo e dell'alloggiamento del calcolatore di bordo.}%
+{5.5cm}
+
+\todobox{Specifiche e geometria di montaggio della telecamera}{%
+Dettagliare i parametri ottici e geometrici del sensore visivo:
+\begin{itemize}
+  \item Modello della telecamera RGB (es. Intel RealSense D435 / telecamera USB industriale).
+  \item Risoluzione di acquisizione attiva ($1920\times 1080$ o $640\times 480$) e framerate di streaming nativo (30 fps).
+  \item Posizione di montaggio: altezza dal suolo $h$, angolo di tilt verso il basso $\alpha$, e campo visivo orizzontale/verticale (HFOV, VFOV).
+  \item Lente e lunghezza focale, formato di compressione dello stream in ingresso (JPEG compresso vs raw).
+\end{itemize}
+}
 
 \subsection{Computing platform}
 \label{subsec:computing}
 
-% TODO: Add computing hardware
-% - Onboard computer specifications
-% - GPU availability
-% - Power supply
+\todobox{Unit\`a di calcolo di bordo NVIDIA Jetson e alimentazione}{%
+Specificare l'hardware per l'elaborazione a bordo:
+\begin{itemize}
+  \item Modello dell'unit\`a embedded (es. NVIDIA Jetson Xavier NX / Orin), architettura CPU (core ARM Cortex) e GPU (Tensor Core).
+  \item Memoria RAM unificata (GB) e supporto per l'accelerazione CUDA.
+  \item Sistema operativo (Ubuntu con pacchetto NVIDIA JetPack) e ambiente di esecuzione runtime.
+  \item Sistema di alimentazione elettrica: pacco batterie dedicato, convertitore di tensione DC-DC, autonomia oraria e consumo medio in watt durante l'inferenza.
+\end{itemize}
+}
 
 \section{Software architecture}
 \label{sec:software}
@@ -36,38 +57,80 @@ This chapter describes the hardware and software components of the robot platfor
 
 The software pipeline is implemented using the Robot Operating System (ROS). ROS provides a modular architecture where perception, geometric extraction, and control components communicate through topics and services.
 
-% TODO: Add ROS node diagram and topic structure
+\placeholderfigure{fig:ros2_architecture}%
+{ROS 2 software architecture node graph and topic communication flow}%
+{Diagramma a blocchi dei nodi ROS 2 (\texttt{camera\_node}, \texttt{controller\_node}, \texttt{motor\_driver}), con evidenziati i topic (\texttt{/camera/image\_raw}, \texttt{/path\_mask}, \texttt{/cmd\_vel}) e i relativi messaggi.}%
+{5cm}
+
+\todobox{Architettura dei nodi ROS 2 e politiche QoS}{%
+Descrivere l'organizzazione software nel package ROS 2 \texttt{seg\_controller\_onnx}:
+\begin{itemize}
+  \item Grafo dei nodi attivi e rispettivi ruoli nel ciclo di percezione-azione.
+  \item Topic scambiati: ricezione stream telecamera compresso, pubblicazione della maschera del sentiero, coordinate della linea di navigazione e comandi motore \texttt{/cmd\_vel}.
+  \item Politiche di Quality of Service (QoS): adozione di code a profondit\`a unitaria (\texttt{depth=1}) con policy \texttt{BEST\_EFFORT} per evitare l'accumulo di latenza su frame arretrati.
+\end{itemize}
+}
 
 \subsubsection{Perception node}
 \label{subsubsec:perception_node}
 
 The perception node receives camera images, runs the segmentation model, and publishes the path mask. Input images are preprocessed according to the training configuration before inference.
 
-% TODO: Add perception node details
+\todobox{Dettagli implementativi del nodo di percezione}{%
+Descrivere le operazioni eseguite alla ricezione di ogni frame:
+\begin{itemize}
+  \item Decodifica dell'immagine compressa JPEG tramite \texttt{cv2.imdecode}.
+  \item Ridimensionamento e normalizzazione del tensore d'ingresso (media e deviazione standard di ImageNet).
+  \item Invocazione dell'inferenza tramite la sessione ONNX Runtime con \texttt{CUDAExecutionProvider}.
+  \item Estrazione della maschera binaria di navigazione tramite operatore \texttt{argmax}.
+\end{itemize}
+}
 
 \subsubsection{Geometric extraction node}
 \label{subsubsec:geometric_node}
 
 The geometric extraction node subscribes to the segmentation mask, applies Method~3 or Method~4 from Chapter~\ref{cap:geometric_reference}, and publishes the navigation reference as a line or position message.
 
-% TODO: Add geometric node details
+\todobox{Integrazione dell'estratore geometrico e tracking temporale}{%
+Dettagliare l'elaborazione geometrica:
+\begin{itemize}
+  \item Suddivisione della maschera in strisce orizzontali e selezione dei candidati.
+  \item Applicazione del filtro particellare (\texttt{pf3.py} o \texttt{pf4.py}) per tracciare la linea centrale nel tempo, riducendo le oscillazioni introdotte da buchi nella vegetazione.
+  \item Gestione dei frame non validi (reiezione in caso di confidenza o supporto insufficiente).
+\end{itemize}
+}
 
 \subsubsection{Control node}
 \label{subsubsec:control_node}
 
 The control node converts the navigation reference into velocity commands using proportional control based on lateral displacement and heading error.
 
-% TODO: Add control node details
+\todobox{Interfaccia di controllo e generazione comandi /cmd\_vel}{%
+Specificare la logica di calcolo del comando:
+\begin{itemize}
+  \item Calcolo dell'offset laterale $e_y$ rispetto al centro del frame visivo e dell'inclinazione angolare $e_\theta$.
+  \item Legge di controllo proporzionale per ricavare la velocit\`a lineare $v$ e la velocit\`a angolare $\omega$.
+  \item Costruzione e pubblicazione del messaggio \texttt{geometry\_msgs/msg/Twist} sul topic \texttt{/cmd\_vel}.
+\end{itemize}
+}
 
 \subsection{Perception pipeline implementation}
 \label{subsec:perception_pipeline}
 
-% TODO: Add pipeline timing, synchronization, and data flow
+\todobox{Struttura a callback sincrona e carico delle immagini di debug}{%
+Descrivere il funzionamento del nodo unificato in un unico thread:
+\begin{itemize}
+  \item Sequenzialit\`a del ciclo: decodifica JPEG $\to$ inferenza ONNX $\to$ particle filter $\to$ generazione comandi $\to$ compressione e pubblicazione di 3 immagini di diagnostica visiva.
+  \item Analisi dell'impatto prestazionale: la compressione JPEG delle 3 immagini di debug rappresenta una frazione significativa del tempo totale di callback.
+\end{itemize}
+}
 
 \subsection{Control interface}
 \label{subsec:control_interface}
 
-% TODO: Add control interface specifications
+\todobox{Interfaccia con l'hardware di trazione del robot}{%
+Descrivere come i messaggi \texttt{/cmd\_vel} vengono convertiti dai driver dei motori in comandi di velocit\`a angolare per le singole ruote motrici (tramite cinematica differenziale diretta e inversa).
+}
 
 \section{Deployment configuration}
 \label{sec:deployment}
@@ -77,23 +140,42 @@ The control node converts the navigation reference into velocity commands using 
 
 The trained LR-ASPP model is exported to ONNX format for deployment. ONNX Runtime provides optimized inference across different hardware platforms. The export procedure preserves model weights and input/output specifications from the training checkpoint.
 
-% TODO: Add ONNX export procedure details
+\todobox{Procedura di esportazione ONNX}{%
+Documentare i comandi e le opzioni dello script di esportazione da PyTorch (.pt/.pth) a ONNX (.onnx):
+\begin{itemize}
+  \item Funzione \texttt{torch.onnx.export} con parametri di input (batch size fisso a 1, risoluzione d'ingresso $H \times W$, Opset 13/14).
+  \item Verifica di equivalenza numerica tra i logit prodotti da PyTorch e quelli generati dal modello esportato in ONNX.
+\end{itemize}
+}
 
 \subsection{Real-time inference}
 \label{subsec:real_time_inference}
 
 The deployed model processes camera frames at the rate required for closed-loop control. Input preprocessing matches the training transformations. The segmentation mask is decoded and passed to the geometric extraction stage.
 
-% TODO: Add inference configuration and preprocessing details
+\todobox{Configurazione del runtime ONNX}{%
+Specificare i dettagli dell'ambiente di esecuzione:
+\begin{itemize}
+  \item Configurazione dell'allocazione di memoria e provider attivo (\texttt{CUDAExecutionProvider}).
+  \item Tipologia di quantizzazione/precisione (es. FP32 standard vs FP16) e consumo di memoria VRAM sulla GPU Jetson.
+\end{itemize}
+}
 
 \subsection{Timing and latency}
 \label{subsec:timing}
 
 End-to-end latency includes image acquisition, preprocessing, segmentation inference, geometric extraction, and control computation. The total pipeline latency must remain below the control update period to maintain stable navigation.
 
-% TODO: Add measured latency breakdown
-% - Camera acquisition delay
-% - Segmentation inference time
-% - Geometric extraction time
-% - Control computation time
-% - Total end-to-end latency
+\placeholderfigure{fig:jetson_timing_breakdown}%
+{Execution time breakdown of the synchronous perception-control cycle on NVIDIA Jetson}%
+{Grafico della scomposizione del tempo di ciclo medio su Jetson: decodifica JPEG (10--15 ms), inferenza ONNX su GPU (10--15 ms), filtro geometrico/particellare (5--10 ms), codifica delle 3 immagini JPEG di debug (15--25 ms). Tempo totale per ciclo: 42--76 ms (~20 Hz).}%
+{5cm}
+
+\todobox{Analisi delle latenze misurate e frequenza a 20 Hz (dati reali)}{%
+Riportare i risultati empirici ricavati dai test sul Jetson:
+\begin{itemize}
+  \item Tempo totale di esecuzione compreso tra 42 e 76 ms per ciclo (media $\approx 50$~ms), corrispondente a una frequenza di controllo di circa 20 Hz a fronte di una frequenza di cattura della telecamera di 30 fps.
+  \item Analisi del frame dropping indotto dalla callback sincrona con \texttt{depth=1} e \texttt{BEST\_EFFORT} (viene scartato circa un frame ogni tre per mantenere il controllo sul dato pi\`u recente).
+  \item Strategie per raggiungere i 30 Hz: (1) pubblicare le immagini di debug a frequenza ridotta o in un thread dedicato; (2) ottimizzare il modello tramite NVIDIA TensorRT; (3) disaccoppiare decodifica e inferenza con architettura multi-thread.
+\end{itemize}
+}
