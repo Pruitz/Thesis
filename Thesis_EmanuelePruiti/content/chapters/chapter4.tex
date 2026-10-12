@@ -1,3 +1,4 @@
+% !TEX root = ../../thesis.tex
 \chapter{Deep Learning Architectures for Semantic Segmentation}
 \label{cap:architectures}
 
@@ -260,19 +261,20 @@ Table~\ref{tab:architecture_characteristics} summarizes the theoretical characte
 \begin{table}[htbp]
     \centering
     \small
+    \setlength{\tabcolsep}{4pt}
     \caption{Theoretical comparison of deep learning architectures evaluated in this thesis.}
     \label{tab:architecture_characteristics}
-    \begin{tabular}{@{}l p{2.6cm} p{3.2cm} p{2.2cm} p{2.5cm}@{}}
+    \begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}X@{}}
         \toprule
         Model & Backbone & Context mechanism & Target role & Primary constraint \\
         \midrule
-        FCN & ResNet-50 & Transposed conv.\ and skip connections & Benchmark segmentation & High latency (58.24~ms), coarse boundaries \\
+        FCN & ResNet-50 & Transposed convolutions and skip connections & Benchmark segmentation & High latency (58.24~ms), coarse boundaries \\
         \addlinespace
         DeepLabV3 & ResNet-50 & Parallel Atrous Spatial Pyramid Pooling (ASPP) & High-accuracy benchmark & Highest latency (86.87~ms), 50.8M parameters \\
         \addlinespace
         LR-ASPP & MobileNetV3-Large & Gated global average pooling and stride-8 fusion & Real-time robotic navigation & Compact capacity, fine texture handling \\
         \addlinespace
-        SAM~3 & ViT-Large & Foundation promptable Vision Transformer & Offline automatic annotation & Non-real-time ($>1$~s), high GPU memory \\
+        SAM~3 & ViT-Large & Foundation promptable Vision Transformer & Offline automatic annotation & Non-real-time ($>1$~s), high GPU memory footprint \\
         \bottomrule
-    \end{tabular}
+    \end{tabularx}
 \end{table}
