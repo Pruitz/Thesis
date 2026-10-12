@@ -24,5 +24,7 @@
 
 # File temporanei di sistema e editor
 .DS_Store
-*~
 *.swp
+
+# Cartella fonti bibliografiche (PDF pesanti)
+fonti/

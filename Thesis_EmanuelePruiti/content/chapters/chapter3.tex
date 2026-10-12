@@ -3,8 +3,10 @@
 
 This chapter reviews vision-based methods for agricultural row
 navigation, focusing on the conversion of image observations into a
-local guidance reference. It covers visual perception, geometric
-extraction, and the integration of these stages with robot control.
+local guidance reference. As surveyed by Bai et al.~\cite{bai2023vision},
+vision sensors provide rich appearance and geometry cues for autonomous
+field guidance at low hardware cost. The review covers visual perception,
+geometric extraction, and the integration of these stages with robot control.
 Dataset preparation and the implementation used in this thesis are
 described in Chapters~\ref{cap:segmentation}
 and~\ref{cap:geometric_reference}.
@@ -35,7 +37,7 @@ pixels or traversable soil \cite[Sections~3.3 and~4.1]{silva2023rowdetection}.
 Navone et al. instead predict a binary vegetation mask from RGB images
 using a MobileNetV3 backbone and an LR-ASPP head, then combine that
 output with depth for reference extraction
-\cite[Sections~3.3 and~4.1]{navone2025gpsfree}.
+\cite{navone2023ecmr,navone2025gpsfree}.
 
 The distinction matters for this work: its target is the soil region
 between crop rows, not a crop-row line or a vegetation mask. A
