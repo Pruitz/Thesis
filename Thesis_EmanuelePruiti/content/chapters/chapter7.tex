@@ -9,14 +9,29 @@ This chapter describes the hardware and software components of the robot platfor
 \subsection{Robot platform}
 \label{subsec:robot_platform}
 
-\todobox{Specifiche della piattaforma robotica mobile}{%
-Descrivere il modello del robot mobile impiegato per le prove (es. piattaforma UGV a guida differenziale o 4WD):
+The experimental platform is a custom-built mobile robot prototype, named Demetra, developed for agricultural inspection and autonomous navigation in row-crop environments. The chassis features a four-wheel steering (4WS) and four-wheel drive (4WD) kinematic configuration. All four wheels are independently driven, and both the front and rear axles provide active steering.
+
+Steering operates in a symmetric contra-steering mode (opposite-phase steering), where the front wheels steer by an angle $\delta_f = \delta$ and the rear wheels steer by an equal and opposite angle $\delta_r = -\delta$. This configuration constrains the instantaneous center of rotation (ICR) to lie on the transverse axis passing through the geometric center of the chassis ($x = 0$). Relative to a conventional front-wheel Ackermann steering model with wheelbase $L$, symmetric four-wheel contra-steering halves the turning radius from $R = L / \tan\delta$ to:
+\begin{equation}
+    R = \frac{L}{2 \tan\delta}.
+    \label{eq:turning_radius_4ws}
+\end{equation}
+This reduction in turning radius enables tight turns at row headlands without requiring the robot to swing wide into adjacent crop beds. In addition, the vehicle sideslip angle at the center of geometry remains zero under ideal kinematic rolling conditions ($\beta = 0$), so the heading of the chassis aligns with the tangent to the path.
+
+\todobox{Dimensioni fisiche e peso del telaio}{%
+Inserire i valori geometrici misurati sul prototipo reale:
 \begin{itemize}
-  \item Dimensioni fisiche d'ingombro (lunghezza, larghezza di carreggiata per il passaggio tra i filari, altezza da terra del telaio).
-  \item Tipologia di trazione, attuatori elettrici, ruote motrici e ruote pivottanti di supporto.
-  \item Peso totale, capacità di carico utile (payload) e velocità operativa nominale di avanzamento.
+  \item Passo $L$ (distanza tra asse anteriore e posteriore in metri) e carreggiata $T$ (distanza trasversale tra le ruote in metri).
+  \item Raggio nominale della ruota $r_w$ e altezza libera da terra del telaio (ground clearance).
+  \item Massa totale del veicolo (kg) comprensiva di pacco batterie, sensori e payload.
 \end{itemize}
 }
+
+The traction subsystem comprises four DJI RoboMaster M3508 brushless DC motors, each coupled to an integrated 19:1 planetary gearbox. Operating at a nominal voltage of 24~V, each motor unit delivers up to 3.0~N$\cdot$m of continuous torque with a no-load output shaft speed of 482~rpm (peak torque up to 5.0~N$\cdot$m). Speed regulation is handled by four individual DJI RoboMaster C620 electronic speed controllers (ESCs) implementing field-oriented control (FOC) over a CAN bus interface at 1~Mbps, with continuous current limits of 20~A per channel.
+
+Active steering is actuated by four CubeMars AK70-10 KV100 robotic actuators. Each steering unit integrates a brushless DC motor, a 10:1 planetary gearhead, a 14-bit magnetic absolute encoder, and a motor driver in a single housing. A cross-roller bearing supports simultaneous axial, radial, and tilting loads transmitted from the ground through the wheel uprights. The actuators produce a continuous torque of 8.3~N$\cdot$m and a peak torque of 24.8~N$\cdot$m under 24~V operation. The integrated 14-bit encoder provides angular position feedback with a resolution of $0.022^\circ$, used for closed-loop position control over a secondary CAN bus network.
+
+Low-level actuator control, safety monitoring, and sensor feedback are executed on a DJI RoboMaster Development Board Type C. The board houses an STM32F407IGH6 microcontroller (ARM Cortex-M4 core running at 168~MHz with hardware floating-point support). Two independent CAN bus controllers interface directly with the four traction ESCs and the four steering actuators. The board also incorporates a 6-axis inertial measurement unit (IMU) mounted on a mechanical vibration-damping structure. Deterministic firmware on the microcontroller executes position and velocity loops at fixed intervals, parses motion commands from the onboard computer, and transmits wheel encoder odometry and IMU telemetry.
 
 \subsection{Camera configuration}
 \label{subsec:camera}
@@ -26,28 +41,16 @@ Descrivere il modello del robot mobile impiegato per le prove (es. piattaforma U
 {Fotografia della piattaforma mobile con indicazione della telecamera RGB frontale, dell'altezza di montaggio $h$ dal terreno, dell'angolo di inclinazione (pitch) verso il suolo e dell'alloggiamento del calcolatore di bordo.}%
 {5.5cm}
 
-\todobox{Specifiche e geometria di montaggio della telecamera}{%
-Dettagliare i parametri ottici e geometrici del sensore visivo:
-\begin{itemize}
-  \item Modello della telecamera RGB (es. Intel RealSense D435 / telecamera USB industriale).
-  \item Risoluzione di acquisizione attiva ($1920\times 1080$ o $640\times 480$) e framerate di streaming nativo (30 fps).
-  \item Posizione di montaggio: altezza dal suolo $h$, angolo di tilt verso il basso $\alpha$, e campo visivo orizzontale/verticale (HFOV, VFOV).
-  \item Lente e lunghezza focale, formato di compressione dello stream in ingresso (JPEG compresso vs raw).
-\end{itemize}
-}
+Visual sensing is provided by an Intel RealSense D435 camera mounted on the front section of the robot frame. The sensor connects to the onboard computer via a USB 3.2 Gen~1 interface. For the navigation pipeline, the camera operates in RGB streaming mode at a resolution of $640 \times 480$ pixels and a frame rate of 30 frames per second (fps). The stream is captured as JPEG-compressed frames to minimize transfer overhead across the ROS~2 transport layer. The camera is positioned at height $h$ above the ground with a downward tilt angle $\alpha$ toward the inter-row path, providing a field of view that encompasses the corridor surface and adjacent crop boundaries in front of the vehicle.
 
 \subsection{Computing platform}
 \label{subsec:computing}
 
-\todobox{Unit\`a di calcolo di bordo NVIDIA Jetson e alimentazione}{%
-Specificare l'hardware per l'elaborazione a bordo:
-\begin{itemize}
-  \item Modello dell'unit\`a embedded (es. NVIDIA Jetson Xavier NX / Orin), architettura CPU (core ARM Cortex) e GPU (Tensor Core).
-  \item Memoria RAM unificata (GB) e supporto per l'accelerazione CUDA.
-  \item Sistema operativo (Ubuntu con pacchetto NVIDIA JetPack) e ambiente di esecuzione runtime.
-  \item Sistema di alimentazione elettrica: pacco batterie dedicato, convertitore di tensione DC-DC, autonomia oraria e consumo medio in watt durante l'inferenza.
-\end{itemize}
-}
+Onboard processing is executed on an NVIDIA Jetson AGX Orin Developer Kit (64~GB version). The computing unit incorporates a 12-core ARM Cortex-A78AE v8.2 64-bit CPU operating at 2.20~GHz and an NVIDIA Ampere architecture GPU with 2048 CUDA cores and 64 Tensor cores. The module delivers up to 275~TOPS of sparse INT8 compute capability and 138~TFLOPS in FP16 Tensor Core operations.
+
+The system shares 64~GB of unified LPDDR5 memory between the CPU and GPU over a 256-bit bus, providing a memory bandwidth of 204.8~GB/s. Persistent storage and dataset logging use a 512~GB NVMe SSD mounted over an M.2 PCIe Gen4 $\times$4 interface at \texttt{/mnt/nvme}, leaving the 64~GB onboard eMMC memory dedicated to the base operating system.
+
+The software stack runs on Ubuntu 22.04.5 LTS with Linux kernel \texttt{5.15.148-\allowbreak tegra} and NVIDIA Linux for Tegra (L4T) release R36.4.4 under JetPack 6.1. The complete robotics and deep learning environment is containerized using Docker and the NVIDIA Container Runtime, providing pass-through access to the GPU, hardware accelerators, and USB character devices. Within the container, ROS~2 Humble Hawksbill coordinates image acquisition, neural network inference with ONNX Runtime 1.23.0 using the \texttt{CUDAExecutionProvider}, geometric line extraction, and low-level serial communication.
 
 \section{Software architecture}
 \label{sec:software}
@@ -128,9 +131,27 @@ Descrivere il funzionamento del nodo unificato in un unico thread:
 \subsection{Control interface}
 \label{subsec:control_interface}
 
-\todobox{Interfaccia con l'hardware di trazione del robot}{%
-Descrivere come i messaggi \texttt{/cmd\_vel} vengono convertiti dai driver dei motori in comandi di velocit\`a angolare per le singole ruote motrici (tramite cinematica differenziale diretta e inversa).
-}
+The control node translates the guidance reference into velocity commands published as \texttt{geometry\_msgs/msg/Twist} messages on the \texttt{/cmd\_vel} topic. These commands specify the forward linear speed $v$ along the longitudinal chassis axis and the angular velocity $\omega$ about the vertical yaw axis.
+
+A dedicated serial communication node, \texttt{demetra\_serial\_driver}, interfaces the ROS~2 environment with the low-level STM32 microcontroller. The physical connection uses an FTDI USB-to-UART TTL converter operating at a baud rate of 115200~bps with an update loop running at 100~Hz (10~ms period). Each transmitted packet consists of 24 bytes containing six 32-bit floating-point values followed by a checksum for transmission validation.
+
+On the microcontroller, inverse kinematics converts the target $(v, \omega)$ command into individual steering angles and wheel rotation speeds according to the symmetric 4WS model. For a vehicle with wheelbase $L$ and track width $T$, the nominal steering angle $\delta$ is:
+\begin{equation}
+    \delta = \arctan\left(\frac{L \omega}{2 v}\right),
+    \label{eq:4ws_steering_angle}
+\end{equation}
+with the front axle steering at $+\delta$ and the rear axle steering at $-\delta$. The individual turn radius for the center of each axle is $R = L / (2\tan\delta)$. To account for track width $T$ and reduce wheel scuffing during cornering, individual steering angles for the left and right wheels follow dual-Ackermann geometry:
+\begin{equation}
+    \delta_{L} = \arctan\left(\frac{L/2}{R - T/2}\right), \qquad
+    \delta_{R} = \arctan\left(\frac{L/2}{R + T/2}\right),
+    \label{eq:ackermann_4ws}
+\end{equation}
+with $\delta_{FL} = \delta_L$, $\delta_{FR} = \delta_R$, $\delta_{RL} = -\delta_L$, and $\delta_{RR} = -\delta_R$. The corresponding wheel linear velocities $v_i$ for each wheel $i \in \{FL, FR, RL, RR\}$ are:
+\begin{equation}
+    v_i = \omega \sqrt{\left(\frac{L}{2}\right)^2 + R_i^2},
+    \label{eq:wheel_velocity}
+\end{equation}
+where $R_i$ is the lateral distance from the ICR to the wheel center plane. Target wheel angular velocities $\omega_{w,i} = v_i / r_w$ (with wheel radius $r_w$) are converted into motor speed setpoints for the C620 ESCs via the 19:1 gear ratio, while the steering angles are tracked by the AK70-10 actuators via the internal 14-bit encoder position loops.
 
 \section{Deployment configuration}
 \label{sec:deployment}

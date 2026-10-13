@@ -42,10 +42,10 @@ Straight-line models assume locally linear boundaries and produce simple referen
 {Schema geometrico dei sistemi di coordinate: terna fissa $\{W\}$, terna robot $\{R\}$, terna ottica della telecamera $\{C\}$ e piano immagine $\{I\}$. Rappresentazione grafica dell'offset laterale $e_y$ rispetto alla linea centrale del corridoio e dell'errore di orientamento $e_\theta$.}%
 {5.5cm}
 
-\todobox{Modello cinematico unicycle e formulazione analitica degli errori}{%
+\todobox{Modello cinematico 4WS e formulazione analitica degli errori}{%
 Integrare la formalizzazione matematica del veicolo e del controllo:
 \begin{itemize}
-  \item Modello cinematico a unicycle per robot a guida differenziale: $\dot{x} = v \cos\theta$, $\dot{y} = v \sin\theta$, $\dot{\theta} = \omega$.
+  \item Modello cinematico per piattaforma 4WS a sterzatura simmetrica in controfase ($\delta_f = -\delta_r$) e relazione cinematica: $\dot{x} = v \cos\theta$, $\dot{y} = v \sin\theta$, $\dot{\theta} = \omega = \frac{2v\tan\delta}{L}$.
   \item Trasformazione rigida e proiettiva tra coordinate pixel $(u, v)$ nel piano immagine e coordinate metriche nel frame robot $\{R\}$.
   \item Definizione rigorosa dell'offset laterale $e_y$ e dell'heading error $e_\theta$ calcolati rispetto alla retta di mezzeria stimata.
   \item Formulazione della legge di guida proporzionale / Stanley per la determinazione della velocit\`a angolare $\omega = K_p e_y + K_\theta e_\theta$.
