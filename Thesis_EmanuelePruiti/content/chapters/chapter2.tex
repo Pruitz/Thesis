@@ -9,16 +9,16 @@ This chapter establishes the agricultural navigation context and formulates the 
 \subsection{Navigation tasks and requirements}
 \label{subsec:navigation_tasks}
 
-Agricultural robots perform tasks such as monitoring, spraying, harvesting, and weeding in structured crop environments. Navigation between crop rows requires the robot to follow a path aligned with the row structure while avoiding plants and obstacles. The guidance reference must be computed from local sensing, as global GNSS positioning may be obstructed by crop canopies or greenhouse structures.
+Agricultural robots perform tasks such as monitoring, spraying, harvesting, and weeding in structured crop environments~\cite{bai2023vision}. Navigation between crop rows requires the robot to follow a path aligned with the row structure while avoiding plants and obstacles. The guidance reference must be computed from local sensing, as global GNSS positioning may be obstructed by crop canopies or greenhouse structures~\cite{bai2023vision,navone2025gpsfree}.
 
-Vision-based methods identify crop rows, inter-row paths, or crop boundaries from camera images and convert these observations into steering commands. The task is local: the robot maintains its position relative to the visible row structure, not a global map.
+Vision-based methods identify crop rows, inter-row paths, or crop boundaries from camera images and convert these observations into steering commands~\cite{bai2023vision,silva2023rowdetection}. The task is local: the robot maintains its position relative to the visible row structure, not a global map.
 
 \subsection{Environmental challenges}
 \label{subsec:environmental_challenges}
 
-Field conditions vary with illumination, shadows, weather, growth stage, and weed presence. Plants may occlude parts of the path, and gaps or irregular spacing disrupt row structure. These changes affect both the appearance of image features and the reliability of geometric references extracted from them.
+Field conditions vary with illumination, shadows, weather, growth stage, and weed presence~\cite{kneip2020cropedge,silva2023rowdetection}. Plants may occlude parts of the path, and gaps or irregular spacing disrupt row structure. These changes affect both the appearance of image features and the reliability of geometric references extracted from them.
 
-Segmentation models trained on one set of conditions must generalize to new lighting, crops, or row configurations. Geometric extractors must handle incomplete or ambiguous corridor observations without assuming perfect segmentation.
+Segmentation models trained on one set of conditions must generalize to new lighting, crops, or row configurations. Geometric extractors must handle incomplete or ambiguous corridor observations without assuming perfect segmentation~\cite{li2022multiroi}.
 
 \section{Vision-based local guidance}
 \label{sec:vision_guidance}
@@ -26,16 +26,16 @@ Segmentation models trained on one set of conditions must generalize to new ligh
 \subsection{Sensing modalities}
 \label{subsec:sensing_modalities}
 
-Camera-based perception provides appearance information for distinguishing plants, soil, and paths. Monocular RGB cameras are simpler and less expensive than LiDAR or stereo systems, but do not directly measure depth. RGB-D cameras combine appearance and depth; their suitability depends on field conditions and cost constraints.
+Camera-based perception provides appearance information for distinguishing plants, soil, and paths. Monocular RGB cameras are simpler and less expensive than LiDAR or stereo systems, but do not directly measure depth~\cite{bai2023vision}. While RGB-D cameras provide both appearance and depth measurements, their performance depends on field conditions and hardware cost constraints.
 
 This thesis uses monocular RGB sensing for local guidance. It does not reconstruct three-dimensional field structure or maintain a global map.
 
 \subsection{Image-space reference extraction}
 \label{subsec:image_space_reference}
 
-The guidance pipeline converts image observations into a reference suitable for control. Depending on the method, this may be a horizontal position, a fitted line, or a curve. Image-space references describe the path geometry in pixel coordinates; they must be interpreted by the controller to generate velocity commands.
+The guidance pipeline converts image observations into a reference suitable for control. Depending on the method, this may be a horizontal position, a fitted line, or a curve~\cite{chen2021navigation,li2022multiroi,mendez2023vineyards}. Image-space references describe the path geometry in pixel coordinates; they must be interpreted by the controller to generate velocity commands.
 
-Straight-line models assume locally linear boundaries and produce simple references for proportional control. They do not capture distant curves or complex row patterns, but are computationally efficient and suitable for short prediction horizons.
+Straight-line models assume locally linear boundaries and produce simple references for proportional control~\cite{mendez2023vineyards}. They do not capture distant curves or complex row patterns, but are computationally efficient and suitable for short prediction horizons.
 
 \placeholderfigure{fig:field_corridor_geometry}%
 {Agricultural inter-row environment, vehicle frames, and geometric error definition}%
@@ -63,20 +63,28 @@ Integrare la formalizzazione matematica del veicolo e del controllo:
 \subsection{Perception stage}
 \label{subsec:perception_stage}
 
-The perception stage assigns semantic labels to image pixels. For inter-row navigation, relevant classes may include plants, soil, path, background, and covering material. The choice of output classes affects what the geometric stage can extract: a vegetation mask differs from a path mask, and a crop-row label differs from a soil corridor.
+The perception stage assigns semantic labels to image pixels. For inter-row navigation, target classes typically comprise crop plants, the traversable path, covering material such as plastic mulch, and background~\cite{li2022multiroi}. The definition of output classes directly determines what the geometric stage can extract: a binary vegetation mask identifies crop rows, whereas a path mask isolates the drivable space between them~\cite{silva2023rowdetection,navone2025gpsfree}.
 
-Segmentation models are trained on annotated datasets. Transfer learning from pretrained weights can reduce training time and improve generalization, but the output layers must be adapted to the target task.
+Segmentation models are trained on annotated field images. While transfer learning from pretrained backbones reduces training duration and improves feature generalization, the classification head must be tailored to the specific target crop classes and deployed at low latency on embedded hardware~\cite{navone2025gpsfree}.
 
 \subsection{Geometric extraction stage}
 \label{subsec:geometric_stage}
 
-The geometric stage reduces the segmentation mask to a navigation reference. Methods differ in their input representation, search strategy, and fitted model. Some aggregate mask pixels by image column; others select local evidence from horizontal strips or search for lines within a bounded region.
+The geometric stage reduces the dense segmentation mask to a low-dimensional guidance reference for robot steering. Existing methods differ in their spatial search strategy and fitted geometric model: some aggregate mask pixels across image columns~\cite{mendez2023vineyards,navone2025gpsfree}, whereas others extract local intervals from horizontal strips~\cite{li2022multiroi} or search for line candidates within bounded angular regions~\cite{chen2021navigation}.
 
-The output must be robust to segmentation errors, gaps, and occlusions. Validation checks can reject references that fail quality thresholds, but the controller must handle cases where no valid reference is available.
+The extraction algorithm must tolerate segmentation noise, missing plants, and cast shadows without producing erratic steering targets. Validation checks can reject estimates that fail geometric consistency thresholds, requiring the controller to handle transient frames where no valid reference is recovered~\cite{kneip2020cropedge}.
 
 \subsection{Control integration}
 \label{subsec:control_integration}
 
-The controller interprets the navigation reference to generate linear and angular velocity commands. Proportional control uses the lateral displacement and heading error of the reference relative to the image center. Temporal filtering can smooth references across frames, but introduces lag.
+The controller converts the extracted geometric reference into forward velocity and steering commands. Proportional and look-ahead laws regulate steering using the lateral displacement and heading orientation errors relative to the image center~\cite{mendez2023vineyards}.
 
-Closed-loop evaluation measures the robot's ability to follow rows under field conditions. Segmentation accuracy and geometric reference quality are necessary but not sufficient: the complete system must maintain corridor alignment over extended distances and variable conditions.
+In field operations, raw error signals extracted from semantic segmentation exhibit high-frequency jitter and occasional impulse disturbances caused by irregular foliage contours or transient detection dropouts. Directly feeding unfiltered errors into the steering loop induces actuator chattering and abrupt steering adjustments that compromise vehicle stability. Consequently, the control interface incorporates error conditioning structured across three complementary mechanisms:
+\begin{enumerate}
+    \item \textbf{High-frequency smoothing:} a recursive low-pass filter attenuates persistent image-space tracking jitter without introducing excessive phase delay during row transitions;
+    \item \textbf{Impulse outlier rejection:} large step variations between consecutive frames are evaluated over temporal windows to isolate single-frame false detections while preserving genuine trajectory adjustments;
+    \item \textbf{Temporal hold and deadband:} a zero-order hold maintains command continuity across short-term perception dropouts, while a symmetric deadband around the corridor center prevents steering hunting.
+\end{enumerate}
+The mathematical formulation and parameter tuning of this conditioning pipeline on the Demetra robotic platform are detailed in Section~\ref{subsubsec:control_node} of Chapter~\ref{cap:platform}.
+
+Closed-loop field evaluation measures the robot's ability to maintain row alignment under operational conditions. High segmentation accuracy and accurate geometric fitting are necessary prerequisites, but stable inter-row tracking ultimately depends on real-time execution and disturbance rejection over continuous runs~\cite{mendez2023vineyards,silva2023rowdetection,navone2025gpsfree}.

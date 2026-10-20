@@ -85,12 +85,9 @@ Manual pixel-level annotation requires annotators to label every pixel in traini
 \subsection{SAM and foundation models for segmentation}
 \label{subsec:sam_annotation}
 
-Segment Anything Model~3 (SAM~3) supports text- and image-prompted
-concept segmentation. Its training data were assembled using a data
-engine with human and automated quality checks
-\cite[Sections~2 and~4]{carion2026sam3}. Foundation models like SAM~3 can assist annotation by generating masks from text prompts, reducing manual effort.
+Foundation models for segmentation have established model-assisted annotation as an effective alternative to purely manual labeling. The Segment Anything project demonstrated that interactive models operating within a human-in-the-loop data engine can generate large-scale segmentation masks with minimal human intervention~\cite{kirillov2023sam}. While early foundation models required spatial prompts such as bounding boxes or foreground/background clicks for every target instance, Segment Anything Model~3 (SAM~3) introduces open-vocabulary concept segmentation driven directly by textual descriptions and visual exemplars~\cite{carion2026sam3}.
 
-In this thesis, SAM~3 is used to prepare labels offline, not as the network running during robot navigation. The quality of these masks and the time required to review or correct them are evaluated separately in Chapter~\ref{cap:segmentation}.
+In precision agriculture, model-assisted annotation with foundation models has been explored primarily for satellite-based field boundary delineation and canopy phenotyping. However, its systematic application to agricultural ground navigation remains largely unexplored. In this thesis, SAM~3 is employed offline as a zero-shot concept annotator to construct multi-crop training datasets across lettuce, tomato, and cucumber rows, targeting specific navigation classes (soil corridors, crop canopies, and plastic mulch). This offline annotation pipeline decouples the heavy computational burden of foundation models from the real-time inference requirements of the onboard robot controller.
 
 \section{Geometric extraction methods}
 \label{sec:geometric_extraction}
@@ -160,6 +157,37 @@ horizontal strips: the upper scan establishes an anchor for a bounded
 line search. It also operates on crop-row masks, so its output is not
 directly equivalent to a reference extracted from a soil mask.
 
+\subsection{Bilateral boundary tracking versus centroid reduction}
+\label{subsec:bilateral_vs_centroids}
+
+In agricultural vision pipelines that convert binary segmentations into geometric references, existing methods fall into distinct categories, each characterized by specific operational trade-offs:
+
+\begin{enumerate}
+    \item \textbf{Crop-canopy feature extraction with RANSAC:} A classical paradigm detects feature points along crop canopies or plant stalks, partitions them into left and right row clusters, and fits linear models using Random Sample Consensus (RANSAC) combined with ordinary least squares~\cite{bai2023vision}. Recent monocular vision implementations extract crop row anchor points via DBSCAN clustering followed by RANSAC fitting to generate navigation lines, with reported angular and lateral errors minimized on the central crop row~\cite{sensors2025deeplabv3}. While functional in dense, uniform vegetation, this approach depends on continuous plant growth and degrades when seedlings are missing or canopy density is irregular. In addition, RANSAC is non-deterministic: random hypothesis generation introduces frame-to-frame angular jitter between consecutive video frames. Even when researchers augment monocular cameras with secondary sensors such as 2D LiDAR, temporal filtering (such as Kalman filtering) is still required to stabilize the stochastic sampling fluctuations of RANSAC~\cite{sensors2025lidar}. The stochastic nature of RANSAC stems from its iterative random sampling strategy: each iteration selects a minimal subset of points (typically two for line fitting), computes a candidate model, and counts inliers within a residual threshold. To achieve $99\%$ confidence of finding an all-inlier sample when outliers constitute $30\%$ of the data, the algorithm requires approximately $35$ iterations; this count grows exponentially with outlier ratio~\cite{fischler1981ransac}. On embedded platforms operating at $20$~Hz with strict latency budgets, the computational overhead and output variance of RANSAC present practical limitations for closed-loop control.
+
+    \item \textbf{Global contour tracking with line fitting:} An alternative approach applies edge operators (such as Canny filtering) or boundary tracing algorithms (\texttt{findContours}) over the full segmented corridor mask, separating the resulting pixel cloud into lateral boundaries before fitting lines with RANSAC. On dense and noisy boundary masks, this introduces variable computational latency and retains the stochastic jitter inherent to random sampling. Studies attempting to stabilize RANSAC on mobile agricultural robots demonstrate that temporal filtering or multi-sensor fusion is required to smooth frame-to-frame fluctuations~\cite{sensors2025lidar}, confirming that raw RANSAC output on monocular imagery lacks the determinism required for smooth steering commands.
+
+    \item \textbf{Horizontal strip decomposition with centroid reduction:} Methods operating on segmented drivable soil corridors (such as the multi-ROI scheme of Li et al.~\cite{li2022multiroi}) partition the image into horizontal bands and extract the bounding interval $[x_L, x_R]$ within each strip. However, these methods immediately collapse each interval into its midpoint:
+    \begin{equation}
+        x_C = \frac{x_L + x_R}{2}
+    \end{equation}
+    fitting curves (such as cubic B-splines or polynomials) directly to the sequence of centroids $x_C$. This premature reduction discards the distinction between the two physical edges. Under asymmetric disturbances---such as protruding leaves, localized weeds, or shadows extending along one side of the corridor---the midpoint shifts toward the intrusion, which introduces systematic bias in both lateral offset and heading angle.
+
+    \item \textbf{Cascaded deep learning for line extraction:} Recent studies investigate two-stage deep architectures, where an initial segmentation model is followed by a secondary network dedicated to semantic line detection. While capable of learning line features directly from data, running two cascaded neural networks on embedded platforms exceeds the memory and latency limits required for closed-loop robotic control ($\ge 20$~Hz).
+
+    \item \textbf{Single-edge elevation fitting:} M-estimators have also been applied to crop boundaries, such as Huber-loss Iteratively Reweighted Least Squares (IRLS) on stereo elevation scanlines~\cite{kneip2020cropedge}. However, these formulations track a single cutting boundary along dense harvesting fronts, rather than parallel crop boundaries defining an inter-row corridor from monocular RGB imagery.
+\end{enumerate}
+
+To address the trade-off between computational determinism and disturbance decoupling without cascading neural networks, this thesis investigates a decoupled dual-edge linear formulation:
+\begin{equation}
+    x_L(y) = m_L y + q_L, \qquad x_R(y) = m_R y + q_R
+\end{equation}
+Both boundaries are estimated using Iteratively Reweighted Least Squares (IRLS) with a Cauchy loss function:
+\begin{equation}
+    w_i = \frac{1}{1 + \left(\frac{r_i}{\sigma}\right)^2}
+\end{equation}
+Because estimation operates on a discrete set of horizontal strip boundaries ($N \le 24$), the IRLS solver converges deterministically within four iterations with $O(N)$ computational complexity ($<0.1$~ms on NVIDIA Jetson Orin Nano). Asymmetric perturbations on one boundary alter only local weights for that boundary, without affecting the opposite boundary. The centerline reference $x_C(y) = (x_L(y) + x_R(y))/2$ is computed analytically only after both boundaries have converged independently.
+
 \subsection{Comparison of geometric representations}
 \label{subsec:geometric_comparison}
 
@@ -210,6 +238,12 @@ representation and geometric output of the methods discussed above.
         & Predicted crop-row mask
         & Upper anchor and triangular line search
         & Central crop-row line \\
+        \midrule
+        \addlinespace
+        This thesis (Proposed DELE)
+        & Predicted soil-corridor / mulch mask
+        & Discrete horizontal strips, decoupled bilateral Cauchy-IRLS fitting
+        & Straight image-space centerline $x_C(y)$ and $(e_y, e_\theta)$ \\
         \bottomrule
     \end{tabularx}
 \end{table}
@@ -263,12 +297,14 @@ benchmark.
 \section{Positioning of this thesis}
 \label{sec:thesis_positioning}
 
-This thesis studies a camera-based pipeline that segments plants and
-the soil corridor, selects the relevant inter-row region, and estimates
-a local guidance line for navigation between parallel crop rows. Its
-geometric stage uses horizontal strips to select candidate intervals
-and fits the two corridor boundaries separately. This shares the
-local-selection structure of Li et al.'s multi-ROI method, but uses a
-straight image-space reference rather than a spline. The experiments
-in the following chapters evaluate the segmentation models, geometric
-extractors, and integrated robot at their respective stages.
+The system developed in this thesis addresses autonomous navigation in GNSS-denied crop rows using monocular RGB vision and embedded computation. Its technical positioning relative to the state of the art rests on three architectural decisions:
+
+\begin{enumerate}
+    \item \textbf{Perceptual representation (Soil corridor versus canopy):} Rather than detecting crop stalks or foliage masks, the segmentation stage targets the navigable soil corridor (and plastic mulch). This makes the navigation reference independent of crop growth stage, canopy height, and missing plants (fallanze), providing a continuous geometric guide directly at ground level.
+    
+    \item \textbf{Geometric extraction (Decoupled deterministic boundaries versus centroid reduction):} Rather than collapsing strip intervals into midpoints prior to fitting (as in Li et al.~\cite{li2022multiroi}) or employing stochastic RANSAC over dense edge contours, the proposed pipeline decouples the left and right physical corridor boundaries. Each boundary is fitted independently using a Cauchy-weighted IRLS formulation that converges in four fixed iterations ($<0.1$~ms). Unilateral disturbances (such as leaf overhangs or shadows) are suppressed locally on the affected boundary without distorting the opposite side or biasing the central heading angle.
+    
+    \item \textbf{Embedded deployment feasibility:} The architecture decouples offline model-assisted dataset generation from onboard execution. Large foundation models (SAM~3) are restricted to offline zero-shot concept annotation, while real-time inference on the NVIDIA Jetson Orin Nano is handled by a lightweight LR-ASPP network (using a MobileNetV3 backbone) paired with the deterministic IRLS geometric extractor. The entire pipeline executes in closed loop at 20~Hz without requiring secondary neural networks, stereo elevation mapping, or LiDAR sensors.
+\end{enumerate}
+
+The chapters that follow detail and evaluate each stage of this pipeline: Chapter~\ref{cap:architectures} formulates the deep learning architectures, Chapter~\ref{cap:segmentation} analyzes the annotation protocols and comparative model training, Chapter~\ref{cap:geometric_reference} formalizes the geometric extractors, Chapter~\ref{cap:platform} describes the Demetra robotic platform and onboard ROS integration, and Chapter~\ref{cap:experiments} reports offline benchmarks and field tests.

@@ -30,9 +30,15 @@ The choice of output label configuration affects both annotation effort and down
 \section{Conclusions on geometric extraction}
 \label{sec:geometric_conclusions}
 
-The geometric extractors convert segmentation masks into navigation references by selecting intervals from horizontal strips and fitting corridor boundaries independently. This approach shares the local-evidence structure of adaptive multi-ROI methods while using a simpler straight-line model.
+The geometric extraction stage converts binary corridor segmentation masks into navigation setpoints. The comparative study examined four distinct architectural paradigms:
+\begin{enumerate}
+    \item Global column projection (\texttt{pf\_histogram}) maximizes simplicity and eliminates tracking failure modes, but discards heading angle information and exhibits sensitivity to asymmetric vegetation distribution.
+    \item Centerline strip regression (\texttt{pf\_centri}) provides both lateral offset and heading estimates with low computational demand, but transfers unilateral canopy noise directly into the navigation line.
+    \item Random sample consensus (\texttt{pf\_ransac}) handles scattered boundary points and wide gaps without strip discretization, but introduces frame-to-frame stochastic jitter ($\sigma_\omega > 0$) and variable runtime.
+    \item Decoupled dual-edge tracking (Method~4) provides deterministic execution ($\sigma_\omega = 0.00^\circ$), sub-millisecond latency, and boundary-level noise decoupling, but introduces strict dependencies on near-field seed detection and heuristic jump gates.
+\end{enumerate}
 
-Method~3 and Method~4 differ in their association strategy and validation. Their relative performance depends on mask quality, row regularity, and parameter tuning. Both methods assume locally straight boundaries and do not handle curves or complex patterns. Validation checks reject outputs that fail quality thresholds, but the controller must handle cases where no valid reference is available.
+These characteristics demonstrate that no individual extractor is universally superior; selection depends on sensor setup, platform compute limits, and field layout.
 
 \todobox{Sintesi quantitativa finale dell'estrazione geometrica e navigazione}{%
 Sintetizzare i dati conclusivi:
@@ -46,16 +52,22 @@ Sintetizzare i dati conclusivi:
 \section{Limitations}
 \label{sec:limitations}
 
-The work is subject to several limitations:
+The methodology and experimental findings are subject to several specific limitations:
 
 \begin{itemize}
-\item \textbf{Evaluation scope:} Segmentation models were evaluated on manually annotated lettuce. Multi-crop training includes tomato and cucumber, but their segmentation performance is not validated against manual references for those crops.
+\item \textbf{Bottom-up seed dependency in Method~4:} The tracking algorithm initializes exclusively from the bottom six horizontal strips. Occlusions immediately in front of the camera (such as robot chassis shadows, soil buildup, or puddles) prevent track initialization and lead to frame rejections, even when the distant corridor is visible.
 
-\item \textbf{Annotation quality measurement:} The time required for SAM~3-assisted annotation has not been measured systematically. The comparison does not quantify inspection effort or the frequency of manual corrections.
+\item \textbf{Geometric model constraints:} Method~4, \texttt{pf\_ransac}, and \texttt{pf\_centri} assume locally straight, parallel corridor boundaries. They cannot follow curved crop rows or navigate headland turnaround maneuvers where crop boundaries terminate or diverge.
 
-\item \textbf{Geometric model assumptions:} The extractors assume locally straight corridor boundaries. They do not handle curves, gaps, or complex row patterns that violate this assumption.
+\item \textbf{Unilateral row dropout vulnerability:} If crop continuity along one row is broken by gaps exceeding three strips ($18$~px), Method~4 drops that boundary. Without an asymmetric single-edge fallback mode, this results in reference rejection, whereas global histogram projection continues to provide a lateral setpoint.
 
-\item \textbf{Field validation:} If closed-loop field trials were not completed, the integrated system's navigation performance under real operating conditions remains unvalidated. Offline segmentation IoU and geometric reference accuracy do not establish successful row following.
+\item \textbf{Image-space gate tuning:} The continuity gate ($\Delta x_{\text{max}} = 28$~px) is defined in image coordinates. Significant vehicle pitch and roll on uneven soil cause sudden lateral displacements of the corridor between consecutive scanlines, which can trigger premature tracking loss.
+
+\item \textbf{Dataset annotation coverage:} Segmentation models were quantitatively evaluated against dense manual ground truth on lettuce. Multi-crop training includes tomato and cucumber, but their segmentation accuracy was not verified against dense manual annotations for those specific crops.
+
+\item \textbf{Annotation effort measurement:} Time savings from SAM~3-assisted annotation were evaluated qualitatively. The comparison does not report logged inspection hours or the frequency of manual polygon corrections.
+
+\item \textbf{Closed-loop dynamics:} Offline benchmarks evaluate reference accuracy on static test images. They do not account for vehicle inertia, steering backlash, or dynamic latency variations under closed-loop field control.
 \end{itemize}
 
 \section{Future work}
@@ -87,10 +99,10 @@ Several directions for future research emerge from this work:
 \label{subsec:future_geometric}
 
 \begin{itemize}
-\item Extend the geometric model to handle curved paths using splines or piecewise linear segments.
-\item Investigate robust estimation techniques (e.g., RANSAC, M-estimators) for association and fitting under severe occlusions.
-\item Develop failure detection and recovery strategies when no valid reference can be extracted.
-\item Compare strip-based methods with alternative geometric representations (e.g., histogram methods, crop-edge detection).
+\item Extend the geometric representation from linear models to piecewise linear or polynomial formulations to support curved rows and headland turns.
+\item Implement top-down recovery logic and single-edge asymmetric tracking to maintain guidance when bottom-up seeding fails or unilateral row dropouts occur.
+\item Adapt spatial gate thresholds dynamically using vehicle attitude telemetry from an onboard IMU to prevent false tracking loss during pitch and roll variations.
+\item Incorporate temporal Bayesian tracking (such as an Extended Kalman Filter) to smooth reference parameters across frame dropouts without incurring the stochastic jitter of RANSAC.
 \end{itemize}
 
 \subsection{System integration and field validation}

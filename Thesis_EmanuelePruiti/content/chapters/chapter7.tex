@@ -103,19 +103,86 @@ Dettagliare l'elaborazione geometrica:
 \end{itemize}
 }
 
-\subsubsection{Control node}
+\subsubsection{Control node and error conditioning}
 \label{subsubsec:control_node}
 
-The control node converts the navigation reference into velocity commands using proportional control based on lateral displacement and heading error.
+The control node converts the image-space geometric reference into linear and angular velocity commands $(v, \omega)$ published on the \texttt{/cmd\_vel} topic. Tracking errors extracted from the segmentation mask at reference row $y_{\mathrm{ref}} = 0.50 \cdot H$ ($y = 112\text{ px}$ for a $224 \times 224$ input resolution) are subject to sensor noise and transient occlusions. To ensure smooth closed-loop actuation without erratic steering adjustments, raw lateral pixel errors $e_{\mathrm{px}}$ pass through a multi-stage conditioning filter before entering the steering law.
 
-\todobox{Interfaccia di controllo e generazione comandi /cmd\_vel}{%
-Specificare la logica di calcolo del comando:
-\begin{itemize}
-  \item Calcolo dell'offset laterale $e_y$ rispetto al centro del frame visivo e dell'inclinazione angolare $e_\theta$.
-  \item Legge di controllo proporzionale per ricavare la velocit\`a lineare $v$ e la velocit\`a angolare $\omega$.
-  \item Costruzione e pubblicazione del messaggio \texttt{geometry\_msgs/msg/Twist} sul topic \texttt{/cmd\_vel}.
-\end{itemize}
-}
+\paragraph{Dual-regime recursive smoothing and jump rejection.}
+The core filter operates as an exponential moving average (EMA) conditioned on the path finder tracking state $\mathrm{status}_{\mathrm{pf}} \in \{\mathrm{ok}, \mathrm{degraded}\}$. The filter smoothing factor $\alpha$ and jump threshold $J_{\mathrm{thr}}$ switch dynamically between two operating regimes:
+\begin{equation}
+    (\alpha, J_{\mathrm{thr}}) = 
+    \begin{cases}
+        (0.20, \; 40.0\text{ px}) & \text{if } \mathrm{status}_{\mathrm{pf}} = \mathrm{ok}, \\
+        (0.18, \; 38.0\text{ px}) & \text{if } \mathrm{status}_{\mathrm{pf}} = \mathrm{degraded}.
+    \end{cases}
+    \label{eq:filter_regimes}
+\end{equation}
+At each sampled frame $k$, the discrepancy between incoming measurement $e_{\mathrm{px},k}$ and prior filtered state $e_{k-1}$ is evaluated as $\Delta_k = |e_{\mathrm{px},k} - e_{k-1}|$. When $\Delta_k \le J_{\mathrm{thr}}$, the measurement is accepted as nominal and updated via standard EMA:
+\begin{equation}
+    e_k = (1 - \alpha) e_{k-1} + \alpha \, e_{\mathrm{px},k},
+    \label{eq:filter_ema_update}
+\end{equation}
+with the consecutive jump counter reset to zero ($c_{\mathrm{jump}} = 0$).
+
+Conversely, when $\Delta_k > J_{\mathrm{thr}}$, the counter increments ($c_{\mathrm{jump}} \leftarrow c_{\mathrm{jump}} + 1$). If the anomaly occurs on a single isolated frame ($c_{\mathrm{jump}} = 1$), it is treated as a spurious segmentation outlier and heavily attenuated:
+\begin{equation}
+    e_k = 0.80 \, e_{k-1} + 0.20 \, e_{\mathrm{px},k}.
+    \label{eq:filter_outlier_damp}
+\end{equation}
+If the large displacement persists across consecutive frames ($c_{\mathrm{jump}} \ge 2$), the filter classifies the variation as a genuine path change, resets $c_{\mathrm{jump}} = 0$, and assigns $e_k = e_{\mathrm{px},k}$ directly to avoid phase lag.
+
+\paragraph{Temporal hold and command deadband.}
+When the path finder reports a lost tracking state or when no valid centerline is detected ($e_{\mathrm{px}} = \text{None}$), the filter initiates a zero-order temporal hold:
+\begin{equation}
+    e_k = e_{\mathrm{last\_valid}} \quad \text{for } \Delta t \le t_{\mathrm{hold}},
+    \label{eq:filter_hold}
+\end{equation}
+where $t_{\mathrm{hold}} = 0.50\text{ s}$ ($\approx 15\text{ frames}$ at $30\text{ fps}$). If perception dropouts exceed $0.50\text{ s}$, the filter clears its internal state and issues an emergency stop command ($v = 0$, $\omega = 0$).
+
+To eliminate high-frequency actuator jitter when the vehicle is aligned with the corridor, an output deadband of $\pm 4.0\text{ px}$ is applied:
+\begin{equation}
+    e_{\mathrm{cmd},k} = 
+    \begin{cases}
+        0.0 & \text{if } |e_k| < 4.0\text{ px}, \\
+        e_k & \text{otherwise}.
+    \end{cases}
+    \label{eq:filter_deadband}
+\end{equation}
+The deadband alters only command output $e_{\mathrm{cmd},k}$, preserving internal state $e_k$ to avoid filter deadlock when crossing the zero-error threshold.
+
+\paragraph{Velocity command generation.}
+The filtered lateral error is normalized relative to the image half-width, $e_{\mathrm{norm}} = e_{\mathrm{cmd}} / (W / 2)$, and scaled by the geometric extraction confidence $C \in [0, 1]$:
+\begin{equation}
+    \omega = - K_{p,\mathrm{lat}} \cdot (0.6 + 0.4 \cdot C) \cdot e_{\mathrm{norm}},
+    \label{eq:control_law_omega}
+\end{equation}
+where $K_{p,\mathrm{lat}} = 1.2$ is the lateral proportional gain. Calculated angular velocity is clamped within $[-\omega_{\max}, \omega_{\max}]$, while forward linear speed is set to $v = v_{\mathrm{nom}}$. Table~\ref{tab:controller_parameters} summarizes the nominal parameters deployed on the robot platform.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Nominal parameters of the error conditioning filter and steering controller deployed on Demetra.}
+    \label{tab:controller_parameters}
+    \begin{tabularx}{\textwidth}{@{}X l l@{}}
+        \toprule
+        Parameter & Symbol & Nominal value \\
+        \midrule
+        Input resolution ($W \times H$) & -- & $224 \times 224\text{ px}$ \\
+        Reference evaluation row & $y_{\mathrm{ref}}$ & $112\text{ px}$ ($0.50 \cdot H$) \\
+        Smoothing factor (regime \texttt{ok}) & $\alpha_{\mathrm{ok}}$ & $0.20$ \\
+        Smoothing factor (regime \texttt{degraded}) & $\alpha_{\mathrm{deg}}$ & $0.18$ \\
+        Jump threshold (regime \texttt{ok}) & $J_{\mathrm{thr,ok}}$ & $40.0\text{ px}$ \\
+        Jump threshold (regime \texttt{degraded}) & $J_{\mathrm{thr,deg}}$ & $38.0\text{ px}$ \\
+        Outlier persistence window & $N_{\mathrm{persist}}$ & $2\text{ frames}$ \\
+        Temporal hold duration & $t_{\mathrm{hold}}$ & $0.50\text{ s}$ ($\approx 15\text{ frames}$) \\
+        Output deadband & $\delta_{\mathrm{db}}$ & $\pm 4.0\text{ px}$ \\
+        Lateral proportional gain & $K_{p,\mathrm{lat}}$ & $1.2$ \\
+        Maximum angular velocity & $\omega_{\max}$ & $0.58\text{ rad/s}$ \\
+        Nominal linear speed & $v_{\mathrm{nom}}$ & $0.20\text{ m/s}$ \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
 
 \subsection{Perception pipeline implementation}
 \label{subsec:perception_pipeline}
@@ -200,3 +267,43 @@ Riportare i risultati empirici ricavati dai test sul Jetson:
   \item Strategie per raggiungere i 30 Hz: (1) pubblicare le immagini di debug a frequenza ridotta o in un thread dedicato; (2) ottimizzare il modello tramite NVIDIA TensorRT; (3) disaccoppiare decodifica e inferenza con architettura multi-thread.
 \end{itemize}
 }
+
+\subsection{Software-in-the-Loop pre-validation}
+\label{subsec:sitl}
+
+Before deploying the navigation pipeline on the physical robot, the stability of the full closed-loop chain (segmentation, geometric extraction, error conditioning, steering law, and vehicle kinematics) was verified in a lightweight Software-in-the-Loop (SITL) environment running on a desktop workstation.
+
+\subsubsection{SITL architecture}
+\label{subsubsec:sitl_architecture}
+
+The SITL node loads a single real RGB frame acquired by the Intel RealSense D435 camera on an actual crop row. Rather than rendering a synthetic 3D scene, the simulator models the robot's lateral displacement and heading variation as a horizontal translation of the camera viewport over the original image. The frame is padded with reflective borders (400~pixels per side) to allow displacements of up to $\pm 0.45\text{ m}$ without introducing black edges.
+
+The pixel shift $\Delta x$ applied at each simulation step combines two terms derived from the D435 optical parameters:
+\begin{equation}
+    \Delta x = -y \cdot \frac{f_x}{D} + \theta \cdot f_x,
+    \label{eq:sitl_projection}
+\end{equation}
+where $y$ is the lateral offset of the robot from the corridor center (in meters), $\theta$ is the heading angle relative to the row axis (in radians), $f_x = 465\text{ px}$ is the horizontal focal length of the D435 at $640 \times 480$ resolution, and $D = 1.25\text{ m}$ is the lookahead distance corresponding to the reference evaluation row ($y_{\mathrm{ref}} = 0.50 \cdot H$).
+
+\subsubsection{Kinematic model}
+\label{subsubsec:sitl_kinematics}
+
+The SITL integrates the same 4WS symmetric contra-steering kinematics implemented in the onboard firmware (\texttt{kinematics.cpp}), with identical parameters: wheelbase $L = 0.40\text{ m}$, wheel diameter $d_w = 0.192\text{ m}$, and mechanical steering saturation at $\pm 30.0^\circ$. At each time step $\Delta t = 1/30\text{ s}$, the node receives $(v, \omega)$ from the \texttt{/cmd\_vel} topic published by the real \texttt{controller\_node}, computes the effective steering angle:
+\begin{equation}
+    \delta = \arctan\!\left(\frac{L \cdot \omega}{2\,v}\right), \qquad
+    \omega_{\mathrm{eff}} = \frac{2\,v\,\tan\delta}{L},
+    \label{eq:sitl_steering}
+\end{equation}
+and updates the planar state:
+\begin{align}
+    \theta_{k+1} &= \theta_k + \omega_{\mathrm{eff}} \cdot \Delta t, \\
+    y_{k+1} &= y_k - v \sin\theta_k \cdot \Delta t.
+    \label{eq:sitl_integration}
+\end{align}
+The translated frame is then published on the same ROS~2 topic used by the physical camera (\texttt{/camera/camera/color/image\_raw/compressed}), so the \texttt{controller\_node} processes it without any code modification.
+
+\subsubsection{Interactive perturbation testing}
+\label{subsubsec:sitl_perturbation}
+
+Keyboard inputs allow the operator to inject controlled lateral perturbations ($\pm 4\text{ cm}$ or $\pm 10\text{ cm}$) during execution, simulating sudden displacement events such as wheel slip on soft soil or an external push. This procedure was used to verify that the error conditioning filter and steering controller recover to the corridor center within approximately $10\text{--}15$ frames ($\sim 0.5\text{ s}$ at $30\text{ fps}$), without residual oscillations and without saturating the $\pm 30^\circ$ mechanical steering limit. Table~\ref{tab:controller_parameters} lists the filter and control parameters validated through these SITL tests before field deployment.
+

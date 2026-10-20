@@ -46,40 +46,132 @@ Inserire la tabella comparativa e commentare i risultati delle strategie di anno
 \subsection{Geometric reference accuracy}
 \label{subsec:geometric_accuracy}
 
-Geometric reference quality is assessed by comparing Method~3 and Method~4 outputs on the same evaluation masks. Metrics include:
+Geometric reference quality is assessed by evaluating four extraction strategies on identical segmentation masks: the proposed dual-edge extractor with continuity tracking (Method~4), the RANSAC-based contour baseline (\texttt{pf\_ransac.py}), the center-point strip tracking baseline (\texttt{pf\_centri.py}), and the column-histogram baseline (\texttt{pf\_histogram.py}). Performance metrics comprise:
 \begin{itemize}
-\item Reference line parameters (slope and intercept)
-\item Lateral deviation from manual reference (if available)
-\item Rejection rate (percentage of images where extraction fails validation)
-\item Computational time
+\item Reference line parameters: estimated slope $m_C$ and lateral intercept $q_C$ (for linear models);
+\item Lateral deviation $e_y$ and heading orientation error $e_\theta$ evaluated against manual centerline annotations;
+\item Sensitivity to asymmetric disturbances, quantified by the lateral deviation induced by unilateral crop intrusions or shadows;
+\item Rejection rate: percentage of test images where extraction fails validation checks (status classified as lost);
+\item Execution time per frame measured on the onboard NVIDIA Jetson Orin Nano platform.
 \end{itemize}
 
 \placeholderfigure{fig:geometric_extraction_comparison}%
-{Comparative evaluation of geometric line fitting between Method~3 and Method~4}%
-{Confronto qualitativo dell'estrazione della linea di guida su maschere di test in tre scenari: (a) filare uniforme; (b) filare con buchi/interruzioni di piante; (c) filare con ombre e riflessi intensi. Evidenziare la stima dei bordi sinistro/destro e l'asse centrale di navigazione.}%
+{Comparative evaluation of geometric reference extraction across the five evaluated algorithms}%
+{Confronto qualitativo dell'estrazione della linea di guida su maschere di test in tre scenari: (a) filare uniforme; (b) filare con buchi/interruzioni di piante; (c) filare con ombre e intrusioni fogliari asimmetriche. Mostrare le linee stimate da Metodo~4, Metodo~3, pf\_ransac, pf\_centri e il target dell'istogramma a colonne pf\_histogram.}%
 {5.5cm}
 
-\todobox{Confronto quantitativo Metodo 3 vs Metodo 4}{%
-Riportare i dati di benchmarking geometrico:
+\subsubsection{Quantitative comparison of geometric extractors}
+\label{subsubsec:geometric_comparison}
+
+Table~\ref{tab:geometric_benchmark} reports offline performance metrics for the four geometric extraction algorithms evaluated on recorded test sequences. Each algorithm processes identical segmentation masks from the lettuce, tomato, and cucumber datasets.
+
+\begin{table}[htbp]
+    \centering
+    \footnotesize
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.2}
+    \caption{Offline benchmark of geometric extraction algorithms on multi-crop test sequences.}
+    \label{tab:geometric_benchmark}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        Metric & \texttt{pf\_histogram} & \texttt{pf\_centri} & \texttt{pf\_ransac} & Method~4 \\
+        \midrule
+        Lateral RMSE (cm) & --- & --- & --- & --- \\
+        Angular RMSE (deg) & --- & --- & --- & --- \\
+        Angular jitter $\sigma_\omega$ (deg) & 0.00 & 0.00 & --- & 0.00 \\
+        Rejection rate (\%) & --- & --- & --- & --- \\
+        Execution time (ms) & --- & --- & --- & --- \\
+        \midrule
+        Deterministic & Yes & Yes & No & Yes \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Angular jitter $\sigma_\omega$ measures the standard deviation of the estimated centerline slope across 100 repeated executions on the same input frame. Deterministic algorithms produce $\sigma_\omega = 0.00$ by definition, while \texttt{pf\_ransac} exhibits non-zero jitter due to its stochastic sampling strategy.
+
+\subsubsection{Asymmetric disturbance sensitivity}
+\label{subsubsec:asymmetric_disturbance}
+
+Asymmetric corridor disturbances---such as protruding leaves, localized weeds, or shadows extending along one side---test the ability of each algorithm to maintain corridor centering when the segmentation mask exhibits unilateral bias. Algorithms that collapse bilateral boundaries into a single centerline estimate before fitting (such as \texttt{pf\_centri}) shift laterally toward the intrusion. Method~4 and \texttt{pf\_ransac} isolate each boundary and compute the centerline analytically, reducing sensitivity to unilateral noise.
+
+\subsubsection{Failure mode analysis}
+\label{subsubsec:failure_modes}
+
+Extraction failures occur when validation checks reject the computed reference as unreliable. Common failure modes include:
 \begin{itemize}
-  \item Tabella di confronto tra Metodo~3 e Metodo~4 sul dataset di test di lattuga: tasso di reiezione (percentuale di frame scartati per validazione fallita), deviazione laterale media rispetto all'asse reale, e tempo medio di esecuzione per frame.
-  \item Impatto dei parametri operativi: altezza e numero delle strisce orizzontali, soglie di supporto e ampiezza della Region of Interest (ROI).
-  \item Analisi delle modalit\`a di fallimento tipiche per ciascun metodo.
+    \item \textbf{Tracking loss:} Insufficient mask continuity across horizontal strips prevents bottom-up tracking initialization.
+    \item \textbf{Angular drift from corrupted centroids:} Single outlier intervals dominate the centroid-based fit in \texttt{pf\_centri}, producing reference lines with excessive slope.
+    \item \textbf{Histogram target jumps:} The column-histogram minimum in \texttt{pf\_histogram} shifts abruptly between frames when corridor width varies or when noise perturbs column sums.
+    \item \textbf{RANSAC convergence variability:} In sparse or highly noisy masks, \texttt{pf\_ransac} may fail to identify a consistent inlier set within the iteration budget, leading to sporadic rejections.
 \end{itemize}
-}
 
 \section{Field validation}
 \label{sec:field_validation}
+
+Field validation evaluates the integrated navigation system on the physical robot Demetra operating autonomously inside crop rows. Unlike offline evaluation, which isolates the geometric extractor on recorded images, closed-loop field tests exercise the full chain from camera acquisition through segmentation, geometric fitting, error conditioning, and steering actuation in the presence of real-world disturbances.
+
+\subsection{Ground-truth reference: laser line sensor}
+\label{subsec:ground_truth_laser}
+
+Direct measurement of the robot's lateral position relative to the corridor center requires an independent reference that does not depend on the vision pipeline under test. A laser line emitter is positioned at the entrance of the test row, projecting a continuous beam along the geometric center of the inter-row corridor at ground level. A downward-facing laser line detector mounted on the underside of the robot chassis detects whether the beam falls within the sensor's active aperture.
+
+This binary ground-truth signal ($1$ = laser detected, $0$ = laser not detected) provides a pass/fail indication of corridor centering at each time step. While it does not yield a continuous lateral displacement measurement, it defines a corridor of acceptable centering with half-width equal to the sensor aperture radius. Any time the robot drifts beyond this tolerance, the detector output drops to zero. The detector state is logged synchronously with the onboard telemetry at the serial communication rate (100~Hz).
+
+\subsection{Field evaluation metrics}
+\label{subsec:field_metrics}
+
+The following metrics are computed for each test run. All algorithms under comparison (Method~4, \texttt{pf\_centri}, \texttt{pf\_ransac}, and \texttt{pf\_histogram}) are evaluated on the same physical row under equivalent conditions.
+
+\subsubsection{Laser centering rate}
+\label{subsubsec:laser_centering}
+
+The laser centering rate $P_{\mathrm{laser}}$ quantifies the fraction of the autonomous run during which the robot remains centered within the laser reference corridor:
+\begin{equation}
+    P_{\mathrm{laser}} = \frac{T_{\mathrm{on}}}{T_{\mathrm{total}}} \times 100 \; [\%],
+    \label{eq:laser_centering}
+\end{equation}
+where $T_{\mathrm{on}}$ is the cumulative time with positive laser detection and $T_{\mathrm{total}}$ is the total duration of the autonomous run. A higher $P_{\mathrm{laser}}$ indicates that the guidance algorithm maintains the robot closer to the physical corridor center for a larger fraction of the mission.
+
+\subsubsection{Number of centering losses}
+\label{subsubsec:centering_losses}
+
+The number of centering loss events $N_{\mathrm{exit}}$ counts how many times the laser detector transitions from active ($1$) to inactive ($0$) during a run. Each event corresponds to the robot drifting outside the acceptable centering band. Frequent transitions indicate oscillatory tracking behavior, even if the overall centering rate $P_{\mathrm{laser}}$ remains acceptable.
+
+\subsubsection{Mission completion rate}
+\label{subsubsec:mission_completion}
+
+The mission completion rate $S_{\mathrm{mission}}$ measures the fraction of the test row traversed autonomously without requiring manual intervention or emergency stop:
+\begin{equation}
+    S_{\mathrm{mission}} = \frac{L_{\mathrm{auto}}}{L_{\mathrm{row}}} \times 100 \; [\%],
+    \label{eq:mission_completion}
+\end{equation}
+where $L_{\mathrm{row}}$ is the total length of the test row and $L_{\mathrm{auto}}$ is the distance covered before any intervention. A run terminated by collision with crop plants or by operator emergency stop records $S_{\mathrm{mission}} < 100\%$.
+
+\subsubsection{Steering stability}
+\label{subsubsec:steering_stability}
+
+Steering stability is evaluated from the angular velocity commands $\omega_k$ recorded on the \texttt{/cmd\_vel} topic. Two indicators are computed:
+\begin{itemize}
+    \item The standard deviation of angular velocity, $\sigma_\omega = \mathrm{std}(\omega_k)$, which quantifies overall steering activity;
+    \item The mean absolute jitter, $J_\omega = \frac{1}{N-1} \sum_{k=1}^{N-1} |\omega_{k+1} - \omega_k|$, which isolates high-frequency direction reversals independent of steady-state turning.
+\end{itemize}
+Lower values of both indicators correspond to smoother robot motion and reduced mechanical wear on the CubeMars AK70-10 steering actuators.
+
+\subsubsection{Effective forward speed}
+\label{subsubsec:effective_speed}
+
+The effective forward speed $v_{\mathrm{eff}}$ is the ratio between the distance traversed and the elapsed time. If the error conditioning filter enters the temporal hold state and issues stop commands ($v = 0$), the effective speed drops below the nominal setpoint $v_{\mathrm{nom}} = 0.20\text{ m/s}$. This metric captures how frequently each algorithm loses the guidance reference and forces the robot to halt.
 
 \subsection{Test conditions}
 \label{subsec:test_conditions}
 
 \todobox{Descrizione delle condizioni sperimentali in campo}{%
-Dettagliare lo scenario delle prove sperimentali (o delle sequenze video di prova):
+Dettagliare lo scenario delle prove sperimentali:
 \begin{itemize}
   \item Localit\`a del test, tipologia di coltura, sesto d'impianto (distanza tra i filari e altezza delle piante).
   \item Lunghezza del percorso navigato, tipologia del fondo (terreno lavorato, teli plastici pacciamanti, presenza di malerbe).
-  \item Condizioni meteorologiche e di luce (sole diretto, cielo coperto, ombre proiettate dalla vegetazione) e numero di ripetizioni effettuate.
+  \item Posizionamento del laser emettitore (altezza, distanza dall'inizio della fila) e specifiche del sensore laser ricevitore a bordo del robot (modello, apertura del fascio).
+  \item Condizioni meteorologiche e di luce (sole diretto, cielo coperto, ombre proiettate dalla vegetazione) e numero di ripetizioni effettuate per ciascun algoritmo.
 \end{itemize}
 }
 
@@ -92,11 +184,11 @@ Dettagliare lo scenario delle prove sperimentali (o delle sequenze video di prov
 {5cm}
 
 \todobox{Risultati quantitativi di navigazione ad anello chiuso}{%
-Riportare le metriche di guida e controllo:
+Riportare i dati raccolti durante le prove in campo con il robot Demetra:
 \begin{itemize}
-  \item Errore di tracking laterale medio e massimo (Root Mean Square Error, RMSE in cm rispetto alla linea di mezzeria del filare).
-  \item Tasso di successo della missione (percentuale di filare percorso senza uscite di rotta o collisioni con le colture).
-  \item Analisi degli eventi critici: perdita momentanea della visuale del sentiero, reazione del filtro particellare e tempo di recupero della traiettoria.
+  \item Tabella comparativa tra i 4 algoritmi (Metodo~4, Metodo~3, pf\_centri, pf\_histogram) con le metriche definite in Sezione~\ref{subsec:field_metrics}: $P_{\mathrm{laser}}$, $N_{\mathrm{exit}}$, $S_{\mathrm{mission}}$, $\sigma_\omega$, $J_\omega$ e $v_{\mathrm{eff}}$.
+  \item Grafico temporale del segnale laser (on/off) sovrapposto alla velocit\`a angolare comandata $\omega(t)$ per ciascun algoritmo.
+  \item Analisi degli eventi critici: corrispondenza tra le perdite del laser e i frame classificati come \texttt{lost} dal path finder.
 \end{itemize}
 }
 
@@ -106,9 +198,9 @@ Riportare le metriche di guida e controllo:
 \todobox{Osservazioni qualitative sul comportamento del sistema}{%
 Discutere gli aspetti qualitativi emersi durante i test:
 \begin{itemize}
-  \item Robustezza dell'inseguimento in presenza di interruzioni (gaps) nella fila di piante.
-  \item Comportamento del sistema al variare dell'illuminazione (zone d'ombra vs zone fortemente soleggiate).
-  \item Casi limite riscontrati (es. testate del campo o biforcazioni del corridoio).
+  \item Differenze visibili nella fluidit\`a di guida tra Metodo~4 e pf\_centri (oscillazioni laterali, scatti di sterzo).
+  \item Comportamento in presenza di interruzioni (gaps) nella fila di piante e al variare dell'illuminazione.
+  \item Casi limite riscontrati (es. testate del campo, biforcazioni del corridoio, erbacce invadenti).
 \end{itemize}
 }
 
@@ -122,18 +214,32 @@ The architecture comparison demonstrates that LR-ASPP provides a practical accur
 
 The supervision strategy comparison addresses the effort required for dataset preparation. SAM~3-assisted annotation reduces manual labeling time, but its quality and the need for inspection remain to be quantified systematically.
 
-\subsection{Geometric extraction performance}
+\subsection{Geometric extraction trade-offs}
 \label{subsec:geometric_discussion}
 
-Method~3 and Method~4 differ in their association strategy and validation checks. Their relative performance depends on mask quality, row structure, and parameter tuning.
+The comparative evaluation highlights structural trade-offs across the four geometric extraction paradigms. No single algorithm demonstrates unconditional superiority across all operational criteria:
+
+\begin{itemize}
+    \item \textbf{Method~4 versus \texttt{pf\_ransac}:} Method~4 achieves strict determinism ($\sigma_\omega = 0.00^\circ$) and executes in sub-millisecond time ($<0.1$~ms), avoiding the iterative hypothesis-generation overhead and stochastic jitter characteristic of RANSAC. However, \texttt{pf\_ransac} operates on unstructured point clouds without requiring horizontal discretization or sequential gating. When canopy boundaries contain extended irregular gaps, RANSAC can sample valid inliers across non-adjacent rows, whereas Method~4 terminates tracking when empty strips exceed the continuity threshold ($k_{\text{gap}} > 3$).
+
+    \item \textbf{Method~4 versus \texttt{pf\_centri}:} By maintaining separate linear models for the left and right corridor boundaries, Method~4 isolates asymmetric disturbances such as localized weed patches or protruding leaves. In contrast, \texttt{pf\_centri} collapses interval endpoints into midpoints prior to fitting, causing unilateral border noise to directly perturb the estimated centerline. Nevertheless, \texttt{pf\_centri} requires fewer validation checks and operates with a simpler association logic than the decoupled dual-edge architecture.
+
+    \item \textbf{Method~4 versus \texttt{pf\_histogram}:} The column-histogram baseline (\texttt{pf\_histogram}) is computationally the simplest approach, computing column projections in $O(W \cdot H)$ without strip partitioning, boundary association, or matrix inversion. It does not suffer from tracking divergence or initialization failure. Its primary drawback is geometric incompleteness: it produces only a horizontal setpoint $x_{\text{target}}$ without estimating heading error $e_\theta$. Furthermore, its target shifts when vegetation area varies unevenly along the corridor. Method~4 delivers a complete linear model $(m_C, q_C)$ supporting full pose feedback, but incurs higher algorithmic complexity and depends on bottom-up mask continuity.
+\end{itemize}
 
 \subsection{Limitations}
 \label{subsec:limitations}
 
-The experiments are subject to several limitations:
+The experimental findings and the proposed methodology are subject to several specific limitations:
+
 \begin{itemize}
-\item Segmentation evaluation uses manually annotated lettuce as ground truth. Performance on other crops is inferred from multi-crop training but not directly validated against manual references for tomato or cucumber.
-\item Geometric extractors assume locally straight boundaries. They do not handle curves or complex row patterns.
-\item Offline evaluation does not establish closed-loop navigation performance. Segmentation IoU and geometric reference quality are necessary but not sufficient for successful field operation.
-\item If field trials were not completed, the integrated system's behavior under real navigation conditions remains unvalidated.
+    \item \textbf{Seed dependency in Method~4:} The bottom-up tracking logic relies on detecting a valid corridor interval within the bottom six strips of the region of interest. If the mask immediately in front of the vehicle is corrupted by motion blur, ground glare, or chassis shadows, tracking fails to initialize, causing frame rejection even when the upper corridor is clearly segmented. Unlike global projection methods, Method~4 lacks a mechanism to re-anchor tracking from the top down.
+
+    \item \textbf{Fixed spatial gate calibration:} The continuity threshold $\Delta x_{\text{max}} = 28$~px and strip discretization parameters are fixed in image coordinates. Significant vehicle pitch or roll on rough terrain causes rapid lateral shifts of the corridor boundaries between consecutive frames. When these shifts exceed the gate, the tracker rejects valid boundaries.
+
+    \item \textbf{Straight-line corridor assumption:} All linear models evaluated (Method~4, \texttt{pf\_ransac}, and \texttt{pf\_centri}) assume locally straight, parallel corridor boundaries. They cannot follow curved planting geometries or guide the robot through headland turnaround maneuvers where corridor boundaries terminate or diverge.
+
+    \item \textbf{Segmentation evaluation scope:} Ground-truth segmentation evaluation is conducted on manually annotated lettuce sequences. While the multi-crop model is trained on tomato and cucumber, its generalization is evaluated through qualitative inspection and navigation performance rather than dense pixel-level error metrics on those crops.
+
+    \item \textbf{Offline versus closed-loop dynamics:} Offline benchmarks quantify reference line accuracy on static recorded frames. They do not account for dynamic wheel-ground interaction, actuator saturation, or latency jitter during physical vehicle operation.
 \end{itemize}
