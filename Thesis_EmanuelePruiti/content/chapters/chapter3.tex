@@ -18,10 +18,10 @@ Classical pipelines combine image filtering, thresholding, and
 application-specific geometric rules. Mendez et al. convert vineyard
 images to grayscale, apply Gaussian filtering and Otsu thresholding,
 select the largest blob, and use column pixel counts to estimate the row
-center \cite[Sections~3.4--4]{mendez2023vineyards}. Such methods can be
+center \cite[Section~3.4]{mendez2023vineyards}. Such methods can be
 effective in the conditions for which their parameters were selected,
 but changes in illumination, weeds, and crop appearance can require
-retuning \cite[Section~2]{kneip2020cropedge}.
+retuning \cite{bai2023vision}.
 
 \section{Learning-based segmentation for agricultural navigation}
 \label{sec:learning_based_segmentation}
@@ -31,19 +31,19 @@ retuning \cite[Section~2]{kneip2020cropedge}.
 
 Semantic segmentation assigns a class to each pixel, but the label
 definition determines what the geometric stage can recover. De Silva
-et al. train U-Net to predict narrow crop-row masks in sugar-beet
-images; the labels represent row structure rather than individual plant
-pixels or traversable soil \cite[Sections~3.3 and~4.1]{silva2023rowdetection}.
+et al.\ train U-Net to predict narrow crop-row masks in sugar-beet
+images. Their labels represent row structure rather than individual plant
+pixels or traversable soil~\cite[Sections~3.3 and~4.1]{silva2023rowdetection}.
 Navone et al. instead predict a binary vegetation mask from RGB images
 using a MobileNetV3 backbone and an LR-ASPP head, then combine that
 output with depth for reference extraction
 \cite{navone2023ecmr,navone2025gpsfree}.
 
-The distinction matters for this work: its target is the soil region
-between crop rows, not a crop-row line or a vegetation mask. A
-segmentation model therefore supplies a candidate region; the geometric
-stage must still select the corridor and construct the guidance
-reference.
+Like other path-oriented approaches in the literature, this work segments
+the traversable soil corridor between crop rows rather than the plants
+themselves. The segmentation model provides a candidate region of drivable
+ground, and the downstream geometric stage then extracts the lateral
+boundaries and computes the steering reference.
 
 \subsection{Training data and generalization}
 \label{subsec:training_data}
@@ -63,16 +63,16 @@ choice of training images are separate design choices.
 \subsection{FCN, DeepLabV3, and mobile architectures}
 \label{subsec:architectures_overview}
 
-Fully Convolutional Networks (FCN) replace fully connected layers with convolutions to produce dense predictions. DeepLabV3 introduces atrous convolution and atrous spatial pyramid pooling to capture multi-scale context. LR-ASPP (Lite Reduced Atrous Spatial Pyramid Pooling) reduces computational cost for mobile deployment while maintaining segmentation accuracy.
+Fully Convolutional Networks (FCN) replace fully connected layers with convolutions to produce dense pixel-level predictions~\cite{long2015fcn}. DeepLabV3 incorporates atrous convolutions and atrous spatial pyramid pooling to capture multi-scale context without decreasing feature resolution~\cite{chen2017deeplab}. For embedded applications where compute resources are constrained, Howard et al.~\cite{howard2019mobilenetv3} introduced MobileNetV3 together with the Lite Reduced Atrous Spatial Pyramid Pooling (LR-ASPP) head, which reduces latency by using depthwise separable convolutions.
 
-The choice of architecture affects both offline accuracy and real-time inference speed. Models with deeper backbones or larger receptive fields may achieve higher IoU but require more computation. For robotic applications, the trade-off between accuracy and latency determines which architecture is deployable.
+The choice of architecture affects both segmentation accuracy and inference speed. Deeper backbones or larger receptive fields can yield higher IoU values at the cost of additional compute. For robotic systems operating in closed loop, inference latency on edge hardware dictates the achievable control frequency.
 
 \subsection{Transfer learning and pretraining}
 \label{subsec:transfer_learning}
 
-Transfer learning initializes network weights from models pretrained on large-scale datasets such as ImageNet or COCO. The backbone extracts general visual features; the segmentation head is adapted to the target task by replacing output layers with new convolutions matching the desired class count.
+Transfer learning initializes network weights from models pretrained on large visual corpora such as ImageNet. The pretrained backbone serves as a generic feature extractor, while the task-specific segmentation head is adapted to produce class scores matching the target dataset. In agricultural vision, pretraining reduces training time and mitigates overfitting when domain-specific annotated datasets are limited in size. For instance, Li et al.~\cite[Section~2.2.2]{li2022multiroi} demonstrate that transferring weights learned on corn fields to other crops (such as tomatoes, cucumbers, and wheat) preserves segmentation accuracy with small training sets. Similarly, Navone et al.~\cite[Section~4.1]{navone2025gpsfree} initialize their segmentation backbone with ImageNet weights prior to fine-tuning on tree-row imagery.
 
-Pretrained weights reduce training time and improve generalization, especially when target datasets are small. However, the extent of pretraining differs: some implementations retain pretrained segmentation heads and replace only the final classifier, while others initialize only the backbone and train the head from scratch.
+The extent of pretraining differs across implementations. Some setups retain pretrained segmentation heads and replace only the final classification layer, whereas others initialize only the backbone and train the segmentation head from scratch.
 
 \section{Dataset preparation and model-assisted annotation}
 \label{sec:dataset_annotation}
@@ -163,9 +163,9 @@ directly equivalent to a reference extracted from a soil mask.
 In agricultural vision pipelines that convert binary segmentations into geometric references, existing methods fall into distinct categories, each characterized by specific operational trade-offs:
 
 \begin{enumerate}
-    \item \textbf{Crop-canopy feature extraction with RANSAC:} A classical paradigm detects feature points along crop canopies or plant stalks, partitions them into left and right row clusters, and fits linear models using Random Sample Consensus (RANSAC) combined with ordinary least squares~\cite{bai2023vision}. Recent monocular vision implementations extract crop row anchor points via DBSCAN clustering followed by RANSAC fitting to generate navigation lines, with reported angular and lateral errors minimized on the central crop row~\cite{sensors2025deeplabv3}. While functional in dense, uniform vegetation, this approach depends on continuous plant growth and degrades when seedlings are missing or canopy density is irregular. In addition, RANSAC is non-deterministic: random hypothesis generation introduces frame-to-frame angular jitter between consecutive video frames. Even when researchers augment monocular cameras with secondary sensors such as 2D LiDAR, temporal filtering (such as Kalman filtering) is still required to stabilize the stochastic sampling fluctuations of RANSAC~\cite{sensors2025lidar}. The stochastic nature of RANSAC stems from its iterative random sampling strategy: each iteration selects a minimal subset of points (typically two for line fitting), computes a candidate model, and counts inliers within a residual threshold. To achieve $99\%$ confidence of finding an all-inlier sample when outliers constitute $30\%$ of the data, the algorithm requires approximately $35$ iterations; this count grows exponentially with outlier ratio~\cite{fischler1981ransac}. On embedded platforms operating at $20$~Hz with strict latency budgets, the computational overhead and output variance of RANSAC present practical limitations for closed-loop control.
+    \item \textbf{Crop-canopy feature extraction with RANSAC:} A classical paradigm detects feature points along crop canopies or plant stalks, partitions them into left and right row clusters, and fits linear models using Random Sample Consensus (RANSAC) combined with ordinary least squares~\cite{bai2023vision}. Recent monocular vision implementations extract crop row anchor points via DBSCAN clustering followed by RANSAC fitting to generate navigation lines, with reported angular and lateral errors minimized on the central crop row~\cite{sensors2025deeplabv3}. While functional in dense, uniform vegetation, this approach depends on continuous plant growth and degrades when seedlings are missing or canopy density is irregular. In addition, RANSAC is non-deterministic: random hypothesis generation introduces frame-to-frame angular jitter between consecutive video frames, requiring downstream temporal filtering to stabilize steering commands. The stochastic nature of RANSAC stems from its iterative random sampling strategy: each iteration selects a minimal subset of points (typically two for line fitting), computes a candidate model, and counts inliers within a residual threshold. To achieve $99\%$ confidence of finding an all-inlier sample for a two-point linear model when outliers constitute $50\%$ of the data, the algorithm requires $16$ iterations, rising to $35$ iterations when the outlier ratio reaches $65\%$; this sample count grows exponentially as outlier contamination increases~\cite{fischler1981ransac}. On embedded platforms operating at $20$~Hz with strict latency budgets, the computational overhead and output variance of RANSAC present practical limitations for closed-loop control.
 
-    \item \textbf{Global contour tracking with line fitting:} An alternative approach applies edge operators (such as Canny filtering) or boundary tracing algorithms (\texttt{findContours}) over the full segmented corridor mask, separating the resulting pixel cloud into lateral boundaries before fitting lines with RANSAC. On dense and noisy boundary masks, this introduces variable computational latency and retains the stochastic jitter inherent to random sampling. Studies attempting to stabilize RANSAC on mobile agricultural robots demonstrate that temporal filtering or multi-sensor fusion is required to smooth frame-to-frame fluctuations~\cite{sensors2025lidar}, confirming that raw RANSAC output on monocular imagery lacks the determinism required for smooth steering commands.
+    \item \textbf{Global contour tracking with line fitting:} An alternative approach applies edge operators (such as Canny filtering) or boundary tracing algorithms (\texttt{findContours}) over the full segmented corridor mask, separating the resulting pixel cloud into lateral boundaries before fitting lines with RANSAC. On dense and noisy boundary masks, this introduces variable computational latency and retains the stochastic jitter inherent to random sampling, confirming that raw RANSAC output on monocular imagery lacks the determinism required for smooth steering commands.
 
     \item \textbf{Horizontal strip decomposition with centroid reduction:} Methods operating on segmented drivable soil corridors (such as the multi-ROI scheme of Li et al.~\cite{li2022multiroi}) partition the image into horizontal bands and extract the bounding interval $[x_L, x_R]$ within each strip. However, these methods immediately collapse each interval into its midpoint:
     \begin{equation}

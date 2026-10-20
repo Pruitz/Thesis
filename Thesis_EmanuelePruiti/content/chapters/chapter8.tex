@@ -110,12 +110,21 @@ Extraction failures occur when validation checks reject the computed reference a
 
 Field validation evaluates the integrated navigation system on the physical robot Demetra operating autonomously inside crop rows. Unlike offline evaluation, which isolates the geometric extractor on recorded images, closed-loop field tests exercise the full chain from camera acquisition through segmentation, geometric fitting, error conditioning, and steering actuation in the presence of real-world disturbances.
 
-\subsection{Ground-truth reference: laser line sensor}
+\subsection{Ground-truth reference: laser sensor}
 \label{subsec:ground_truth_laser}
 
-Direct measurement of the robot's lateral position relative to the corridor center requires an independent reference that does not depend on the vision pipeline under test. A laser line emitter is positioned at the entrance of the test row, projecting a continuous beam along the geometric center of the inter-row corridor at ground level. A downward-facing laser line detector mounted on the underside of the robot chassis detects whether the beam falls within the sensor's active aperture.
+To assess the robot's physical centering independently of the onboard vision pipeline under test, closed-loop field validation integrates an auxiliary laser sensor. 
 
-This binary ground-truth signal ($1$ = laser detected, $0$ = laser not detected) provides a pass/fail indication of corridor centering at each time step. While it does not yield a continuous lateral displacement measurement, it defines a corridor of acceptable centering with half-width equal to the sensor aperture radius. Any time the robot drifts beyond this tolerance, the detector output drops to zero. The detector state is logged synchronously with the onboard telemetry at the serial communication rate (100~Hz).
+\todobox{Dettagli del sensore laser utilizzato per i test in campo}{%
+Inserire le specifiche esatte del sensore laser impiegato nei test:
+\begin{itemize}
+  \item Modello, costruttore e tipologia di misura (ad es. sensore di distanza laser, barriera ottica o profilometro).
+  \item Configurazione di montaggio sul robot Demetra (posizione e orientamento).
+  \item Interfaccia di comunicazione e frequenza di campionamento.
+\end{itemize}
+}
+
+The laser measurement provides an independent reference signal to monitor the robot's lateral alignment along the crop row and evaluate whether the trajectory remains within the allowable tolerance corridor.
 
 \subsection{Field evaluation metrics}
 \label{subsec:field_metrics}
@@ -170,7 +179,7 @@ Dettagliare lo scenario delle prove sperimentali:
 \begin{itemize}
   \item Localit\`a del test, tipologia di coltura, sesto d'impianto (distanza tra i filari e altezza delle piante).
   \item Lunghezza del percorso navigato, tipologia del fondo (terreno lavorato, teli plastici pacciamanti, presenza di malerbe).
-  \item Posizionamento del laser emettitore (altezza, distanza dall'inizio della fila) e specifiche del sensore laser ricevitore a bordo del robot (modello, apertura del fascio).
+  \item Configurazione del sensore laser di riferimento (modello, posizionamento sul robot o nel filare, principio di misura).
   \item Condizioni meteorologiche e di luce (sole diretto, cielo coperto, ombre proiettate dalla vegetazione) e numero di ripetizioni effettuate per ciascun algoritmo.
 \end{itemize}
 }
@@ -186,9 +195,9 @@ Dettagliare lo scenario delle prove sperimentali:
 \todobox{Risultati quantitativi di navigazione ad anello chiuso}{%
 Riportare i dati raccolti durante le prove in campo con il robot Demetra:
 \begin{itemize}
-  \item Tabella comparativa tra i 4 algoritmi (Metodo~4, Metodo~3, pf\_centri, pf\_histogram) con le metriche definite in Sezione~\ref{subsec:field_metrics}: $P_{\mathrm{laser}}$, $N_{\mathrm{exit}}$, $S_{\mathrm{mission}}$, $\sigma_\omega$, $J_\omega$ e $v_{\mathrm{eff}}$.
-  \item Grafico temporale del segnale laser (on/off) sovrapposto alla velocit\`a angolare comandata $\omega(t)$ per ciascun algoritmo.
-  \item Analisi degli eventi critici: corrispondenza tra le perdite del laser e i frame classificati come \texttt{lost} dal path finder.
+  \item Tabella comparativa tra i 4 algoritmi (Metodo~4, pf\_ransac, pf\_centri, pf\_histogram) con le metriche definite in Sezione~\ref{subsec:field_metrics}: $P_{\mathrm{laser}}$, $N_{\mathrm{exit}}$, $S_{\mathrm{mission}}$, $\sigma_\omega$, $J_\omega$ e $v_{\mathrm{eff}}$.
+  \item Grafico temporale del segnale del sensore laser sovrapposto alla velocit\`a angolare comandata $\omega(t)$ per ciascun algoritmo.
+  \item Analisi degli eventi critici: corrispondenza tra le anomalie del segnale laser e i frame classificati come \texttt{lost} dal path finder.
 \end{itemize}
 }
 

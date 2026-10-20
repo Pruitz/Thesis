@@ -42,7 +42,9 @@
 \english % lingua inglese per toptesi
 
 % front page -- add your info in common/thesis_info.tex
+\hypersetup{pageanchor=false}
 \input{common/frontpage.tex} % new frontespizio (2023)
+\hypersetup{pageanchor=true}
 %\retrofrontespizio
 % insert text for the back of the front page
 % if you insert any remove the following \paginavuota
@@ -53,28 +55,11 @@
 
 \frontmatter % not strictly needed, as toptesi takes care of it already
 
-% abstract if needed
-% \begin{abstract}
-%     \input{content/abstract.tex}
-% \end{abstract}
+% abstract
+\chapter*{Abstract}
+\input{content/abstract.tex}
 
-% to create blank pages for openright in frontmatter
-% use one of the following two methods
-% 1) use the following three lines
-%\phantom{0} % needed otherwise cleardoublepage does not clean the page because it sees it empty
-%\cleardoublepage
-%\thispagestyle{empty} % to have empty page, without numbers
-% 2) or
-\paginavuota % to manually create a blank page
-
-% summary (uncomment until "end summary" if needed)
-%\sommario
-%\input{content/summary}
-
-%\phantom{0}
-%\cleardoublepage
-%\thispagestyle{empty}
-% end summary
+\cleardoublepage
 
 \ringraziamenti % acknowledgements
 \input{content/acknowledgements}
