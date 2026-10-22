@@ -9,60 +9,71 @@ This chapter presents the mathematical formulation and architectural design of t
 \section{Problem formulation and encoder-decoder principles}
 \label{sec:seg_formulation}
 
-Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes. Deep neural networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$. The posterior probability of class $c$ at pixel $(i,j)$ is obtained via the spatial softmax function:
+Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes~\cite[Chapter~12]{geron2026handson, long2015fcn}. Deep neural networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$ containing the class logits for every pixel location. The posterior probability of class $c$ at pixel $(i,j)$ is obtained via the spatial softmax function:
 \begin{equation}
     p_{i,j,c} = \frac{\exp(Z_{i,j,c})}{\sum_{k=1}^{C} \exp(Z_{i,j,k})}.
     \label{eq:softmax}
 \end{equation}
 
-During supervised training with ground-truth one-hot masks $Y^* \in \{0,1\}^{H \times W \times C}$, parameters $\theta$ are optimized by minimizing the multi-class cross-entropy loss:
+During supervised training with ground-truth one-hot masks $Y^* \in \{0,1\}^{H \times W \times C}$, network parameters $\theta$ are optimized by minimizing the multi-class cross-entropy loss averaged across all pixels:
 \begin{equation}
-    \mathcal{L}_{\text{CE}}(Y^*, p) = -\frac{1}{HW} \sum_{i=1}^{H} \sum_{j=1}^{W} \sum_{c=1}^{C} Y^*_{i,j,c} \log(p_{i,j,c}).
+    \mathcal{L}_{\text{CE}}(Y^*, p) = -\frac{1}{HW} \sum_{i=1}^{H} \sum_{j=1}^{W} \sum_{c=1}^{C} Y^*_{i,j,c} \log(p_{i,j,c}),
     \label{eq:ce_loss}
 \end{equation}
+which corresponds to the standard loss objective implemented in deep learning frameworks such as PyTorch (\texttt{torch.nn.CrossEntropyLoss}).
 
-Standard convolutional architectures for image classification progressively reduce spatial dimensions via strided convolutions and max-pooling layers. While spatial reduction increases the receptive field and aggregates contextual information, it discards fine-grained boundary positions. Semantic segmentation architectures solve this trade-off using an encoder-decoder topology:
+Standard convolutional networks designed for image classification progressively reduce spatial dimensions via strided convolutions and pooling layers, typically resulting in an overall downsampling factor of $S = 2^5 = 32$~\cite[Chapter~12]{geron2026handson}. While spatial downsampling expands the effective receptive field and enables deeper layers to extract abstract semantic features (determining \emph{what} is depicted in the scene), it discards fine-grained spatial coordinates (obscuring \emph{where} object boundaries lie at the pixel level). Semantic segmentation architectures resolve this tension through an encoder-decoder topology:
 \begin{itemize}
     \item \textbf{Encoder (Backbone):} A sequence of convolutional stages that extracts high-level semantic features $F_{\text{enc}} \in \mathbb{R}^{\frac{H}{S} \times \frac{W}{S} \times C_{\text{enc}}}$, where $S \ge 1$ denotes the total output stride (typically $S \in \{8, 16, 32\}$).
-    \item \textbf{Decoder (Segmentation Head):} A module that restores spatial resolution to $H \times W$ through bilinear interpolation or transposed convolutions, combining low-level spatial details from earlier encoder layers with abstract high-level features.
+    \item \textbf{Decoder (Segmentation Head):} A module that restores spatial resolution to $H \times W$ through bilinear interpolation or learnable transposed convolutions, combining low-level spatial details from earlier encoder layers with abstract high-level features.
 \end{itemize}
 
 \section{Fully Convolutional Networks (FCN)}
 \label{sec:fcn_arch}
 
-Long et al.~\cite{long2015fcn} introduced Fully Convolutional Networks by replacing the final dense (fully connected) classification layers of standard convolutional backbones with convolutional filters.
+Fully Convolutional Networks (FCN), introduced by Long et al.~\cite{long2015fcn}, established end-to-end pixel-level segmentation by adapting classification backbones for dense prediction. By replacing the final fully connected layers with convolutional filters, the network preserves spatial dimensions and outputs dense score maps for arbitrary input resolutions. While the original formulation relied on earlier networks such as VGG, modern implementations---including the TorchVision model evaluated in this thesis---couple this framework with deep residual backbones such as ResNet-50.
 
 \subsection{Fully convolutional transformation}
 \label{subsec:fcn_conv}
 
-In standard classification networks, the spatial feature map produced by the final convolutional layer is flattened into a vector and passed to dense layers, restricting the network to fixed input resolutions. FCN replaces each dense layer with a $1 \times 1$ convolutional layer whose kernel depth matches the dense weight matrix. For a feature map $F \in \mathbb{R}^{h \times w \times C_{\text{in}}}$, a convolutional layer with $C$ filters of size $1 \times 1$ computes:
+In standard classification networks, the feature map produced by the final convolutional stage is flattened into a one-dimensional vector and fed into dense (fully connected) layers. Because a dense layer contains a fixed number of weights dedicated to each flattened input position, the network is restricted to a rigid, predetermined input image resolution.
+
+As detailed by G{\'e}ron~\cite[Chapter~12]{geron2026handson}, a dense layer with $C$ units connected to an input feature map of spatial dimension $h \times w$ with $C_{\text{in}}$ channels can be transformed into a convolutional layer equipped with $C$ filters of spatial size $h \times w$ (or size $1 \times 1$ if the input spatial dimensions have been pooled). Each filter computes the exact same weighted sum as the original dense neuron:
 \begin{equation}
     Z_{i,j,c} = b_c + \sum_{k=1}^{C_{\text{in}}} W_{c,k} \cdot F_{i,j,k}, \qquad \forall i \in \{1,\dots,h\}, \; j \in \{1,\dots,w\},
     \label{eq:conv1x1}
 \end{equation}
-producing a coarse score map of dimension $h \times w \times C$. This allows the network to process inputs of arbitrary dimensions in a single forward pass without sliding-window recomputation.
+producing an unnormalized score tensor of spatial dimension $h \times w \times C$.
+
+This convolutional transformation provides a decisive operational advantage: convolutional operations apply locally and independently across spatial dimensions, freeing the network from fixed input dimensions. When fed an image larger than the training resolution, the convolutional layers naturally slide across the feature map in a single forward pass. Rather than re-executing the entire network redundantly across overlapping sliding-window crops, the convolutionalized network computes each intermediate activation once, generating a grid of predictions with substantial computational savings~\cite[Chapter~12]{geron2026handson}.
 
 \subsection{Skip architecture and upsampling}
 \label{subsec:fcn_skip}
 
-To restore the coarse score map from stride $S=32$ back to the original image dimensions $H \times W$, FCN employs transposed convolutions (also known as backward strided convolutions or fractionally strided convolutions). A transposed convolution with stride $s$ places the input values on a dilated grid and computes the output via standard convolution, learning an upsampling filter $w \in \mathbb{R}^{K \times K}$:
+Because the backbone applies successive strided convolutions, the resulting feature map is downsampled by a factor of $S=32$ relative to the input image. Restoring this coarse score map to the original resolution $H \times W$ cannot rely exclusively on fixed bilinear interpolation, which degrades significantly when scaling by large factors such as $16\times$ or $32\times$~\cite[Chapter~12]{geron2026handson}.
+
+To achieve learnable upsampling, Long et al.~\cite{long2015fcn} adopted transposed convolutions (also referred to as fractionally strided convolutions or deconvolutions, available in PyTorch as \texttt{nn.ConvTranspose2d}). Computationally, a transposed convolution with stride $s$ expands the input feature map by inserting $s-1$ rows and columns of zeros between adjacent elements, followed by a standard convolution using learnable filter weights $w \in \mathbb{R}^{K \times K}$:
 \begin{equation}
     \hat{y}_{i',j'} = \sum_{u=0}^{K-1} \sum_{v=0}^{K-1} w_{u,v} \cdot x_{\lfloor i'/s \rfloor - u, \; \lfloor j'/s \rfloor - v}.
     \label{eq:transposed_conv}
 \end{equation}
-Upsampling directly from stride 32 produces blurry boundaries. Long et al. therefore designed skip connections:
+Unlike standard convolution where a stride $s > 1$ reduces spatial dimensions, in a transposed convolution the stride governs the expansion factor: a larger stride yields a larger output resolution. Because its kernel weights are updated during gradient descent, the layer learns task-specific interpolation filters rather than relying on static geometric approximations.
+
+Upsampling directly from stride 32 in a single step (FCN-32s) produces overly smooth, rounded boundaries. To recover sharp spatial contours, Long et al. introduced skip connections that fuse high-level semantic features from deep layers with fine-grained positional information from shallower layers:
 \begin{itemize}
-    \item \textbf{FCN-32s:} Upsamples the final stride-32 score map directly by a factor of 32 in a single step.
-    \item \textbf{FCN-16s:} Combines the $2\times$ upsampled stride-32 score map with predictions extracted from the stride-16 stage (e.g., \texttt{conv4}), then applies $16\times$ upsampling.
-    \item \textbf{FCN-8s:} Combines the $2\times$ upsampled FCN-16s score map with predictions extracted from the stride-8 stage (e.g., \texttt{conv3}), followed by an $8\times$ upsampling step.
+    \item \textbf{FCN-32s:} Upsamples the final stride-32 score map directly to image resolution in a single $32\times$ transposed convolution.
+    \item \textbf{FCN-16s:} Upsamples the stride-32 score map by a factor of $2\times$, adds it element-wise to predictions extracted from the stride-16 stage (e.g., \texttt{layer3} in ResNet-50), and applies a $16\times$ upsampling step to the combined map.
+    \item \textbf{FCN-8s:} Upsamples the fused FCN-16s score map by $2\times$, sums it with predictions from the stride-8 stage (e.g., \texttt{layer2}), and performs a final $8\times$ upsampling step back to $H \times W$.
 \end{itemize}
 
-\textbf{Implementation note:} The TorchVision \texttt{fcn\_resnet50} implementation adopted in this work uses a simpler architecture than the original FCN-8s. The segmentation head (FCNHead) processes the stride-32 features from ResNet-50's \texttt{layer4} with a $3 \times 3$ convolution (reducing channels by a factor of 4), batch normalization, ReLU activation, dropout (0.1), and a final $1 \times 1$ classification layer. An optional auxiliary classifier operates independently on \texttt{layer3} features for training supervision, but the main prediction head does not implement multi-stage fusion. Figure~\ref{fig:fcn_architecture} illustrates the original FCN architecture with progressive refinement; the simplified TorchVision variant retains the encoder-decoder principle but omits intermediate score fusion.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\linewidth]{images/architectures/fcn_architecture.png}
+  \caption{Fully Convolutional Network (FCN) architecture with progressive skip connections combining deep semantic features with shallow appearance representations (adapted from Long et~al.~\cite{long2015fcn}).}
+  \label{fig:fcn_architecture}
+\end{figure}
 
-\placeholderfigure{fig:fcn_architecture}%
-{Fully Convolutional Network (FCN) architecture with skip connections}%
-{Schema a blocchi dell'architettura FCN: estrazione di feature a diversi stride dal backbone (ResNet-50) e upsampling tramite deconvolution combinando FCN-32s, FCN-16s e FCN-8s (da inserire da Long et al., 2015).}%
-{5cm}
+\textbf{Implementation note:} As noted by G{\'e}ron~\cite[Chapter~12]{geron2026handson}, standard computer vision libraries such as TorchVision provide pre-packaged implementations of FCN based on ResNet backbones (\texttt{fcn\_resnet50}). The TorchVision variant adopts a streamlined head topology relative to the original multi-stage FCN-8s: the segmentation head (\texttt{FCNHead}) processes the stride-32 features from ResNet-50's \texttt{layer4} via a $3 \times 3$ convolution (reducing channels from 2048 to 512), batch normalization, ReLU activation, dropout ($p=0.1$), and a $1 \times 1$ classification layer mapping the 512 feature channels to $C$ class logits, followed by bilinear upsampling directly to $H \times W$. An auxiliary classifier operating on stride-16 features (\texttt{layer3}) via a 256-channel intermediate convolution is optionally enabled during training (\texttt{aux\_loss=True}) to facilitate gradient flow, but inference relies solely on the primary stride-32 head. Figure~\ref{fig:fcn_architecture} illustrates the original progressive skip-connection mechanism; the TorchVision implementation retains the encoder-decoder formulation while prioritizing computational simplicity.
 
 \section{DeepLabV3 and atrous convolutions}
 \label{sec:deeplabv3_arch}
@@ -164,7 +175,7 @@ MobileNetV3 reverses this design using inverted residual blocks (narrow $\to$ wi
     \item \textbf{Depthwise layer:} A $3 \times 3$ or $5 \times 5$ depthwise separable convolution performs spatial feature extraction in the expanded channel space.
     \item \textbf{Linear bottleneck:} A $1 \times 1$ projection layer compresses the channels back to $C_{\text{out}}$. Crucially, no non-linear activation function is placed after this final projection layer. Because non-linearities such as ReLU discard negative values by projecting them to zero, applying non-linear activations in low-dimensional spaces destroys useful geometric information. Retaining a linear bottleneck preserves manifold topology.
 \end{enumerate}
-When the input and output channel dimensions match and the stride is 1, a residual shortcut connection adds the input directly to the block output.
+When the input and output channel dimensions match and the stride is 1, a residual shortcut connection adds the input directly to the block output, as illustrated in Figure~\ref{fig:mobilenetv3_lraspp}a.
 
 \subsection{Squeeze-and-Excitation (SE) channel attention}
 \label{subsec:se_attention}
@@ -251,12 +262,22 @@ The TorchVision LR-ASPP implementation processes the two feature streams as foll
 
 \textbf{Implementation note:} Unlike architectures that fuse feature representations before classification, LR-ASPP fuses predictions in logit space. This design allows each branch to learn independent classification boundaries while combining their complementary spatial resolutions. The global context gating uses a standard sigmoid activation (Eq.~\eqref{eq:lraspp_gate}), not the hard-sigmoid approximation employed in the MobileNetV3 inverted residual blocks.
 
-By replacing the multi-branch parallel ASPP structure with a single global pooling gate and logit-space fusion, LR-ASPP reduces computational operations while retaining global scene context and boundary localization. The LR-ASPP topology is summarized in Figure~\ref{fig:mobilenetv3_lraspp}.
+By replacing the multi-branch parallel ASPP structure with a single global pooling gate and logit-space fusion, LR-ASPP reduces computational operations while retaining global scene context and boundary localization. The inverted residual backbone block and the complete LR-ASPP segmentation topology are illustrated in Figure~\ref{fig:mobilenetv3_lraspp}.
 
-\placeholderfigure{fig:mobilenetv3_lraspp}%
-{MobileNetV3 Inverted Residual block and Lite Reduced ASPP (LR-ASPP) head}%
-{Schema strutturale di MobileNetV3 con LR-ASPP: blocco Inverted Residual con Depthwise Separable Convolution, modulo Squeeze-and-Excitation (SE), e decoder LR-ASPP con ramo di global context gating e fusione delle feature a stride 8 (da inserire da Howard et al., 2019).}%
-{5.5cm}
+\begin{figure}[htbp]
+  \centering
+  \subfloat[MobileNetV3 Inverted Residual block with Squeeze-and-Excitation channel attention.\label{fig:mobilenetv3_block}]{%
+    \includegraphics[width=0.85\linewidth]{images/architectures/mobilenetv3_block.png}%
+  }
+  
+  \vspace{0.3cm}
+  
+  \subfloat[Lite Reduced ASPP (LR-ASPP) segmentation head mixing low- and high-resolution features.\label{fig:lraspp_head}]{%
+    \includegraphics[width=0.85\linewidth]{images/architectures/lraspp_head.png}%
+  }
+  \caption{MobileNetV3 and Lite Reduced ASPP (LR-ASPP) architecture: (a) inverted residual block combining depthwise separable convolution, linear bottleneck, and Squeeze-and-Excitation channel attention; (b) segmentation head combining stride-16 features modulated by global context gating with stride-8 fine features (adapted from Howard et~al.~\cite{howard2019mobilenetv3}).}
+  \label{fig:mobilenetv3_lraspp}
+\end{figure}
 
 \section{Segment Anything Model 3 (SAM~3) for dataset annotation}
 \label{sec:sam3_theory}

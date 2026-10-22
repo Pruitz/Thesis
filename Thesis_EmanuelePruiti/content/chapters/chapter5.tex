@@ -169,32 +169,45 @@ but also in the extent of their pretrained initialization: FCN and
 DeepLabV3 retain pretrained segmentation-head layers, whereas LR-ASPP
 starts with a new segmentation head.
 
-\subsection{Training configuration}
+\subsection{Training configuration and loss formulation}
 \label{subsec:c5_training_config}
 
-Training is organized into two stages. Before the first epoch, the
-backbone parameters are excluded from gradient-based updates by setting
-their \texttt{requires\_grad} attribute to \texttt{False}. The complete
-main classifier remains trainable, as does the auxiliary classifier when
-present.
+The optimization pipeline is designed to address class imbalance, memory constraints, and the two-stage transfer learning schedule across all evaluated architectures.
 
-For the first ten epochs, AdamW is constructed using only the trainable
-parameters, with an initial learning rate of $10^{-3}$ and weight decay
-of $10^{-4}$. A cosine-annealing scheduler is stepped after each epoch,
-with a minimum learning rate of $10^{-6}$.
+\subsubsection{Loss function and class weighting}
+Agricultural scenes exhibit significant pixel imbalance between the navigable soil corridor, the plant canopy, and background areas. To prevent the optimization from biasing toward dominant categories, the models are trained using a weighted multi-class cross-entropy loss:
+\begin{equation}
+    \mathcal{L}_{\text{WCE}}(Y^*, p) = -\frac{1}{\sum_{i=1}^{H}\sum_{j=1}^{W} w_{Y^*_{i,j}}} \sum_{i=1}^{H} \sum_{j=1}^{W} w_{Y^*_{i,j}} \log(p_{i,j, Y^*_{i,j}}),
+    \label{eq:weighted_ce}
+\end{equation}
+where $Y^*_{i,j} \in \{0, \dots, C-1\}$ is the ground-truth class of pixel $(i,j)$, and $w_c$ is the penalty weight assigned to category $c$.
 
-At the end of epoch ten, the script enables gradients for all backbone
-parameters. Fine-tuning of the backbone therefore begins at epoch eleven,
-together with continued training of the segmentation heads. A new AdamW
-optimizer is constructed with separate parameter groups: the backbone
-starts this stage at a learning rate of $10^{-5}$, while the main and,
-where present, auxiliary classifiers start at $10^{-4}$. Weight decay
-remains $10^{-4}$.
+Class weights are computed exclusively on the training split $\mathcal{D}_{\text{train}}$ to avoid information leakage from validation and test partitions. For each class $c$, the total pixel count $N_c = \sum_{k \in \mathcal{D}_{\text{train}}} \sum_{i,j} \mathbb{I}(Y^{(k)}_{i,j} = c)$ is accumulated across all training masks. The balanced inverse frequency $\text{inv}_c$ is then normalized by the mean of all inverse frequencies:
+\begin{equation}
+    \text{inv}_c = \frac{\sum_{k=0}^{C-1} N_k}{C \cdot N_c}, \qquad w_c = \frac{\text{inv}_c}{\frac{1}{C}\sum_{k=0}^{C-1} \text{inv}_k}.
+    \label{eq:class_weights_norm}
+\end{equation}
+This normalization enforces $\frac{1}{C} \sum_{c=0}^{C-1} w_c = 1.0$, which scales relative class penalties while preserving the nominal gradient magnitude during backpropagation.
 
-A checkpoint is saved as \texttt{best.pth} whenever the validation loss is lower than all previous
-values; \texttt{last.pth} stores the latest training state. Selection
-therefore uses minimum validation loss, not maximum test IoU or simply
-the last epoch.
+For FCN and DeepLabV3, which incorporate an auxiliary classifier on stride-16 features (\texttt{layer3}), the total training objective combines the primary and auxiliary losses with an auxiliary weighting factor of $0.4$:
+\begin{equation}
+    \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{WCE}}(\text{main}) + 0.4 \cdot \mathcal{L}_{\text{WCE}}(\text{aux}).
+    \label{eq:total_training_loss}
+\end{equation}
+For LR-ASPP, which lacks an auxiliary head, training relies solely on the primary loss $\mathcal{L}_{\text{WCE}}(\text{main})$.
+
+\subsubsection{Data augmentation and two-stage optimization}
+Data augmentation is applied exclusively to the training subset (\texttt{full\_\allowbreak train\_\allowbreak dataset}), incorporating random horizontal flips, scaling, and photometric adjustments to handle variable outdoor illumination. The validation and test sets (\texttt{full\_\allowbreak eval\_\allowbreak dataset}) use deterministic resizing without perturbations to preserve ground-truth geometry for objective evaluation.
+
+Due to memory constraints imposed by high-resolution feature maps, models are trained with a batch size of 2 and \texttt{drop\_last=True} to prevent single-sample batches from destabilizing batch normalization layers.
+
+Optimization proceeds across $200$ epochs in two distinct phases:
+\begin{enumerate}
+    \item \textbf{Stage 1 (Warmup, Epochs 1--10):} Backbone parameters are frozen by setting \texttt{requires\_grad = False}. Only the newly initialized segmentation heads (and auxiliary classifiers when present) are optimized using AdamW with an initial learning rate of $10^{-3}$ and weight decay of $10^{-4}$. A cosine-annealing scheduler steps each epoch down to $\eta_{\text{min}} = 10^{-6}$. This phase prevents the randomly initialized head weights from corrupting the pretrained feature representations of the backbone.
+    \item \textbf{Stage 2 (Differential Fine-Tuning, Epochs 11--200):} At epoch 10, the backbone is unfrozen. A new AdamW optimizer is instantiated with decoupled parameter groups: the backbone is assigned a reduced learning rate of $10^{-5}$ to retain general low-level visual features, while the classification heads continue at $10^{-4}$. The cosine-annealing scheduler is re-initialized across the remaining 190 epochs ($T_{\text{max}} = 190, \eta_{\text{min}} = 10^{-6}$).
+\end{enumerate}
+
+Early stopping was intentionally disabled to allow models with randomly initialized heads (such as LR-ASPP) sufficient training horizon to converge. Model checkpoints are evaluated after each epoch on the unaugmented validation set; \texttt{best.pth} is saved whenever the validation loss decreases below its historical minimum, and \texttt{last.pth} records the final epoch state.
 
 \placeholderfigure{fig:training_loss_curves}%
 {Training loss and validation mIoU progression across epochs for FCN, DeepLabV3, and LR-ASPP}%
