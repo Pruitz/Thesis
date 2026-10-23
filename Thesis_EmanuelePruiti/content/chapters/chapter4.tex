@@ -68,7 +68,7 @@ This convolutionalization provides a decisive operational advantage: convolution
 \subsection{Skip architecture and upsampling}
 \label{subsec:fcn_skip}
 
-Because the backbone applies successive strided convolutions, the resulting feature map is downsampled by a factor of $S=32$ relative to the input image. Restoring this coarse score map to the original resolution $H \times W$ cannot rely exclusively on fixed bilinear interpolation, which degrades significantly when scaling by large factors such as $16\times$ or $32\times$~\cite[Chapter~12]{geron2026handson}.
+Because standard classification backbones adapted by FCN (such as VGG-16 or ResNet-50) incorporate five consecutive downsampling stages of stride 2, the final feature map is downsampled by a factor of $S = 2^5 = 32$ relative to the input image. Restoring this coarse score map to the original resolution $H \times W$ cannot rely exclusively on fixed bilinear interpolation, which degrades significantly when scaling by large factors such as $16\times$ or $32\times$~\cite[Chapter~12]{geron2026handson}.
 
 To achieve learnable upsampling, Long et al.~\cite{long2015fcn} adopted transposed convolutions (also referred to as fractionally strided convolutions or deconvolutions, available in PyTorch as \texttt{nn.ConvTranspose2d}). Computationally, a transposed convolution with stride $s$ expands the input feature map by inserting $s-1$ rows and columns of zeros between adjacent elements, followed by a standard convolution using learnable filter weights $w \in \mathbb{R}^{K \times K}$:
 \begin{equation}
