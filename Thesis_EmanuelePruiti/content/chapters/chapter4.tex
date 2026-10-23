@@ -31,7 +31,9 @@ Standard convolutional networks designed for image classification progressively 
 \section{Fully Convolutional Networks (FCN)}
 \label{sec:fcn_arch}
 
-Fully Convolutional Networks (FCN), introduced by Long et al.~\cite{long2015fcn}, established end-to-end pixel-level segmentation by adapting classification backbones for dense prediction. By replacing the final fully connected layers with convolutional filters, the network preserves spatial dimensions and outputs dense score maps for arbitrary input resolutions. While the original formulation relied on earlier networks such as VGG, modern implementations---including the TorchVision model evaluated in this thesis---couple this framework with deep residual backbones such as ResNet-50.
+Traditional Convolutional Neural Networks are designed for image-level classification, producing a single label for the entire input. Fully Convolutional Networks (FCN), introduced by Long et al.~\cite{long2015fcn}, adapt these architectures for semantic segmentation by predicting a class label for every individual pixel in an end-to-end manner.
+
+This is achieved through a \emph{fully convolutional transformation}: replacing the final dense layers with convolutional filters allows the network to process images of arbitrary size and output dense spatial score maps. In this thesis, the FCN framework is evaluated using a ResNet-50~\cite{he2016deep} residual backbone, matching the standard TorchVision implementation (\texttt{fcn\_resnet50}).
 
 \subsection{Fully convolutional transformation}
 \label{subsec:fcn_conv}
