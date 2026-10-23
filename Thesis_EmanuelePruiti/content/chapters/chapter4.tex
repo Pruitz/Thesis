@@ -28,14 +28,22 @@ Standard convolutional networks designed for image classification progressively 
     \item \textbf{Decoder (Segmentation Head):} A module that restores spatial resolution to $H \times W$ through bilinear interpolation or learnable transposed convolutions, combining low-level spatial details from earlier encoder layers with abstract high-level features.
 \end{itemize}
 
+To investigate the trade-off between segmentation accuracy, model complexity, and onboard inference latency, this thesis evaluates three distinct encoder-decoder architectures from TorchVision:
+\begin{itemize}
+    \item \textbf{FCN-ResNet50 (\texttt{fcn\_resnet50}):} a classical baseline combining a ResNet-50 residual backbone with a single-scale convolutional head at stride 32.
+    \item \textbf{DeepLabV3-ResNet50 (\texttt{deeplabv3\_resnet50}):} a high-accuracy architecture using a dilated ResNet-50 backbone (output stride 8) and multi-scale Atrous Spatial Pyramid Pooling (ASPP).
+    \item \textbf{LR-ASPP-MobileNetV3 (\texttt{lraspp\_mobilenet\_v3\_large}):} a lightweight network combining an efficient MobileNetV3-Large backbone with a Lite Reduced ASPP head optimized for real-time edge execution.
+\end{itemize}
+Additionally, the Segment Anything Model 3 (SAM~3) is employed offline as a zero-shot foundation model for semi-automated training dataset annotation. The remainder of this chapter details each architecture in sequence.
+
 \section{Fully Convolutional Networks (FCN)}
 \label{sec:fcn_arch}
 
 Traditional Convolutional Neural Networks are designed for image-level classification, producing a single label for the entire input. Fully Convolutional Networks (FCN), introduced by Long et al.~\cite{long2015fcn}, adapt these architectures for semantic segmentation by predicting a class label for every individual pixel in an end-to-end manner.
 
-This is achieved through a \emph{fully convolutional transformation}: replacing the final dense layers with convolutional filters allows the network to process images of arbitrary size and output dense spatial score maps. In this thesis, the FCN framework is evaluated using a ResNet-50~\cite{he2016deep} residual backbone, matching the standard TorchVision implementation (\texttt{fcn\_resnet50}).
+This is achieved through convolutionalization: replacing the final dense (fully connected) layers with convolutional filters allows the network to process images of arbitrary size and output dense spatial score maps. As the baseline model in this study, the FCN framework is instantiated with a ResNet-50~\cite{he2016deep} residual backbone, matching the standard TorchVision implementation (\texttt{fcn\_resnet50}).
 
-\subsection{Fully convolutional transformation}
+\subsection{Convolutionalization of classification networks}
 \label{subsec:fcn_conv}
 
 In standard classification networks, the feature map produced by the final convolutional stage is flattened into a one-dimensional vector and fed into dense (fully connected) layers. Because a dense layer contains a fixed number of weights dedicated to each flattened input position, the network is restricted to a rigid, predetermined input image resolution.
@@ -47,7 +55,7 @@ As detailed by G{\'e}ron~\cite[Chapter~12]{geron2026handson}, a dense layer with
 \end{equation}
 producing an unnormalized score tensor of spatial dimension $h \times w \times C$.
 
-This convolutional transformation provides a decisive operational advantage: convolutional operations apply locally and independently across spatial dimensions, freeing the network from fixed input dimensions. When fed an image larger than the training resolution, the convolutional layers naturally slide across the feature map in a single forward pass. Rather than re-executing the entire network redundantly across overlapping sliding-window crops, the convolutionalized network computes each intermediate activation once, generating a grid of predictions with substantial computational savings~\cite[Chapter~12]{geron2026handson}.
+This convolutionalization provides a decisive operational advantage: convolutional operations apply locally and independently across spatial dimensions, freeing the network from fixed input dimensions. When fed an image larger than the training resolution, the convolutional layers naturally slide across the feature map in a single forward pass. Rather than re-executing the entire network redundantly across overlapping sliding-window crops, the convolutionalized network computes each intermediate activation once, generating a grid of predictions with substantial computational savings~\cite[Chapter~12]{geron2026handson}.
 
 \subsection{Skip architecture and upsampling}
 \label{subsec:fcn_skip}
