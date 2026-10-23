@@ -4,7 +4,7 @@
 
 In computer vision, semantic segmentation is the task of classifying every pixel in an image according to the category of the surface or object it belongs to~\cite[Chapter~12]{geron2026handson, long2015fcn}. Unlike image-level classification, which predicts a single global label for the entire scene, or object detection, which localizes entities with coarse bounding boxes, semantic segmentation generates a dense, pixel-level partition of the scene.
 
-In this thesis, autonomous row navigation relies on a monocular vision pipeline in which semantic segmentation serves as the primary perception stage. Rather than relying on satellite positioning (RTK-GPS) or active range sensors (LiDAR), the navigation system extracts the vehicle guidance reference directly from single RGB images by segmenting the navigable soil corridor from surrounding crop canopies, weed patches, and plastic mulch films under variable outdoor illumination.
+In this thesis, autonomous row navigation relies on a monocular vision pipeline in which semantic segmentation serves as the sole perception stage. Rather than relying on satellite positioning (RTK-GPS) or active range sensors (LiDAR), the navigation system extracts the vehicle guidance reference directly from single RGB images by segmenting the navigable soil corridor from surrounding crop canopies, weed patches, and plastic mulch films under variable outdoor illumination.
 
 To investigate the trade-off between segmentation accuracy, model complexity, and real-time execution on the mobile robot, this chapter analyzes three distinct deep learning architectures:
 \begin{itemize}
