@@ -19,7 +19,7 @@ The remainder of this chapter is structured as follows. Section~\ref{sec:seg_for
 \section{Problem formulation and encoder-decoder principles}
 \label{sec:seg_formulation}
 
-Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes~\cite[Chapter~12]{geron2026handson, long2015fcn}. Deep segmentation networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$ containing the class logits for every pixel location. The posterior probability of class $c$ at pixel $(i,j)$ is obtained via the spatial softmax function:
+Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes~\cite[Chapter~12]{geron2026handson, long2015fcn}. Deep segmentation networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$ containing the class logits for every pixel location. The predicted probability of class $c$ at pixel $(i,j)$ is obtained by applying a pixel-wise softmax over the class dimension:
 \begin{equation}
     p_{i,j,c} = \frac{\exp(Z_{i,j,c})}{\sum_{k=1}^{C} \exp(Z_{i,j,k})}.
     \label{eq:softmax}
