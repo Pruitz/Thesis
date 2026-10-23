@@ -4,7 +4,15 @@
 
 Semantic segmentation in agricultural robotics consists in assigning a predefined category label to every pixel of an acquired image. For autonomous row navigation, the perception system must distinguish navigable soil corridors from surrounding crop canopies, weeds, and field boundaries under variable outdoor illumination.
 
-This chapter presents the mathematical formulation and architectural design of the deep learning models evaluated in this work. First, the segmentation task and encoder-decoder principles are defined. Second, Fully Convolutional Networks (FCN) and DeepLabV3 are detailed with emphasis on atrous convolutions and multi-scale context aggregation. Third, MobileNetV3 and the Lite Reduced Atrous Spatial Pyramid Pooling (LR-ASPP) head are analyzed, detailing the depthwise separable convolutions and channel attention mechanisms that reduce computational complexity for edge computing. Finally, the Segment Anything Model 3 (SAM~3) is described as an offline annotation engine for training label generation.
+To investigate the trade-off between segmentation accuracy, model complexity, and real-time execution on the mobile robot, this chapter analyzes three distinct deep learning architectures:
+\begin{itemize}
+    \item \textbf{Fully Convolutional Networks (FCN):} paired with a ResNet-50 backbone, serving as the foundational baseline for dense semantic prediction;
+    \item \textbf{DeepLabV3:} utilizing a dilated ResNet-50 backbone and Atrous Spatial Pyramid Pooling (ASPP) to capture multi-scale contextual features;
+    \item \textbf{MobileNetV3 with Lite Reduced ASPP (LR-ASPP):} an efficient architecture optimized for low-latency inference on resource-constrained embedded edge hardware.
+\end{itemize}
+In addition, the Segment Anything Model 3 (SAM~3) is introduced as an offline foundation model for semi-automated training dataset annotation.
+
+The remainder of this chapter is structured as follows. Section~\ref{sec:seg_formulation} establishes the mathematical formulation and encoder-decoder principles. Sections~\ref{sec:fcn_arch}, \ref{sec:deeplabv3_arch}, and \ref{sec:mobilenet_lraspp} detail the three segmentation networks, while Section~\ref{sec:sam3_theory} describes the SAM~3 annotation pipeline.
 
 \section{Problem formulation and encoder-decoder principles}
 \label{sec:seg_formulation}
@@ -27,14 +35,6 @@ Standard convolutional networks designed for image classification progressively 
     \item \textbf{Encoder (Backbone):} A sequence of convolutional stages that extracts high-level semantic features $F_{\text{enc}} \in \mathbb{R}^{\frac{H}{S} \times \frac{W}{S} \times C_{\text{enc}}}$, where $S \ge 1$ denotes the total output stride (typically $S \in \{8, 16, 32\}$).
     \item \textbf{Decoder (Segmentation Head):} A module that restores spatial resolution to $H \times W$ through bilinear interpolation or learnable transposed convolutions, combining low-level spatial details from earlier encoder layers with abstract high-level features.
 \end{itemize}
-
-To investigate the trade-off between segmentation accuracy, model complexity, and onboard inference latency, this thesis evaluates three distinct encoder-decoder architectures from TorchVision:
-\begin{itemize}
-    \item \textbf{FCN-ResNet50 (\texttt{fcn\_resnet50}):} a classical baseline combining a ResNet-50 residual backbone with a single-scale convolutional head at stride 32.
-    \item \textbf{DeepLabV3-ResNet50 (\texttt{deeplabv3\_resnet50}):} a high-accuracy architecture using a dilated ResNet-50 backbone (output stride 8) and multi-scale Atrous Spatial Pyramid Pooling (ASPP).
-    \item \textbf{LR-ASPP-MobileNetV3 (\texttt{lraspp\_mobilenet\_v3\_large}):} a lightweight network combining an efficient MobileNetV3-Large backbone with a Lite Reduced ASPP head optimized for real-time edge execution.
-\end{itemize}
-Additionally, the Segment Anything Model 3 (SAM~3) is employed offline as a zero-shot foundation model for semi-automated training dataset annotation. The remainder of this chapter details each architecture in sequence.
 
 \section{Fully Convolutional Networks (FCN)}
 \label{sec:fcn_arch}
