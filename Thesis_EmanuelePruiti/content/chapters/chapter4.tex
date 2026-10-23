@@ -25,12 +25,16 @@ Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with he
     \label{eq:softmax}
 \end{equation}
 
-During supervised training with ground-truth one-hot masks $Y^* \in \{0,1\}^{H \times W \times C}$, network parameters $\theta$ are optimized by minimizing the multi-class cross-entropy loss averaged across all pixels:
+During supervised training, network parameters $\theta$ are optimized by minimizing a loss function $\mathcal{L}(Y^*, p)$ that quantifies the discrepancy between the predicted probability map $p$ and the ground-truth annotations $Y^* \in \{0,1\}^{H \times W \times C}$~\cite{long2015fcn}. Through backpropagation, the gradients of this loss with respect to $\theta$ guide stochastic optimization algorithms (such as SGD or AdamW) to iteratively update the network weights. Because semantic segmentation operates densely across the spatial grid, the overall loss is evaluated by aggregating individual prediction errors over all pixel locations $(i,j)$~\cite[Chapter~12]{geron2026handson, long2015fcn}.
+
+The most common training objective in semantic segmentation is the multi-class categorical cross-entropy loss averaged across all pixels:
 \begin{equation}
-    \mathcal{L}_{\text{CE}}(Y^*, p) = -\frac{1}{HW} \sum_{i=1}^{H} \sum_{j=1}^{W} \sum_{c=1}^{C} Y^*_{i,j,c} \log(p_{i,j,c}),
+    \mathcal{L}_{\text{CE}}(Y^*, p) = -\frac{1}{HW} \sum_{i=1}^{H} \sum_{j=1}^{W} \sum_{c=1}^{C} Y^*_{i,j,c} \log(p_{i,j,c}).
     \label{eq:ce_loss}
 \end{equation}
-which corresponds to the standard loss objective implemented in deep learning frameworks such as PyTorch (\texttt{torch.nn.CrossEntropyLoss}).
+For each pixel, this formulation penalizes the negative logarithm of the probability assigned to the ground-truth category: the penalty approaches zero when the network predicts the correct class with high confidence ($p_{i,j,c} \approx 1$), and grows large when the assigned probability is low ($p_{i,j,c} \to 0$).
+
+In practical segmentation tasks, loss functions can be adapted to handle specific domain challenges. Notably, when target classes occupy highly disproportionate surface areas, standard cross-entropy can be extended with class-specific penalty weights $w_c$ to prevent dominant background regions from overwhelming minority categories~\cite{long2015fcn}, as formulated for our agricultural dataset in Chapter~\ref{cap:dataset_training}. Other common alternatives in the literature include region-based losses (such as the Dice loss) that optimize spatial segment overlap, and boundary-aware losses designed to refine object contours.
 
 Standard convolutional networks designed for image classification progressively reduce spatial dimensions via strided convolutions and pooling layers, typically resulting in an overall downsampling factor of $S = 2^5 = 32$~\cite[Chapter~12]{geron2026handson}. While spatial downsampling expands the effective receptive field and enables deeper layers to extract abstract semantic features (determining \emph{what} is depicted in the scene), it discards fine-grained spatial coordinates (obscuring \emph{where} object boundaries lie at the pixel level). Semantic segmentation architectures resolve this tension through an encoder-decoder topology:
 \begin{itemize}
