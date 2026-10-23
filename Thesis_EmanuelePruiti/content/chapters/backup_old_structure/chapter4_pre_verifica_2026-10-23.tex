@@ -1,0 +1,360 @@
+% !TEX root = ../../thesis.tex
+\chapter{Deep Learning Architectures for Semantic Segmentation}
+\label{cap:architectures}
+
+In computer vision, semantic segmentation is the task of classifying every pixel in an image according to the category of the surface or object it belongs to~\cite[Chapter~12]{geron2026handson, long2015fcn}. Unlike image-level classification, which predicts a single global label for the entire scene, or object detection, which localizes entities with coarse bounding boxes, semantic segmentation generates a dense, pixel-level partition of the scene.
+
+In this thesis, autonomous row navigation relies on a monocular vision pipeline in which semantic segmentation serves as the sole perception stage. Rather than relying on satellite positioning (RTK-GPS) or active range sensors (LiDAR), the navigation system extracts the vehicle guidance reference directly from single RGB images by segmenting the navigable soil corridor from surrounding crop canopies, weed patches, and plastic mulch films under variable outdoor illumination.
+
+To investigate the trade-off between segmentation accuracy, model complexity, and real-time execution on the mobile robot, this chapter analyzes three distinct deep learning architectures:
+\begin{itemize}
+    \item \textbf{Fully Convolutional Networks (FCN):} pairing a ResNet-50 backbone with a convolutional segmentation head (\texttt{FCNHead});
+    \item \textbf{DeepLabV3:} pairing a dilated ResNet-50 backbone with an Atrous Spatial Pyramid Pooling (ASPP) head;
+    \item \textbf{MobileNetV3 with LR-ASPP:} pairing a MobileNetV3-Large backbone with a Lite Reduced ASPP head.
+\end{itemize}
+In addition, the Segment Anything Model 3 (SAM~3) is introduced as an offline foundation model for semi-automated training dataset annotation.
+
+The remainder of this chapter is structured as follows. Section~\ref{sec:seg_formulation} establishes the mathematical formulation and encoder-decoder principles. Sections~\ref{sec:fcn_arch}, \ref{sec:deeplabv3_arch}, and \ref{sec:mobilenet_lraspp} detail the three segmentation networks, while Section~\ref{sec:sam3_theory} describes the SAM~3 annotation pipeline.
+
+\section{Problem formulation and encoder-decoder principles}
+\label{sec:seg_formulation}
+
+Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes~\cite[Chapter~12]{geron2026handson, long2015fcn}. Deep segmentation networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$ containing the class logits for every pixel location. The predicted probability of class $c$ at pixel $(i,j)$ is obtained by applying a pixel-wise softmax over the class dimension:
+\begin{equation}
+    p_{i,j,c} = \frac{\exp(Z_{i,j,c})}{\sum_{k=1}^{C} \exp(Z_{i,j,k})}.
+    \label{eq:softmax}
+\end{equation}
+
+During supervised training, network parameters $\theta$ are optimized by minimizing a loss function $\mathcal{L}(Y^*, p)$ that quantifies the discrepancy between the predicted probability map $p$ and the ground-truth annotations $Y^* \in \{0,1\}^{H \times W \times C}$, represented in one-hot form~\cite{long2015fcn}. Through backpropagation, the gradients of this loss with respect to $\theta$ guide stochastic optimization algorithms (such as SGD or AdamW) to iteratively update the network weights. Because semantic segmentation operates densely across the spatial grid, the overall loss is evaluated by aggregating individual prediction errors over all pixel locations $(i,j)$~\cite[Chapter~12]{geron2026handson, long2015fcn}.
+
+A widely used training objective for semantic segmentation is the pixel-wise categorical cross-entropy loss, averaged across all pixels:
+\begin{equation}
+    \mathcal{L}_{\text{CE}}(Y^*, p) = -\frac{1}{HW} \sum_{i=1}^{H} \sum_{j=1}^{W} \sum_{c=1}^{C} Y^*_{i,j,c} \log(p_{i,j,c}).
+    \label{eq:ce_loss}
+\end{equation}
+For each pixel, this formulation penalizes the negative logarithm of the probability assigned to the ground-truth category: the penalty approaches zero when the network predicts the correct class with high confidence ($p_{i,j,c} \approx 1$), and grows large when the assigned probability is low ($p_{i,j,c} \to 0$).
+
+In practical segmentation tasks, loss functions can be adapted to handle specific domain challenges. Notably, when target classes occupy highly disproportionate image areas, cross-entropy can be extended with class-specific penalty weights $w_c$ to mitigate the dominance of majority classes during optimization~\cite{long2015fcn}, as formulated for our agricultural dataset in Chapter~\ref{cap:dataset_training}. Other common alternatives in the literature include region-based losses (such as the Dice loss) that optimize spatial segment overlap, and boundary-aware losses designed to refine object contours.
+
+The output stride $S$ denotes the ratio of the input image spatial resolution to the spatial dimensions of the extracted feature map~\cite{chen2017deeplab}. Many classification backbones progressively reduce spatial resolution through consecutive strided convolutions and pooling operations, reaching an output stride of up to $S = 2^5 = 32$~\cite[Chapter~12]{geron2026handson}. While spatial downsampling expands the effective receptive field and enables deeper layers to extract abstract semantic features (determining \emph{what} is depicted in the scene), it discards fine-grained spatial coordinates (obscuring \emph{where} object boundaries lie at the pixel level). Segmentation backbones may instead employ smaller output strides, such as $S=8$ or $S=16$, using atrous convolutions to preserve denser feature representations~\cite{chen2017deeplab}.
+
+To resolve this trade-off between high-level semantic abstraction and pixel-level spatial precision, modern semantic segmentation models commonly adopt an encoder-decoder architecture:
+\begin{itemize}
+    \item \textbf{Encoder (Backbone):} A sequence of feature-extraction stages that produces high-level semantic representations, yielding a feature tensor $F_{\text{enc}} \in \mathbb{R}^{\frac{H}{S} \times \frac{W}{S} \times C_{\text{enc}}}$, where $S$ denotes the encoder output stride. Depending on the architecture, intermediate feature maps at different resolutions may also be supplied to the decoder.
+    \item \textbf{Decoder and segmentation head:} The decoder processes the encoded features and progressively recovers spatial resolution, optionally combining them with higher-resolution encoder features through skip connections~\cite{long2015fcn}. A final segmentation head maps the resulting features to class logits, which are upsampled to the input image resolution when necessary.
+\end{itemize}
+
+\section{Fully Convolutional Networks (FCN)}
+\label{sec:fcn_arch}
+
+Traditional Convolutional Neural Networks are designed for image-level classification, producing a single label for the entire input. Fully Convolutional Networks (FCN), introduced by Long et al.~\cite{long2015fcn}, adapt these architectures for semantic segmentation by predicting a class label for every individual pixel in an end-to-end manner.
+
+This is achieved through convolutionalization: replacing the final dense (fully connected) layers with convolutional filters allows the network to process images of arbitrary size and output dense spatial score maps. In this study, the FCN architecture is instantiated with a ResNet-50~\cite{he2016deep} residual backbone and an \texttt{FCNHead} segmentation head, matching the standard TorchVision implementation (\texttt{fcn\_resnet50}).
+
+\subsection{Convolutionalization of classification networks}
+\label{subsec:fcn_conv}
+
+In standard classification networks, the feature map produced by the final convolutional stage is flattened into a one-dimensional vector and fed into dense (fully connected) layers. Because a dense layer contains a fixed number of weights dedicated to each flattened input position, the network is restricted to a rigid, predetermined input image resolution.
+
+As detailed by G{\'e}ron~\cite[Chapter~12]{geron2026handson}, a dense layer with $C$ units connected to an input feature map of spatial dimension $h \times w$ with $C_{\text{in}}$ channels can be transformed into a convolutional layer equipped with $C$ filters of spatial size $h \times w$ (or size $1 \times 1$ if the input spatial dimensions have been pooled). Each filter computes the exact same weighted sum as the original dense neuron:
+\begin{equation}
+    Z_{i,j,c} = b_c + \sum_{k=1}^{C_{\text{in}}} W_{c,k} \cdot F_{i,j,k}, \qquad \forall i \in \{1,\dots,h\}, \; j \in \{1,\dots,w\},
+    \label{eq:conv1x1}
+\end{equation}
+producing an unnormalized score tensor of spatial dimension $h \times w \times C$.
+
+This convolutionalization provides a decisive operational advantage: convolutional operations apply locally and independently across spatial dimensions, freeing the network from fixed input dimensions. When fed an image larger than the training resolution, the convolutional layers naturally slide across the feature map in a single forward pass. Rather than re-executing the entire network redundantly across overlapping sliding-window crops, the convolutionalized network computes each intermediate activation once, generating a grid of predictions with substantial computational savings~\cite[Chapter~12]{geron2026handson}.
+
+\subsection{Skip architecture and upsampling}
+\label{subsec:fcn_skip}
+
+Because standard classification backbones adapted by FCN (such as VGG-16 or ResNet-50) incorporate five consecutive downsampling stages of stride 2, the final feature map is downsampled by a factor of $S = 2^5 = 32$ relative to the input image. Restoring this coarse score map to the original resolution $H \times W$ cannot rely exclusively on fixed bilinear interpolation, which degrades significantly when scaling by large factors such as $16\times$ or $32\times$~\cite{long2015fcn, geron2026handson}.
+
+To achieve learnable upsampling, Long et al.~\cite{long2015fcn} adopted transposed convolutions (also referred to as fractionally strided convolutions or deconvolutions, available in PyTorch as \texttt{nn.ConvTranspose2d}). Computationally, a transposed convolution with stride $s$ can be interpreted as expanding the input feature map by inserting $s-1$ rows and columns of zeros between adjacent elements, followed by a standard convolution using learnable filter weights $w \in \mathbb{R}^{K \times K}$~\cite[Chapter~12]{geron2026handson}. From an algebraic perspective, this operation corresponds to reversing the forward and backward passes of a strided convolution, mapping coarse spatial activations back to higher resolutions while updating the kernel weights during gradient descent rather than relying on static geometric approximations~\cite{long2015fcn}.
+
+Upsampling directly from stride 32 in a single step (FCN-32s) produces overly smooth, rounded boundaries. To recover sharp spatial contours, Long et al. introduced skip connections that fuse high-level semantic features from deep layers with fine-grained positional information from shallower layers:
+\begin{itemize}
+    \item \textbf{FCN-32s:} Upsamples the final stride-32 score map directly to image resolution in a single $32\times$ transposed convolution.
+    \item \textbf{FCN-16s:} Upsamples the stride-32 score map by a factor of $2\times$, adds it element-wise to predictions extracted from the stride-16 stage (e.g., \texttt{layer3} in ResNet-50), and applies a $16\times$ upsampling step to the combined map.
+    \item \textbf{FCN-8s:} Upsamples the fused FCN-16s score map by $2\times$, sums it with predictions from the stride-8 stage (e.g., \texttt{layer2}), and performs a final $8\times$ upsampling step back to $H \times W$.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\linewidth]{images/architectures/fcn_architecture.png}
+  \caption{Fully Convolutional Network (FCN) architecture with progressive skip connections combining deep semantic features with shallow appearance representations (adapted from Long et~al.~\cite{long2015fcn}).}
+  \label{fig:fcn_architecture}
+\end{figure}
+
+\textbf{Implementation note:} The experimental evaluation in this thesis employs the TorchVision \texttt{fcn\_resnet50} implementation~\cite{torchvision_fcn}. Unlike the original FCN-8s architecture, this model does not fuse predictions from multiple backbone stages. Instead, its ResNet-50 backbone replaces the spatial downsampling in \texttt{layer3} and \texttt{layer4} with dilated convolutions, yielding an output stride of 8. The main segmentation head (\texttt{FCNHead}) processes the 2048-channel features from \texttt{layer4} using a $3 \times 3$ convolution that reduces the channel dimension to 512, followed by batch normalization, ReLU activation, dropout with probability 0.1, and a $1 \times 1$ convolution that produces $C$ class logits. The logits are then resized directly to the input image dimensions $H \times W$ using bilinear interpolation with \texttt{align\_corners=False}. When enabled, an auxiliary classifier applies the same head structure to the 1024-channel features from \texttt{layer3}, also at output stride 8, using 256 intermediate channels. Its output can provide an additional supervision signal during training. The primary segmentation prediction is obtained from the main output (\texttt{out}), without fusion with the auxiliary output.
+
+\section{DeepLabV3 and atrous convolutions}
+\label{sec:deeplabv3_arch}
+
+DeepLabV3, developed by Chen et al.~\cite{chen2017deeplab}, addresses the resolution loss caused by consecutive pooling operations by replacing standard downsampling with atrous (dilated) convolutions and multi-scale pooling modules.
+
+\subsection{Atrous convolution formulation}
+\label{subsec:atrous_conv}
+
+Let $x[i,j]$ denote a 2D input feature map and $w[p,q]$ a convolutional filter of size $K \times K$ with $p, q \in \{-M, \dots, M\}$ where $M = \frac{K-1}{2}$. Standard convolution samples adjacent positions on the input grid. Atrous convolution introduces a dilation rate $r \in \mathbb{N}^+$, defining the step with which the filter samples the input signal:
+\begin{equation}
+    y[i, j] = \sum_{p=-M}^{M} \sum_{q=-M}^{M} x[i + r \cdot p, \; j + r \cdot q] \cdot w[p, q].
+    \label{eq:atrous_conv}
+\end{equation}
+
+When $r = 1$, Eq.~\eqref{eq:atrous_conv} reduces to the standard convolution. For $r > 1$, the filter samples inputs with spaces of $r - 1$ zeros between consecutive filter taps. The effective filter size $K'$ becomes:
+\begin{equation}
+    K' = K + (K - 1)(r - 1).
+    \label{eq:effective_kernel}
+\end{equation}
+For example, a $3 \times 3$ kernel ($K=3$) with dilation rate $r = 6$ covers a spatial footprint of $3 + 2 \times 5 = 13 \times 13$ pixels, requiring only 9 learnable parameters. Atrous convolution expands the receptive field without adding parameters or reducing the spatial resolution of the feature maps.
+
+\subsection{Atrous Spatial Pyramid Pooling (ASPP)}
+\label{subsec:aspp_module}
+
+Objects and agricultural corridors appear at varying visual scales depending on camera mounting angle and distance from the vehicle. DeepLabV3 captures contextual information across multiple scales using the Atrous Spatial Pyramid Pooling (ASPP) module.
+
+The ASPP module operates in parallel on the high-level feature map extracted by the backbone and consists of five branches:
+\begin{enumerate}
+    \item One $1 \times 1$ standard convolution with 256 filters and batch normalization.
+    \item Three $3 \times 3$ atrous convolutions with 256 filters each, using dilation rates $r \in \{6, 12, 18\}$ for an output stride of 16 (or $r \in \{12, 24, 36\}$ for stride 8).
+    \item One Image-Level Pooling branch: to incorporate global image context, this branch computes global average pooling across the spatial dimensions of the input tensor, processes the resulting $1 \times 1 \times C_{\text{in}}$ vector with a $1 \times 1$ convolution (256 filters) and batch normalization, and upsamples the output bilinearly to the original ASPP spatial resolution.
+\end{enumerate}
+
+\textbf{Implementation note:} The TorchVision \texttt{deeplabv3\_resnet50} implementation employs a dilated ResNet-50 backbone with output stride 8, achieved by removing downsampling in \texttt{layer3} and \texttt{layer4} and introducing atrous convolutions. The ASPP module correspondingly uses dilation rates $r \in \{12, 24, 36\}$ for the three parallel atrous branches.
+
+The outputs of all five branches are concatenated along the channel dimension, resulting in a tensor with $5 \times 256 = 1280$ channels:
+\begin{equation}
+    F_{\text{concat}} = \left[ F_{1\times1}, \; F_{\text{atrous}, r_1}, \; F_{\text{atrous}, r_2}, \; F_{\text{atrous}, r_3}, \; F_{\text{image\_pool}} \right].
+    \label{eq:aspp_concat}
+\end{equation}
+This concatenated representation is projected back to 256 channels via a $1 \times 1$ convolution with batch normalization and ReLU activation. The TorchVision implementation then applies a $3 \times 3$ convolution (256 $\to$ 256 channels) with batch normalization and ReLU before the final $1 \times 1$ classification layer maps to $C$ class logits. The output is upsampled via bilinear interpolation to image resolution $H \times W$. The ASPP parallel branch layout is depicted in Figure~\ref{fig:deeplabv3_aspp}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\linewidth]{images/architectures/deeplabv3_aspp.png}
+  \caption{DeepLabV3 architecture featuring the Atrous Spatial Pyramid Pooling (ASPP) module with parallel atrous convolutions and image-level pooling (adapted from Chen et~al.~\cite{chen2017deeplab}).}
+  \label{fig:deeplabv3_aspp}
+\end{figure}
+
+\section{MobileNetV3 and the Lite Reduced ASPP (LR-ASPP) head}
+\label{sec:mobilenet_lraspp}
+
+While DeepLabV3 with a ResNet-50 backbone provides high segmentation accuracy, its 50.8 million parameters and heavy computational requirement result in high inference latency (86.87~ms per image), exceeding the real-time budget of mobile robot platforms. To achieve real-time operation on edge hardware, Howard et al.~\cite{howard2019mobilenetv3} developed MobileNetV3 and the Lite Reduced ASPP (LR-ASPP) segmentation head.
+
+\subsection{Depthwise separable convolutions}
+\label{subsec:dw_conv}
+
+The fundamental building block of MobileNet architectures is the depthwise separable convolution, which factors a standard convolution into two separate steps: a spatial depthwise convolution and a channelwise pointwise convolution.
+
+Consider an input feature map $X \in \mathbb{R}^{H \times W \times C_{\text{in}}}$ and an output feature map $Y \in \mathbb{R}^{H \times W \times C_{\text{out}}}$, processed with spatial filter size $D_K \times D_K$.
+\begin{itemize}
+    \item \textbf{Standard convolution:} Each filter channel interacts with every input channel simultaneously. The computational cost, measured in Multiply-Accumulate (MAC) operations, is:
+    \begin{equation}
+        \text{Cost}_{\text{standard}} = H \cdot W \cdot C_{\text{in}} \cdot C_{\text{out}} \cdot D_K^2.
+        \label{eq:cost_standard}
+    \end{equation}
+    \item \textbf{Depthwise convolution:} Applies a single $D_K \times D_K$ spatial filter per input channel independently, without channel cross-talk:
+    \begin{equation}
+        \text{Cost}_{\text{depthwise}} = H \cdot W \cdot C_{\text{in}} \cdot D_K^2.
+        \label{eq:cost_dw}
+    \end{equation}
+    \item \textbf{Pointwise convolution:} Applies $C_{\text{out}}$ filters of size $1 \times 1$ across all channels to compute linear combinations of the depthwise outputs:
+    \begin{equation}
+        \text{Cost}_{\text{pointwise}} = H \cdot W \cdot C_{\text{in}} \cdot C_{\text{out}}.
+        \label{eq:cost_pw}
+    \end{equation}
+\end{itemize}
+The total cost of a depthwise separable convolution is the sum of Eqs.~\eqref{eq:cost_dw} and~\eqref{eq:cost_pw}:
+\begin{equation}
+    \text{Cost}_{\text{sep}} = H \cdot W \cdot C_{\text{in}} \cdot D_K^2 + H \cdot W \cdot C_{\text{in}} \cdot C_{\text{out}}.
+    \label{eq:cost_sep}
+\end{equation}
+Comparing Eq.~\eqref{eq:cost_sep} to Eq.~\eqref{eq:cost_standard} yields the computational reduction ratio:
+\begin{equation}
+    \frac{\text{Cost}_{\text{sep}}}{\text{Cost}_{\text{standard}}} = \frac{H \cdot W \cdot C_{\text{in}} \cdot D_K^2 + H \cdot W \cdot C_{\text{in}} \cdot C_{\text{out}}}{H \cdot W \cdot C_{\text{in}} \cdot C_{\text{out}} \cdot D_K^2} = \frac{1}{C_{\text{out}}} + \frac{1}{D_K^2}.
+    \label{eq:reduction_ratio}
+\end{equation}
+For standard $3 \times 3$ filters ($D_K = 3$) and typical channel counts ($C_{\text{out}} \ge 64$), the reduction ratio is approximately $\frac{1}{9} \approx 0.11$. Depthwise separable convolutions thus reduce arithmetic operations and parameter counts by roughly 88--89\% relative to standard convolutions.
+
+\subsection{Inverted residual blocks with linear bottlenecks}
+\label{subsec:inverted_residuals}
+
+In classical ResNet-50 bottleneck blocks, the input channels are first compressed via a $1 \times 1$ convolution, processed with a $3 \times 3$ convolution at reduced dimensionality, and expanded back to the original high channel count (wide $\to$ narrow $\to$ wide). This structure reduces computational cost while maintaining representational capacity.
+
+MobileNetV3 reverses this design using inverted residual blocks (narrow $\to$ wide $\to$ narrow):
+\begin{enumerate}
+    \item \textbf{Expansion layer:} A $1 \times 1$ pointwise convolution expands the low-dimensional input $C_{\text{in}}$ to a higher-dimensional space $e \cdot C_{\text{in}}$, where $e \in \{3, 6\}$ is the expansion factor.
+    \item \textbf{Depthwise layer:} A $3 \times 3$ or $5 \times 5$ depthwise separable convolution performs spatial feature extraction in the expanded channel space.
+    \item \textbf{Linear bottleneck:} A $1 \times 1$ projection layer compresses the channels back to $C_{\text{out}}$. Crucially, no non-linear activation function is placed after this final projection layer. Because non-linearities such as ReLU discard negative values by projecting them to zero, applying non-linear activations in low-dimensional spaces destroys useful geometric information. Retaining a linear bottleneck preserves manifold topology.
+\end{enumerate}
+When the input and output channel dimensions match and the stride is 1, a residual shortcut connection adds the input directly to the block output, as illustrated in Figure~\ref{fig:mobilenetv3_lraspp}a.
+
+\subsection{Squeeze-and-Excitation (SE) channel attention}
+\label{subsec:se_attention}
+
+To adaptively calibrate channel dependencies, MobileNetV3 incorporates Squeeze-and-Excitation (SE) blocks within the inverted residual structure:
+\begin{enumerate}
+    \item \textbf{Squeeze:} Global spatial average pooling aggregates the spatial dimensions of feature map $U \in \mathbb{R}^{H' \times W' \times C'}$ into a channel descriptor vector $z \in \mathbb{R}^{C'}$:
+    \begin{equation}
+        z_c = \frac{1}{H' W'} \sum_{i=1}^{H'} \sum_{j=1}^{W'} U_{i,j,c}.
+        \label{eq:se_squeeze}
+    \end{equation}
+    \item \textbf{Excitation:} Two fully connected layers parameterized by weights $W_1 \in \mathbb{R}^{\frac{C'}{4} \times C'}$ and $W_2 \in \mathbb{R}^{C' \times \frac{C'}{4}}$ model non-linear channel relationships with a channel reduction ratio of 4:
+    \begin{equation}
+        s = \sigma\left(W_2 \cdot \text{ReLU}(W_1 z)\right),
+        \label{eq:se_excite}
+    \end{equation}
+    where $\sigma(\cdot)$ denotes the hard-sigmoid activation function.
+    \item \textbf{Scale:} The input tensor $U$ is rescaled channel-wise by the activation vector $s$:
+    \begin{equation}
+        \tilde{U}_{i,j,c} = s_c \cdot U_{i,j,c}, \qquad \forall c \in \{1, \dots, C'\}.
+        \label{eq:se_scale}
+    \end{equation}
+\end{enumerate}
+
+\subsection{Efficient non-linearities: hard-swish and hard-sigmoid}
+\label{subsec:hard_activations}
+
+The swish non-linearity, defined as $\text{swish}(x) = x \cdot \sigma(x)$, improves gradient flow in deep networks compared to standard ReLU. However, computing the exponential function $\sigma(x) = (1 + e^{-x})^{-1}$ introduces noticeable latency on embedded mobile processors lacking dedicated transcendental hardware units.
+
+MobileNetV3 replaces standard sigmoid and swish with piece-wise linear hard approximations based on $\text{ReLU6}(x) = \min(\max(x, 0), 6)$:
+\begin{equation}
+    \text{h-sigmoid}(x) = \frac{\text{ReLU6}(x + 3)}{6},
+    \label{eq:h_sigmoid}
+\end{equation}
+\begin{equation}
+    \text{h-swish}(x) = x \cdot \text{h-sigmoid}(x) = x \cdot \frac{\text{ReLU6}(x + 3)}{6}.
+    \label{eq:h_swish}
+\end{equation}
+Eqs.~\eqref{eq:h_sigmoid} and~\eqref{eq:h_swish} eliminate floating-point exponential operations, preserving the performance benefits of swish while minimizing execution time on embedded CPUs and GPUs.
+
+\subsection{The Lite Reduced ASPP (LR-ASPP) architecture}
+\label{subsec:lraspp_arch}
+
+Standard DeepLabV3 ASPP requires multiple parallel atrous branches with 256 channels each, resulting in significant memory bandwidth requirements. Howard et al. proposed the Lite Reduced ASPP (LR-ASPP) head as a lightweight alternative tailored for mobile segmentation.
+
+The LR-ASPP architecture uses features from two distinct stages of the MobileNetV3-Large backbone:
+\begin{itemize}
+    \item A low-resolution, high-semantic feature map $F_{\text{low}} \in \mathbb{R}^{\frac{H}{16} \times \frac{W}{16} \times 960}$ extracted at output stride 16.
+    \item A high-resolution, low-semantic feature map $F_{\text{high}} \in \mathbb{R}^{\frac{H}{8} \times \frac{W}{8} \times 40}$ extracted at output stride 8.
+\end{itemize}
+
+The TorchVision LR-ASPP implementation processes the two feature streams as follows:
+\begin{enumerate}
+    \item The high-semantic, low-resolution feature map $F_{\text{low}}$ passes through two parallel branches:
+    \begin{itemize}
+        \item \textbf{CBR path:} A $1 \times 1$ convolution followed by batch normalization and ReLU activation projects $F_{\text{low}}$ to an intermediate representation $X \in \mathbb{R}^{\frac{H}{16} \times \frac{W}{16} \times C_{\text{inter}}}$:
+        \begin{equation}
+            X = \text{ReLU}\left(\text{BN}\left(\text{Conv}_{1\times1}(F_{\text{low}})\right)\right).
+            \label{eq:lraspp_cbr}
+        \end{equation}
+        \item \textbf{Global context branch:} Applies global average pooling followed by a $1 \times 1$ convolution and a standard sigmoid activation to produce a channel-wise gating vector $G \in \mathbb{R}^{1 \times 1 \times C_{\text{inter}}}$:
+        \begin{equation}
+            G = \sigma\left(\text{Conv}_{1\times1}\left(\text{GAP}(F_{\text{low}})\right)\right).
+            \label{eq:lraspp_gate}
+        \end{equation}
+    \end{itemize}
+    \item The CBR output $X$ is modulated element-wise by the gating vector $G$ and then upsampled by a factor of 2 via bilinear interpolation:
+    \begin{equation}
+        M_{\text{low}} = \text{BilinearUpsample}_{2\times}(X \odot G).
+        \label{eq:lraspp_modulation}
+    \end{equation}
+    \item Both the modulated low-resolution features $M_{\text{low}}$ and the high-resolution features $F_{\text{high}}$ pass through \textbf{separate} $1 \times 1$ classification layers to produce class logits:
+    \begin{equation}
+        Z_{\text{low}} = \text{Conv}_{1\times1}^{\text{high}}(M_{\text{low}}), \qquad Z_{\text{high}} = \text{Conv}_{1\times1}^{\text{low}}(F_{\text{high}}).
+        \label{eq:lraspp_classifiers}
+    \end{equation}
+    \item The two logit maps are \textbf{summed in logit space} to produce the final stride-8 prediction:
+    \begin{equation}
+        Z_{\text{fused}} = Z_{\text{low}} + Z_{\text{high}}.
+        \label{eq:lraspp_fusion}
+    \end{equation}
+    \item A final $8\times$ bilinear upsampling step restores the prediction to the original image dimensions $H \times W$.
+\end{enumerate}
+
+\textbf{Implementation note:} Unlike architectures that fuse feature representations before classification, LR-ASPP fuses predictions in logit space. This design allows each branch to learn independent classification boundaries while combining their complementary spatial resolutions. The global context gating uses a standard sigmoid activation (Eq.~\eqref{eq:lraspp_gate}), not the hard-sigmoid approximation employed in the MobileNetV3 inverted residual blocks.
+
+By replacing the multi-branch parallel ASPP structure with a single global pooling gate and logit-space fusion, LR-ASPP reduces computational operations while retaining global scene context and boundary localization. The inverted residual backbone block and the complete LR-ASPP segmentation topology are illustrated in Figure~\ref{fig:mobilenetv3_lraspp}.
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[MobileNetV3 Inverted Residual block with Squeeze-and-Excitation channel attention.\label{fig:mobilenetv3_block}]{%
+    \includegraphics[width=0.85\linewidth]{images/architectures/mobilenetv3_block.png}%
+  }
+  
+  \vspace{0.3cm}
+  
+  \subfloat[Lite Reduced ASPP (LR-ASPP) segmentation head mixing low- and high-resolution features.\label{fig:lraspp_head}]{%
+    \includegraphics[width=0.85\linewidth]{images/architectures/lraspp_head.png}%
+  }
+  \caption{MobileNetV3 and Lite Reduced ASPP (LR-ASPP) architecture: (a) inverted residual block combining depthwise separable convolution, linear bottleneck, and Squeeze-and-Excitation channel attention; (b) segmentation head combining stride-16 features modulated by global context gating with stride-8 fine features (adapted from Howard et~al.~\cite{howard2019mobilenetv3}).}
+  \label{fig:mobilenetv3_lraspp}
+\end{figure}
+
+\section{Segment Anything Model 3 (SAM~3) for dataset annotation}
+\label{sec:sam3_theory}
+
+Manually annotating agricultural images at pixel precision requires considerable labor: drawing polygons around irregular plant boundaries, inter-row soil, and weed patches requires between 15 and 30 minutes per frame. Foundation models provide a mechanism to scale up annotation through zero-shot visual prompting.
+
+Kirillov et al.~\cite{kirillov2023sam} established the promptable segmentation paradigm with SAM, using Vision Transformers to generate binary segmentation masks from spatial prompts such as foreground/background points, bounding boxes, or coarse masks. Carion et al.~\cite{carion2026sam3} extended this paradigm in SAM~3 by introducing open-vocabulary concept segmentation driven by textual descriptions and visual exemplars.
+
+\subsection{Architecture overview}
+\label{subsec:sam3_arch}
+
+Unlike the original SAM architecture, which processes images through a single ViT encoder followed by a prompt-conditioned mask decoder, SAM~3 adopts a dual-architecture design comprising a \textbf{detector} for image-level segmentation and a \textbf{tracker} for video sequences. Both components share a unified \textbf{Perception Encoder (PE)} backbone that processes visual and linguistic inputs.
+
+The SAM~3 detector follows a DETR-based paradigm with the following key components:
+\begin{enumerate}
+    \item \textbf{Perception Encoder:} A shared vision-language backbone that encodes images into spatial feature representations. Unlike SAM's standalone ViT encoder, the PE is designed to handle both visual data and textual concept embeddings.
+    \item \textbf{Fusion Encoder:} Accepts unconditioned image embeddings from the PE and conditions them by cross-attending to prompt tokens derived from text descriptions (e.g., \texttt{"lettuce plant"}, \texttt{"navigable soil corridor"}) or visual exemplars (bounding boxes around reference instances).
+    \item \textbf{Presence Token:} A learned global token that decouples recognition from localization. The presence token predicts whether a specified concept exists in the image before attempting pixel-level segmentation, improving computational efficiency and reducing false positives.
+    \item \textbf{Decoder:} Learned object queries cross-attend to the conditioned image embeddings from the fusion encoder, producing a set of binary segmentation masks and associated confidence scores for all instances of the target concept.
+\end{enumerate}
+
+For video input, SAM~3 extends this architecture with a memory-augmented tracker that shares the frozen PE backbone with the detector. The tracker incorporates a memory encoder and memory bank that store object appearance across frames, enabling consistent temporal segmentation.
+
+Figure~\ref{fig:sam3_architecture} illustrates the original SAM architecture, which established the foundation for prompt-based segmentation; SAM~3 extends this paradigm with text-driven concept detection and video tracking capabilities.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\linewidth]{images/architectures/sam_architecture.png}
+  \caption{Original Segment Anything Model (SAM) architecture with ViT image encoder, prompt encoder, and mask decoder (adapted from Kirillov et~al.~\cite{kirillov2023sam}). SAM~3 extends this foundation with a dual detector-tracker architecture and open-vocabulary concept segmentation.}
+  \label{fig:sam3_architecture}
+\end{figure}
+
+\subsection{Operational distinction from onboard models}
+\label{subsec:sam3_role}
+
+A key architectural distinction must be emphasized between the foundation model and the robotic segmentation network:
+\begin{itemize}
+    \item SAM~3 requires over 600 million parameters and multi-gigabyte memory footprints, with single-image forward times exceeding 1000~ms on workstation GPUs. It cannot be deployed directly for closed-loop visual servoing on resource-constrained embedded computers such as the Jetson platform.
+    \item In this thesis, SAM~3 functions strictly as an \textbf{offline supervision generator}. Given text prompts representing crop and corridor concepts, SAM~3 generates dense candidate masks across lettuce, tomato, and cucumber image collections.
+    \item The resulting masks are reviewed, filtered, and used as ground-truth targets to train lightweight real-time architectures (FCN, DeepLabV3, and LR-ASPP). The distilled lightweight models execute inference on the robot platform in 10 to 86~ms, maintaining real-time control capability.
+\end{itemize}
+
+\section{Summary of architectural characteristics}
+\label{sec:arch_summary}
+
+Table~\ref{tab:architecture_characteristics} summarizes the theoretical characteristics of the four architectures analyzed in this chapter, establishing the foundation for the dataset experiments and comparative evaluations presented in Chapter~\ref{cap:dataset_training}.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \caption{Comparison of deep learning architectures evaluated in this thesis. Latency measurements correspond to inference on a single $512 \times 512$ RGB image using FP32 precision on the target embedded platform (details in Chapter~\ref{cap:platform}).}
+    \label{tab:architecture_characteristics}
+    \begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}X@{}}
+        \toprule
+        Model & Backbone & Context mechanism & Target role & Primary characteristics \\
+        \midrule
+        FCN & ResNet-50 & Simplified segmentation head with auxiliary classifier & Benchmark segmentation & High parameter count, coarse boundary detail \\
+        \addlinespace
+        DeepLabV3 & ResNet-50 & Multi-scale ASPP with stride-8 dilated backbone & High-accuracy benchmark & Highest computational cost, dense receptive field coverage \\
+        \addlinespace
+        LR-ASPP & MobileNetV3-Large & Gated global pooling with logit-space fusion & Real-time robotic navigation & Compact architecture optimized for mobile deployment \\
+        \addlinespace
+        SAM~3 & Perception Encoder (vision-language) & DETR-based detector with presence token and text/visual prompts & Offline automatic annotation & Foundation model for open-vocabulary concept segmentation; not deployed onboard \\
+        \bottomrule
+    \end{tabularx}
+\end{table}

@@ -189,7 +189,7 @@ Class weights are computed exclusively on the training split $\mathcal{D}_{\text
 \end{equation}
 This normalization enforces $\frac{1}{C} \sum_{c=0}^{C-1} w_c = 1.0$, which scales relative class penalties while preserving the nominal gradient magnitude during backpropagation.
 
-For FCN and DeepLabV3, which incorporate an auxiliary classifier on stride-16 features (\texttt{layer3}), the total training objective combines the primary and auxiliary losses with an auxiliary weighting factor of $0.4$:
+For FCN and DeepLabV3, which incorporate an auxiliary classifier on the \texttt{layer3} features (output stride 8 in the dilated TorchVision backbone), the total training objective combines the primary and auxiliary losses with an auxiliary weighting factor of $0.4$:
 \begin{equation}
     \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{WCE}}(\text{main}) + 0.4 \cdot \mathcal{L}_{\text{WCE}}(\text{aux}).
     \label{eq:total_training_loss}
