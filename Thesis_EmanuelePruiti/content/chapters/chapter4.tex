@@ -56,12 +56,7 @@ This is achieved through convolutionalization: replacing the final dense (fully 
 
 In standard classification networks, the feature map produced by the final convolutional stage is flattened into a one-dimensional vector and fed into dense (fully connected) layers. Because a dense layer contains a fixed number of weights dedicated to each flattened input position, the network is restricted to a rigid, predetermined input image resolution.
 
-As detailed by G{\'e}ron~\cite[Chapter~12]{geron2026handson}, a dense layer with $C$ units connected to an input feature map of spatial dimension $h \times w$ with $C_{\text{in}}$ channels can be transformed into a convolutional layer equipped with $C$ filters of spatial size $h \times w$ and \emph{valid} padding. Each filter computes the same weighted sum as the corresponding dense neuron:
-\begin{equation}
-    Z_{c} = b_c + \sum_{u=1}^{h} \sum_{v=1}^{w} \sum_{k=1}^{C_{\text{in}}} W_{c,u,v,k} \cdot F_{u,v,k}, \qquad c \in \{1,\dots,C\},
-    \label{eq:conv1x1}
-\end{equation}
-producing an unnormalized score tensor of size $1 \times 1 \times C$ for an input of the training resolution.
+As detailed by G{\'e}ron~\cite[Chapter~12]{geron2026handson}, a dense layer with $C$ units connected to an input feature map of spatial dimension $h \times w$ with $C_{\text{in}}$ channels can be replaced by a convolutional layer with $C$ filters, a filter size equal to $h \times w$, and \emph{valid} padding. The convolutional layer then outputs a $1 \times 1 \times C$ tensor containing the same values produced by the dense layer.
 
 Because a convolution is applied at every spatial position, the convolutionalized network no longer requires a fixed input size. When the input feature map is larger than $h \times w$, the same filters slide over it and output a spatial grid of class scores in a single forward pass. This result is equivalent to sliding the original classification network across the image, but each intermediate activation is computed only once instead of once per overlapping window~\cite[Chapter~12]{geron2026handson}.
 
@@ -96,18 +91,18 @@ DeepLabV3, developed by Chen et al.~\cite{chen2017deeplab}, addresses the resolu
 \subsection{Atrous convolution formulation}
 \label{subsec:atrous_conv}
 
-Let $x[i,j]$ denote a 2D input feature map and $w[p,q]$ a convolutional filter of size $K \times K$ with $p, q \in \{-M, \dots, M\}$ where $M = \frac{K-1}{2}$. Standard convolution samples adjacent positions on the input grid. Atrous convolution introduces a dilation rate $r \in \mathbb{N}^+$, defining the step with which the filter samples the input signal:
+Chen et al.~\cite{chen2017deeplab} define atrous convolution in one dimension as $y[i] = \sum_{k} x[i + r \cdot k]\, w[k]$ (Eq.~1 in~\cite{chen2017deeplab}), where the atrous rate $r$ is the stride with which the input signal is sampled. Equivalently, the input is convolved with an upsampled filter obtained by inserting $r - 1$ zeros between two consecutive filter values along each spatial dimension~\cite{chen2017deeplab}. Applied along both spatial dimensions to a 2D feature map $x[i,j]$ with a $K \times K$ filter $w[p,q]$, where $p, q \in \{-M, \dots, M\}$ and $M = \frac{K-1}{2}$ for odd $K$, the operation becomes:
 \begin{equation}
     y[i, j] = \sum_{p=-M}^{M} \sum_{q=-M}^{M} x[i + r \cdot p, \; j + r \cdot q] \cdot w[p, q].
     \label{eq:atrous_conv}
 \end{equation}
 
-When $r = 1$, Eq.~\eqref{eq:atrous_conv} reduces to the standard convolution. For $r > 1$, the filter samples inputs with spaces of $r - 1$ zeros between consecutive filter taps. The effective filter size $K'$ becomes:
+Standard convolution is the special case $r = 1$~\cite{chen2017deeplab}. Because $r - 1$ zeros are inserted in each of the $K - 1$ gaps between filter values, the effective filter size $K'$ is:
 \begin{equation}
     K' = K + (K - 1)(r - 1).
     \label{eq:effective_kernel}
 \end{equation}
-For example, a $3 \times 3$ kernel ($K=3$) with dilation rate $r = 6$ covers a spatial footprint of $3 + 2 \times 5 = 13 \times 13$ pixels, requiring only 9 learnable parameters. Atrous convolution expands the receptive field without adding parameters or reducing the spatial resolution of the feature maps.
+G{\'e}ron gives the one-dimensional case: the filter $[1, 2, 3]$ dilated with rate 4 becomes $[1, 0, 0, 0, 2, 0, 0, 0, 3]$, of length $3 + 2 \times 3 = 9$~\cite[Chapter~12]{geron2026handson}. Likewise, a $3 \times 3$ filter with rate $r = 6$ covers a $13 \times 13$ region ($3 + 2 \times 5 = 13$) with 9 learnable parameters. Atrous convolution therefore enlarges the receptive field without extra parameters~\cite[Chapter~12]{geron2026handson} and without reducing the spatial resolution of the feature maps~\cite{chen2017deeplab}.
 
 \subsection{Atrous Spatial Pyramid Pooling (ASPP)}
 \label{subsec:aspp_module}
