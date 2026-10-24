@@ -4,7 +4,7 @@
 
 Following the theoretical analysis of deep learning architectures in Chapter~\ref{cap:architectures}, this chapter describes the datasets, annotation pipelines, and experimental model evaluations that guide the configuration for robotic integration.
 
-The experimental study began with an empirical comparison of FCN, DeepLabV3, and LR-ASPP on manually annotated lettuce images. Manual segmentation was time-consuming, so this first comparison was limited to lettuce rather than repeated across every target crop. Its outcome led to the adoption of LR-ASPP for embedded deployment.
+The experimental study began by fine-tuning FCN, DeepLabV3, and LR-ASPP from pretrained weights on a manually annotated lettuce dataset for an empirical comparison. Because manual segmentation was time-consuming, this initial training was limited to lettuce rather than repeated across every target crop. Its outcome led to the adoption of LR-ASPP for embedded deployment.
 
 SAM~3 was subsequently used to scale up dataset preparation, generating multi-crop training labels across lettuce, tomato, and cucumber collections. The resulting models were evaluated across alternative output label configurations: three classes (plant, path, background), four classes (including covering material), and a binary path-only representation.
 
