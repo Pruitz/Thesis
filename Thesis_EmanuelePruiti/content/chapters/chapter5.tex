@@ -6,9 +6,9 @@ Following the theoretical analysis of deep learning architectures in Chapter~\re
 
 The experimental study began by fine-tuning FCN, DeepLabV3, and LR-ASPP from pretrained weights on a manually annotated lettuce dataset for an empirical comparison. Because manual segmentation was time-consuming, this initial training was limited to lettuce rather than repeated across every target crop. Its outcome led to the adoption of LR-ASPP for embedded deployment.
 
-SAM~3 was subsequently used to scale up dataset preparation, generating multi-crop training labels across lettuce, tomato, and cucumber collections. The resulting models were evaluated across alternative output label configurations: three classes (plant, path, background), four classes (including covering material), and a binary path-only representation.
+Following the selection of LR-ASPP, a primary experimental objective was to investigate whether an entirely automated zero-shot autolabeling pipeline using SAM~3 could generate multi-crop training datasets of sufficient quality for autonomous navigation, drastically reducing human annotation time. To evaluate the feasibility of fully automated labeling, the entire dataset across lettuce, tomato, and cucumber was generated using SAM~3 without manual filtering or correction of imperfect masks. Because manual ground truth was available exclusively for lettuce, the raw SAM~3 lettuce masks were directly compared against the human annotations to quantify the intrinsic error and label noise of zero-shot autolabeling. LR-ASPP was then trained on the multi-crop data under three alternative label formulations: four classes (including covering material), three classes (plants, path, background), and a binary path-only representation.
 
-This chapter details image acquisition, dataset partitioning, training parameters, and offline benchmark evaluations. The performance of the trained networks is evaluated separately from the annotation quality of the raw SAM~3 masks. Subsequent chapters detail geometric navigation extraction and closed-loop robot validation.
+This chapter details image acquisition, dataset partitioning, training parameters, and offline benchmark evaluations. Subsequent chapters detail geometric navigation extraction and closed-loop robot validation.
 
 \section{Image acquisition and class definition}
 \label{sec:c5_acquisition_classes}
@@ -55,32 +55,18 @@ with SAM~3-generated multi-crop labels. Automatically annotated lettuce
 images belong to the latter training datasets, not to separate
 lettuce-only training configurations.
 
-\subsection{SAM~3-assisted annotation for multi-crop datasets}
+\subsection{Automated zero-shot annotation via SAM~3}
 \label{subsec:c5_sam_annotation}
 
-The time required for manual labeling motivated the use of SAM~3 to
-prepare the multi-crop datasets. Initial use suggested faster mask
-generation, but the total annotation effort has not been measured in a
-systematic comparison that includes inspection and correction.
+Manual segmentation requires substantial human effort, motivating an investigation into whether zero-shot foundation models can automate dataset preparation entirely. To evaluate this approach, SAM~3 was employed offline in a prompt-guided regime to generate segmentation masks across all three crops: lettuce, tomato, and cucumber. Crucially, the generated masks were utilized directly without manual filtering, cleaning, or polygon correction. Retaining imperfect and noisy masks was an intentional experimental choice: the goal was to verify whether downstream model training remains resilient to real-world autolabeling errors, determining whether human intervention can be eliminated from the annotation workflow.
 
-The SAM~3-assisted labeling procedure covers lettuce, tomato, and
-cucumber images for the multi-crop training configurations. In this
-workflow, automatic segmentation is used to prepare labels offline; it
-is distinct from the segmentation model used during navigation.
+Because manual ground-truth annotations were available exclusively for the lettuce collection, these human masks served as the objective benchmark to evaluate the intrinsic segmentation quality and label fidelity of raw SAM~3 outputs.
 
-For the lettuce images annotated with two foreground classes, the reported
-text prompts are \texttt{plants} and \texttt{central farm path}. The
-four-class labeling additionally uses \texttt{plastic mulch film} for
-covering material. Background accounts for the remaining label in each
-configuration. These reported lettuce prompts do not establish the exact
-prompts used for every crop in the multi-crop datasets. The binary
-configuration retains only the path annotation; crop-specific prompts
-and mask-composition settings for each configuration must be documented
-from the corresponding labeling runs.
+For the lettuce images annotated with two foreground classes, the reported text prompts are \texttt{plants} and \texttt{central farm path}. The four-class labeling additionally uses \texttt{plastic mulch film} for covering material. Background accounts for the remaining label in each configuration. These reported lettuce prompts do not establish the exact prompts used for every crop in the multi-crop datasets. The binary configuration retains only the path annotation; crop-specific prompts and mask-composition settings for each configuration must be documented from the corresponding labeling runs.
 
 \placeholderfigure{fig:sam3_annotation_pipeline}%
-{SAM~3 zero-shot promptable annotation and mask refinement workflow}%
-{Diagramma del processo di annotazione assistita: selezione dei prompt visivi e testuali (\texttt{"plants"}, \texttt{"central farm path"}, \texttt{"plastic mulch film"}), generazione automatica delle maschere grezze da SAM~3 e successiva fase di revisione e composizione.}%
+{SAM~3 zero-shot autolabeling and mask composition workflow}%
+{Diagramma della pipeline di autolabeling zero-shot: formulazione dei prompt testuali (\texttt{"plants"}, \texttt{"central farm path"}, \texttt{"plastic mulch film"}), generazione automatica delle maschere tramite SAM~3 e composizione deterministica delle etichette senza filtraggio o revisione manuale.}%
 {5cm}
 
 \subsubsection{Tomato dataset}
@@ -338,7 +324,16 @@ Manual masks supply the ground truth for all comparisons. For path-only
 scoring, the target is the manual soil class and the predicted positive
 region is the corresponding path output of each model.
 
-\subsection{Evaluation results}
+\subsection{Direct evaluation of raw SAM~3 masks on lettuce}
+\label{subsec:c5_sam_mask_evaluation}
+
+Before evaluating the networks trained on automatically generated labels, the intrinsic quality of the raw zero-shot SAM~3 masks was benchmarked directly against the manually annotated lettuce ground truth. Because human annotations were established exclusively for lettuce, this comparison provides the sole empirical measurement of foundation-model autolabeling accuracy and boundary fidelity prior to downstream model training.
+
+\todobox{Metriche quantitative maschere SAM~3 vs Ground Truth manuale (Lattuga)}{%
+Riportare i valori di Intersection over Union (IoU) calcolati pixel per pixel confrontando le maschere grezze autogenerate da SAM~3 con la ground truth manuale (\texttt{annotations.json}) sul dataset di lattuga: mIoU complessiva e IoU per le classi piante, suolo/sentiero ed eventuale telo pacciamante.
+}
+
+\subsection{Trained model evaluation across supervision configurations}
 \label{subsec:c5_supervision_results}
 
 \emph{Results to complete after provenance checks:} Present the four-class,
