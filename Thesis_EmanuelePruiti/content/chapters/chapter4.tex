@@ -4,7 +4,7 @@
 
 In computer vision, semantic segmentation is the task of classifying every pixel in an image according to the category of the surface or object it belongs to~\cite{long2015fcn}, \cite[Chapter~12]{geron2026handson}. Unlike image-level classification, which predicts a single global label for the entire scene, or object detection, which localizes entities with coarse bounding boxes, semantic segmentation generates a dense, pixel-level partition of the scene.
 
-In this thesis, autonomous row navigation relies on a monocular vision pipeline in which semantic segmentation serves as the sole perception stage. Rather than relying on satellite positioning (RTK-GPS) or active range sensors (LiDAR), the navigation system extracts the vehicle guidance reference directly from single RGB images by segmenting the navigable soil corridor from surrounding crop canopies, weed patches, and plastic mulch films under variable outdoor illumination.
+In this thesis, autonomous row navigation relies on a monocular vision pipeline in which semantic segmentation is the only perception stage. Rather than relying on satellite positioning (RTK-GPS) or active range sensors (LiDAR), the navigation system extracts the vehicle guidance reference directly from single RGB images by segmenting the navigable soil corridor from surrounding crop canopies, weed patches, and plastic mulch films under variable outdoor illumination.
 
 To investigate the trade-off between segmentation accuracy, model complexity, and real-time execution on the mobile robot, this chapter analyzes three distinct deep learning architectures:
 \begin{itemize}
@@ -116,14 +116,14 @@ The ASPP module operates in parallel on the high-level feature map extracted by 
     \item One Image-Level Pooling branch: to incorporate global image context, this branch computes global average pooling across the spatial dimensions of the input tensor, processes the resulting $1 \times 1 \times C_{\text{in}}$ vector with a $1 \times 1$ convolution (256 filters) and batch normalization, and upsamples the output bilinearly to the original ASPP spatial resolution.
 \end{enumerate}
 
-\textbf{Implementation note:} The TorchVision \texttt{deeplabv3\_resnet50} implementation employs a dilated ResNet-50 backbone with output stride 8, achieved by removing downsampling in \texttt{layer3} and \texttt{layer4} and introducing atrous convolutions. The ASPP module correspondingly uses dilation rates $r \in \{12, 24, 36\}$ for the three parallel atrous branches.
+\textbf{Implementation note:} The TorchVision \texttt{deeplabv3\_resnet50} implementation~\cite{torchvision_deeplabv3} employs a dilated ResNet-50 backbone with output stride 8, achieved by removing downsampling in \texttt{layer3} and \texttt{layer4} and introducing atrous convolutions. The ASPP module correspondingly uses dilation rates $r \in \{12, 24, 36\}$ for the three parallel atrous branches.
 
 The outputs of all five branches are concatenated along the channel dimension, resulting in a tensor with $5 \times 256 = 1280$ channels:
 \begin{equation}
     F_{\text{concat}} = \left[ F_{1\times1}, \; F_{\text{atrous}, r_1}, \; F_{\text{atrous}, r_2}, \; F_{\text{atrous}, r_3}, \; F_{\text{image\_pool}} \right].
     \label{eq:aspp_concat}
 \end{equation}
-This concatenated representation is projected back to 256 channels via a $1 \times 1$ convolution with batch normalization~\cite{chen2017deeplab}; TorchVision follows it with ReLU activation and dropout ($p = 0.5$). The TorchVision implementation then applies a $3 \times 3$ convolution (256 $\to$ 256 channels) with batch normalization and ReLU before the final $1 \times 1$ classification layer maps to $C$ class logits. The output is upsampled via bilinear interpolation to image resolution $H \times W$. The ASPP parallel branch layout is depicted in Figure~\ref{fig:deeplabv3_aspp}.
+This concatenated representation is projected back to 256 channels via a $1 \times 1$ convolution with batch normalization~\cite{chen2017deeplab}; TorchVision follows it with ReLU activation and dropout ($p = 0.5$)~\cite{torchvision_deeplabv3}. The TorchVision implementation then applies a $3 \times 3$ convolution (256 $\to$ 256 channels) with batch normalization and ReLU before the final $1 \times 1$ classification layer maps to $C$ class logits. The output is upsampled via bilinear interpolation to image resolution $H \times W$. The ASPP parallel branch layout is depicted in Figure~\ref{fig:deeplabv3_aspp}.
 
 \begin{figure}[htbp]
   \centering
@@ -135,7 +135,7 @@ This concatenated representation is projected back to 256 channels via a $1 \tim
 \section{MobileNetV3 and the Lite Reduced ASPP (LR-ASPP) head}
 \label{sec:mobilenet_lraspp}
 
-DeepLabV3 with a ResNet-50 backbone provides high segmentation accuracy, but its dilated backbone at output stride 8 and its ASPP head make it the slowest of the three networks in the offline comparison of Chapter~\ref{cap:dataset_training} (86.87~ms mean recorded inference time). For mobile devices, Howard et al.~\cite{howard2019mobilenetv3} developed MobileNetV3, tuned to mobile phone CPUs, together with the Lite Reduced ASPP (LR-ASPP) segmentation head.
+DeepLabV3 with a ResNet-50 backbone provides high segmentation accuracy, but it is the slowest of the three networks in the offline comparison of Chapter~\ref{cap:dataset_training} (86.87~ms mean recorded inference time). For mobile devices, Howard et al.~\cite{howard2019mobilenetv3} developed MobileNetV3, tuned to mobile phone CPUs, together with the Lite Reduced ASPP (LR-ASPP) segmentation head.
 
 \subsection{Depthwise separable convolutions}
 \label{subsec:dw_conv}
@@ -235,7 +235,7 @@ The LR-ASPP architecture uses features from two distinct stages of the MobileNet
     \item A high-resolution, low-semantic feature map $F_{8} \in \mathbb{R}^{\frac{H}{8} \times \frac{W}{8} \times 40}$ extracted at output stride 8.
 \end{itemize}
 
-The TorchVision LR-ASPP implementation processes the two feature streams as follows:
+The TorchVision LR-ASPP implementation (\texttt{lraspp\_mobilenet\_v3\_large})~\cite{torchvision_lraspp} processes the two feature streams as follows:
 \begin{enumerate}
     \item The stride-16 feature map $F_{16}$ passes through two parallel branches:
     \begin{itemize}
@@ -290,7 +290,7 @@ By replacing the multi-branch parallel ASPP structure with a single global pooli
 \section{Segment Anything Model 3 (SAM~3) for dataset annotation}
 \label{sec:sam3_theory}
 
-Manually annotating agricultural images at pixel precision requires drawing polygons around irregular plant boundaries, inter-row soil, and covering material. The time required for this labeling motivated the use of SAM~3 to prepare the multi-crop datasets (Chapter~\ref{cap:dataset_training}). Foundation models make it possible to generate candidate masks from prompts without training on the target crops.
+Manually annotating agricultural images at pixel precision requires drawing polygons around irregular plant boundaries, inter-row soil, and covering material. The time required for this labeling motivated the use of SAM~3 to generate training labels automatically (Chapter~\ref{cap:dataset_training}). Foundation models make it possible to generate candidate masks from prompts without training on the target crops.
 
 Kirillov et al.~\cite{kirillov2023sam} established the promptable segmentation paradigm with SAM, using Vision Transformers to generate binary segmentation masks from spatial prompts such as foreground/background points, bounding boxes, or coarse masks. Carion et al.~\cite{carion2026sam3} extended this paradigm in SAM~3 by introducing open-vocabulary concept segmentation driven by textual descriptions and visual exemplars.
 
@@ -325,7 +325,7 @@ A key architectural distinction must be emphasized between the foundation model 
 \begin{itemize}
     \item SAM~3 has about 850 million parameters, of which about 450 million belong to the vision encoder and 300 million to the text encoder~\cite{carion2026sam3}. Its reported speed of 30~ms per image refers to an NVIDIA H200 data-center GPU~\cite{carion2026sam3}, a hardware class not available on the robot, and the model was not evaluated on the onboard computer in this work.
     \item In this thesis, SAM~3 functions strictly as an \textbf{offline supervision generator}. Given text prompts representing crop and corridor concepts, SAM~3 generates dense candidate masks across lettuce, tomato, and cucumber image collections.
-    \item The resulting masks are reviewed and used as ground-truth targets to train LR-ASPP, the network selected for onboard perception after the comparison on the manually annotated lettuce dataset (Chapter~\ref{cap:dataset_training}). LR-ASPP recorded a mean offline inference time of 10.41~ms in that comparison.
+    \item The resulting masks are used without manual correction as training targets for LR-ASPP, the network selected for onboard perception after the comparison on the manually annotated lettuce dataset (Chapter~\ref{cap:dataset_training}). LR-ASPP recorded a mean offline inference time of 10.41~ms in that comparison.
 \end{itemize}
 
 \section{Summary of architectural characteristics}

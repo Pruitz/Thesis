@@ -92,13 +92,13 @@ Descrivere le operazioni eseguite alla ricezione di ogni frame:
 \subsubsection{Geometric extraction node}
 \label{subsubsec:geometric_node}
 
-The geometric extraction node subscribes to the segmentation mask, applies Method~3 or Method~4 from Chapter~\ref{cap:geometric_reference}, and publishes the navigation reference as a line or position message.
+The geometric extraction node subscribes to the segmentation mask, applies one of the four extractors of Chapter~\ref{cap:geometric_reference} (the proposed Method~4, \texttt{pf4.py}, or one of the baselines \texttt{pf\_centri}, \texttt{pf\_histogram}, and \texttt{pf\_ransac}), and publishes the navigation reference as a line or position message. All four extractors are tested on the robot (Chapter~\ref{cap:experiments}).
 
 \todobox{Integrazione dell'estratore geometrico e tracking temporale}{%
 Dettagliare l'elaborazione geometrica:
 \begin{itemize}
   \item Suddivisione della maschera in strisce orizzontali e selezione dei candidati.
-  \item Applicazione del filtro particellare (\texttt{pf3.py} o \texttt{pf4.py}) per tracciare la linea centrale nel tempo, riducendo le oscillazioni introdotte da buchi nella vegetazione.
+  \item Selezione dell'estrattore (\texttt{pf4.py}, \texttt{pf\_centri.py}, \texttt{pf\_histogram.py} o \texttt{pf\_ransac.py}) e sua applicazione a ogni frame; indicare dove avviene il filtraggio temporale della linea (ad es. il filtro EMA descritto in questo capitolo).
   \item Gestione dei frame non validi (reiezione in caso di confidenza o supporto insufficiente).
 \end{itemize}
 }
@@ -190,7 +190,7 @@ where $K_{p,\mathrm{lat}} = 1.2$ is the lateral proportional gain. Calculated an
 \todobox{Struttura a callback sincrona e carico delle immagini di debug}{%
 Descrivere il funzionamento del nodo unificato in un unico thread:
 \begin{itemize}
-  \item Sequenzialit\`a del ciclo: decodifica JPEG $\to$ inferenza ONNX $\to$ particle filter $\to$ generazione comandi $\to$ compressione e pubblicazione di 3 immagini di diagnostica visiva.
+  \item Sequenzialit\`a del ciclo: decodifica JPEG $\to$ inferenza ONNX $\to$ estrattore geometrico $\to$ generazione comandi $\to$ compressione e pubblicazione di 3 immagini di diagnostica visiva.
   \item Analisi dell'impatto prestazionale: la compressione JPEG delle 3 immagini di debug rappresenta una frazione significativa del tempo totale di callback.
 \end{itemize}
 }
@@ -226,13 +226,15 @@ where $R_i$ is the lateral distance from the ICR to the wheel center plane. Targ
 \subsection{Model export to ONNX}
 \label{subsec:onnx_export}
 
-The trained LR-ASPP model is exported to ONNX format for deployment. ONNX Runtime provides optimized inference across different hardware platforms. The export procedure preserves model weights and input/output specifications from the training checkpoint.
+The deployed LR-ASPP network (the general binary model \texttt{best\_allsam2.pth}, Section~\ref{subsec:c5_deployed_network}) is exported to ONNX format for deployment. ONNX Runtime provides optimized inference across different hardware platforms. The export procedure preserves model weights and input/output specifications from the training checkpoint.
 
 \todobox{Procedura di esportazione ONNX}{%
 Documentare i comandi e le opzioni dello script di esportazione da PyTorch (.pt/.pth) a ONNX (.onnx):
 \begin{itemize}
   \item Funzione \texttt{torch.onnx.export} con parametri di input (batch size fisso a 1, risoluzione d'ingresso $H \times W$, Opset 13/14).
   \item Verifica di equivalenza numerica tra i logit prodotti da PyTorch e quelli generati dal modello esportato in ONNX.
+  \item Versione di PyTorch e versione Opset di ONNX effettivamente utilizzate.
+  \item Inclusione o esclusione di softmax/argmax nel grafo del modello ONNX esportato.
 \end{itemize}
 }
 
@@ -246,6 +248,7 @@ Specificare i dettagli dell'ambiente di esecuzione:
 \begin{itemize}
   \item Configurazione dell'allocazione di memoria e provider attivo (\texttt{CUDAExecutionProvider}).
   \item Tipologia di quantizzazione/precisione (es. FP32 standard vs FP16) e consumo di memoria VRAM sulla GPU Jetson.
+  \item Specifiche del tensore d'ingresso (normalizzazione in $[0,1]$ o con media e deviazione standard di ImageNet, risoluzione) e del tensore di uscita (logit o indici di classe, risoluzione).
 \end{itemize}
 }
 
@@ -256,7 +259,7 @@ End-to-end latency includes image acquisition, preprocessing, segmentation infer
 
 \placeholderfigure{fig:jetson_timing_breakdown}%
 {Execution time breakdown of the synchronous perception-control cycle on NVIDIA Jetson}%
-{Grafico della scomposizione del tempo di ciclo medio su Jetson: decodifica JPEG (10--15 ms), inferenza ONNX su GPU (10--15 ms), filtro geometrico/particellare (5--10 ms), codifica delle 3 immagini JPEG di debug (15--25 ms). Tempo totale per ciclo: 42--76 ms (~20 Hz).}%
+{Grafico della scomposizione del tempo di ciclo medio su Jetson: decodifica JPEG (10--15 ms), inferenza ONNX su GPU (10--15 ms), estrazione geometrica (5--10 ms; indicare con quale estrattore \`e stata misurata), codifica delle 3 immagini JPEG di debug (15--25 ms). Tempo totale per ciclo: 42--76 ms (~20 Hz).}%
 {5cm}
 
 \todobox{Analisi delle latenze misurate e frequenza a 20 Hz (dati reali)}{%

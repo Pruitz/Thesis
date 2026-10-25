@@ -6,24 +6,24 @@ This chapter summarizes the main findings, discusses the contributions and limit
 \section{Main contributions}
 \label{sec:contributions}
 
-This thesis investigated vision-based local guidance for agricultural row navigation through segmentation model selection, dataset preparation with model-assisted annotation, and geometric reference extraction. The main contributions are:
+This thesis investigated vision-based local guidance for agricultural row navigation through segmentation model selection, dataset preparation with automatic SAM~3 annotation, and geometric reference extraction. The main contributions are:
 
 \begin{itemize}
-\item \textbf{Architecture comparison for robotic segmentation:} FCN, DeepLabV3, and LR-ASPP were compared on manually annotated lettuce images. LR-ASPP was selected for its practical accuracy--speed trade-off, achieving path IoU of 0.9546 with 10.41~ms inference time compared to 58.24~ms and 86.87~ms for the other architectures. This 5--8$\times$ latency reduction supports real-time operation despite a 1.2 percentage point mIoU deficit.
+\item \textbf{Architecture comparison for robotic segmentation:} FCN, DeepLabV3, and LR-ASPP were compared on manually annotated lettuce images. LR-ASPP was selected for its accuracy--speed compromise: on the validation split it reached a path IoU of 0.9546 with a recorded inference time of 10.41~ms, against 58.24~ms and 86.87~ms for the other architectures, at the cost of an mIoU about 1.2 percentage points lower.
 
-\item \textbf{SAM~3-assisted dataset preparation:} Multi-crop training datasets for lettuce, tomato, and cucumber were prepared using SAM~3 text-prompted segmentation. This reduced manual annotation effort, although systematic measurements of time savings and inspection requirements remain to be completed.
+\item \textbf{Automatic dataset annotation with SAM~3:} Training labels were generated with SAM~3 text prompts and used without any manual correction. Networks trained on these labels for lettuce were compared with a network trained on manual masks, and the binary labeling was then extended to the complete lettuce, tomato, and cucumber collection to train the network deployed on the robot.
 
-\item \textbf{Evaluation of output label configurations:} Models with four-class, three-class, and binary path outputs were compared. The binary configuration aligns directly with the navigation task and was selected for robotic integration.
+\item \textbf{Evaluation of output label configurations:} Networks with four-class, three-class, and binary path outputs, trained on SAM~3 lettuce labels, were compared against the manual ground truth. Their path IoU values differ by less than 0.5 percentage points in the realistic scenario. The binary configuration was adopted for the robot because the path is the only class used by the geometric extraction.
 
-\item \textbf{Edge-based geometric extractors:} Two methods for converting corridor masks into image-space navigation references were implemented. Both use horizontal strip extraction and independent fitting of left and right boundaries, differing in seed selection, association strategy, and validation checks.
+\item \textbf{Edge-based geometric extractor:} An extractor that converts corridor masks into image-space navigation references was implemented (\texttt{pf4.py}, Method~4). It uses horizontal strip extraction, bottom-up interval association, and independent fitting of the left and right boundaries, and it is compared with three baseline algorithms (\texttt{pf\_centri}, \texttt{pf\_histogram}, \texttt{pf\_ransac}).
 \end{itemize}
 
 \section{Conclusions on segmentation and annotation}
 \label{sec:segmentation_conclusions}
 
-The architecture comparison establishes that LR-ASPP is suitable for real-time agricultural navigation when inference speed is a constraint. Its segmentation accuracy on lettuce is sufficient for path extraction, and its reduced computational cost makes it deployable on robot hardware.
+The architecture comparison supports LR-ASPP as a compromise between segmentation accuracy and recorded inference time on the robot hardware. Whether its segmentation is sufficient for navigation is assessed through the geometric extraction and the robot tests, not from IoU alone.
 
-SAM~3-assisted annotation demonstrates that foundation models can reduce manual labeling effort for agricultural datasets. The quality of automatically generated masks and their effect on trained model performance depend on crop appearance, text prompt formulation, and the need for manual inspection. Future work should measure annotation time systematically, including review and correction, to quantify the actual savings.
+On lettuce, the manual model remains the best: path IoU 0.9566 on the complete test set and 0.9615 in the realistic scenario. Networks trained only on uncorrected SAM~3 labels reach a path IoU of about 0.90 in the realistic scenario (0.9013 for the binary network), but only 0.39--0.41 on the complete test set, and the 4-class network reaches an mIoU of 0.5925. Fully automatic labels therefore provide path supervision of about 0.90 IoU in the operational conditions, but they are not a replacement for manual annotation when all classes are needed or when the scene departs from those conditions. The general binary configuration used on the robot, trained on the complete SAM~3 collection without any manual annotation, reaches 0.9071 in the realistic scenario and 0.6369 on the complete test set when the lettuce test images are excluded from its training data. The deployed weights were assessed visually, in simulation, and on the robot.
 
 The choice of output label configuration affects both annotation effort and downstream geometric extraction. Binary path segmentation focuses the model directly on the navigation target, simplifying both the labeling task and the geometric stage. This comes at the cost of discarding plant and covering-material information that might be useful for other tasks.
 
@@ -34,8 +34,8 @@ The geometric extraction stage converts binary corridor segmentation masks into 
 \begin{enumerate}
     \item Global column projection (\texttt{pf\_histogram}) maximizes simplicity and eliminates tracking failure modes, but discards heading angle information and exhibits sensitivity to asymmetric vegetation distribution.
     \item Centerline strip regression (\texttt{pf\_centri}) provides both lateral offset and heading estimates with low computational demand, but transfers unilateral canopy noise directly into the navigation line.
-    \item Random sample consensus (\texttt{pf\_ransac}) handles scattered boundary points and wide gaps without strip discretization, but introduces frame-to-frame stochastic jitter ($\sigma_\omega > 0$) and variable runtime.
-    \item Decoupled dual-edge tracking (Method~4) provides deterministic execution ($\sigma_\omega = 0.00^\circ$), sub-millisecond latency, and boundary-level noise decoupling, but introduces strict dependencies on near-field seed detection and heuristic jump gates.
+    \item Random sample consensus (\texttt{pf\_ransac}) handles scattered boundary points and wide gaps without strip discretization, but relies on random sampling: its result is reproducible only with a fixed seed, and each trial evaluates all boundary points.
+    \item Decoupled dual-edge tracking (Method~4) provides deterministic execution and boundary-level noise decoupling, but introduces strict dependencies on near-field seed detection and heuristic jump gates.
 \end{enumerate}
 
 These characteristics demonstrate that no individual extractor is universally superior; selection depends on sensor setup, platform compute limits, and field layout.
@@ -59,13 +59,17 @@ The methodology and experimental findings are subject to several specific limita
 
 \item \textbf{Geometric model constraints:} Method~4, \texttt{pf\_ransac}, and \texttt{pf\_centri} assume locally straight, parallel corridor boundaries. They cannot follow curved crop rows or navigate headland turnaround maneuvers where crop boundaries terminate or diverge.
 
-\item \textbf{Unilateral row dropout vulnerability:} If crop continuity along one row is broken by gaps exceeding three strips ($18$~px), Method~4 drops that boundary. Without an asymmetric single-edge fallback mode, this results in reference rejection, whereas global histogram projection continues to provide a lateral setpoint.
+\item \textbf{One-sided gap vulnerability:} Method~4 tracks whole intervals, so both edges are associated together. If missing plants on one side make the edge displacement exceed the limit in more than three consecutive strips ($18$~px), association stops, and the frame is rejected if either edge has fewer than two non-clipped samples. There is no single-edge fallback, whereas the column histogram still provides a lateral setpoint.
 
-\item \textbf{Image-space gate tuning:} The continuity gate ($\Delta x_{\text{max}} = 28$~px) is defined in image coordinates. Significant vehicle pitch and roll on uneven soil cause sudden lateral displacements of the corridor between consecutive scanlines, which can trigger premature tracking loss.
+\item \textbf{Image-space gate tuning:} The continuity gate ($\Delta x_{\text{max}} = 28$~px) is defined in image coordinates. Large vehicle pitch and roll on uneven soil cause sudden lateral displacements of the corridor between consecutive scanlines, which can trigger premature tracking loss.
 
-\item \textbf{Dataset annotation coverage:} Segmentation models were quantitatively evaluated against dense manual ground truth on lettuce. Multi-crop training includes tomato and cucumber, but their segmentation accuracy was not verified against dense manual annotations for those specific crops.
+\item \textbf{Dataset annotation coverage:} Segmentation accuracy was measured against manual ground truth only on lettuce. The deployed weights have no independent IoU, because their training data include the lettuce test images; the general configuration was evaluated through a separate network trained without them. Tomato and cucumber have no manual ground truth. The random image-level split also places adjacent frames in the training and test sets, so the reported IoU values may be optimistic.
 
-\item \textbf{Annotation effort measurement:} Time savings from SAM~3-assisted annotation were evaluated qualitatively. The comparison does not report logged inspection hours or the frequency of manual polygon corrections.
+\item \textbf{Label definition mismatch:} The manual masks mark only the central traversable corridor as path, whereas networks trained on SAM~3 labels can also segment adjacent or non-traversable corridors. This lowers their IoU against the manual masks, but the size of the effect was not measured.
+
+\item \textbf{Quality of the SAM~3 labels:} Visual inspection showed that SAM~3 segmented the plastic mulch film poorly and also assigned the greenhouse plastic cover to the covering class, and that its path masks were less accurate in images taken from unusual viewpoints or where the path between the rows is not clearly visible. Because the labels were used without correction, these errors enter the training data; their extent was not measured.
+
+\item \textbf{Annotation effort measurement:} The time saved by automatic labeling with respect to manual annotation was not measured.
 
 \item \textbf{Closed-loop dynamics:} Offline benchmarks evaluate reference accuracy on static test images. They do not account for vehicle inertia, steering backlash, or dynamic latency variations under closed-loop field control.
 \end{itemize}
@@ -79,8 +83,9 @@ Several directions for future research emerge from this work:
 \label{subsec:future_annotation}
 
 \begin{itemize}
-\item Measure annotation time systematically for manual and SAM~3-assisted workflows, including inspection and correction.
-\item Prepare manual ground-truth masks for tomato and cucumber to validate multi-crop model performance directly.
+\item Measure the annotation time of manual and automatic workflows, and test whether a light correction of the SAM~3 labels improves the trained networks.
+\item Split the data by acquisition sequence rather than by image, so that no frame of a test sequence appears in training, and repeat the evaluation of the general configuration.
+\item Prepare manual ground-truth masks for tomato and cucumber to evaluate the deployed network on those crops directly.
 \item Investigate active learning strategies to select images for manual annotation that improve model generalization most effectively.
 \item Explore other foundation models or fine-tuned SAM variants specialized for agricultural segmentation.
 \end{itemize}
@@ -102,7 +107,7 @@ Several directions for future research emerge from this work:
 \item Extend the geometric representation from linear models to piecewise linear or polynomial formulations to support curved rows and headland turns.
 \item Implement top-down recovery logic and single-edge asymmetric tracking to maintain guidance when bottom-up seeding fails or unilateral row dropouts occur.
 \item Adapt spatial gate thresholds dynamically using vehicle attitude telemetry from an onboard IMU to prevent false tracking loss during pitch and roll variations.
-\item Incorporate temporal Bayesian tracking (such as an Extended Kalman Filter) to smooth reference parameters across frame dropouts without incurring the stochastic jitter of RANSAC.
+\item Incorporate temporal Bayesian tracking (such as an Extended Kalman Filter) to smooth reference parameters across frame dropouts.
 \end{itemize}
 
 \subsection{System integration and field validation}
@@ -112,13 +117,13 @@ Several directions for future research emerge from this work:
 \item Complete closed-loop field trials to validate end-to-end navigation performance under variable lighting, growth stages, and row conditions.
 \item Measure lateral tracking error and success rate over extended distances and multiple crop types.
 \item Integrate temporal filtering and prediction to handle brief reference loss or occlusions.
-\item Investigate fusion with other sensors (e.g., depth, IMU) to improve robustness.
+\item Investigate fusion with other sensors (e.g., depth, IMU) to keep a valid reference when the camera view is degraded.
 \item Develop a complete autonomy system including global path planning, obstacle avoidance, and task-specific behaviors.
 \end{itemize}
 
 \section{Closing remarks}
 \label{sec:closing}
 
-This thesis addressed the segmentation, dataset preparation, and geometric extraction stages of vision-based agricultural navigation. The selection of LR-ASPP balances accuracy and speed for robotic deployment. SAM~3-assisted annotation reduces manual effort, and the geometric extractors convert masks into navigation references using horizontal strip selection and independent edge fitting.
+This thesis addressed the segmentation, dataset preparation, and geometric extraction stages of vision-based agricultural navigation. The selection of LR-ASPP balances accuracy and speed for robotic deployment. Labels generated by SAM~3 without manual correction were used to train the network deployed on the robot, and the geometric extractor converts masks into navigation references using horizontal strip selection and independent edge fitting.
 
-The work establishes a foundation for camera-based local guidance in structured crop environments. Future research should complete field validation, extend the geometric model to handle curves and gaps, and systematically measure annotation savings to guide dataset preparation strategies.
+The work establishes a foundation for camera-based local guidance in structured crop environments. Future research should complete field validation, extend the geometric model to handle curves and gaps, and evaluate the deployed network on independent, sequence-level test data.

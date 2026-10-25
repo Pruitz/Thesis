@@ -23,25 +23,17 @@ Mean IoU (mIoU) averages the per-class IoU values. For the four-class configurat
 \subsubsection{Architecture comparison results}
 \label{subsubsec:architecture_results}
 
-The architecture comparison results reported in Section~\ref{subsec:c5_architecture_results} demonstrate that LR-ASPP achieves path IoU of 0.9546 with inference time of 10.41~ms, compared to FCN (0.9621, 58.24~ms) and DeepLabV3 (0.9651, 86.87~ms). The 1.2 percentage point mIoU deficit is offset by a 5--8$\times$ reduction in inference latency.
+The architecture comparison in Section~\ref{subsec:c5_architecture_results} reports, on the validation split of the manual lettuce dataset, a path IoU of 0.9546 for LR-ASPP with a recorded inference time of 10.41~ms, against 0.9621 and 58.24~ms for FCN and 0.9651 and 86.87~ms for DeepLabV3. LR-ASPP accepts an mIoU about 1.2 percentage points lower in exchange for 5.6 to 8.4 times shorter recorded times. Both figures carry the limitations stated in Section~\ref{subsec:c5_lraspp_selection}: the validation split also selects the checkpoints, and the time ratios hold only if the three runs were recorded under the same conditions.
 
 \subsubsection{Supervision strategy results}
 \label{subsubsec:supervision_results}
 
 \placeholderfigure{fig:segmentation_comparison_crops}%
-{Visual comparison of semantic segmentation outputs across crop types and network architectures}%
-{Immagini di test per le colture di lattuga, pomodoro e cetriolo, con confronto affiancato: immagine RGB acquisita, maschera di ground truth e segmentazioni predette da FCN, DeepLabV3 e LR-ASPP.}%
+{Visual comparison of segmentation outputs on lettuce test images and on tomato and cucumber images}%
+{Lattuga (immagini di test): immagine RGB, ground truth manuale, predizioni della rete LR-ASPP manuale e delle tre reti SAM~3 addestrate solo sull'insalata. Pomodoro e cetriolo (senza ground truth): immagine RGB e predizione della rete binaria installata sul robot, solo come confronto qualitativo.}%
 {6cm}
 
-\todobox{Risultati comparativi delle strategie di supervisione}{%
-Inserire la tabella comparativa e commentare i risultati delle strategie di annotazione sul test set:
-\begin{itemize}
-  \item Confronto tra modello addestrato su maschere manuali a 4 classi vs modello addestrato su maschere generate da SAM~3 a 4 classi.
-  \item Valutazione della configurazione a 3 classi (piante, sentiero, sfondo) e della configurazione binaria (solo sentiero).
-  \item Analisi delle prestazioni sia sull'intero test set che sul sottoinsieme operativo di navigazione.
-  \item Discussione dell'efficacia di SAM~3 nel ridurre il tempo di annotazione rispetto alla qualit\`a finale della maschera.
-\end{itemize}
-}
+The supervision comparison is reported in Section~\ref{subsec:c5_supervision_results}. On the test split, the manual model reaches a path IoU of 0.9566 on the complete test set and 0.9615 in the realistic scenario. The three networks trained only on SAM~3 lettuce labels reach path IoU values between 0.8966 and 0.9013 in the realistic scenario and between 0.3917 and 0.4124 on the complete test set; the 4-class network reaches an mIoU of 0.5925 in the realistic scenario. A network with the deployed general configuration, trained on the complete SAM~3 collection without the lettuce test images, reaches 0.9071 in the realistic scenario and 0.6369 on the complete test set; the deployed weights themselves have no independent IoU (Section~\ref{subsec:c5_deployed_network}).
 
 \subsection{Geometric reference accuracy}
 \label{subsec:geometric_accuracy}
@@ -56,14 +48,14 @@ Geometric reference quality is assessed by evaluating four extraction strategies
 \end{itemize}
 
 \placeholderfigure{fig:geometric_extraction_comparison}%
-{Comparative evaluation of geometric reference extraction across the five evaluated algorithms}%
-{Confronto qualitativo dell'estrazione della linea di guida su maschere di test in tre scenari: (a) filare uniforme; (b) filare con buchi/interruzioni di piante; (c) filare con ombre e intrusioni fogliari asimmetriche. Mostrare le linee stimate da Metodo~4, Metodo~3, pf\_ransac, pf\_centri e il target dell'istogramma a colonne pf\_histogram.}%
+{Comparative evaluation of geometric reference extraction across the four evaluated algorithms}%
+{Confronto qualitativo dell'estrazione della linea di guida su maschere di test in tre scenari: (a) filare uniforme; (b) filare con buchi/interruzioni di piante; (c) filare con ombre e intrusioni fogliari asimmetriche. Mostrare le linee stimate da Metodo~4, pf\_ransac, pf\_centri e il target dell'istogramma a colonne pf\_histogram.}%
 {5.5cm}
 
 \subsubsection{Quantitative comparison of geometric extractors}
 \label{subsubsec:geometric_comparison}
 
-Table~\ref{tab:geometric_benchmark} reports offline performance metrics for the four geometric extraction algorithms evaluated on recorded test sequences. Each algorithm processes identical segmentation masks from the lettuce, tomato, and cucumber datasets.
+Table~\ref{tab:geometric_benchmark} reports offline performance metrics for the four geometric extraction algorithms evaluated on recorded test sequences. Each algorithm processes identical segmentation masks predicted by the deployed binary network (\texttt{best\_allsam2.pth}, Section~\ref{subsec:c5_deployed_network}) on the lettuce, tomato, and cucumber datasets.
 
 \begin{table}[htbp]
     \centering
@@ -82,12 +74,12 @@ Table~\ref{tab:geometric_benchmark} reports offline performance metrics for the 
         Rejection rate (\%) & --- & --- & --- & --- \\
         Execution time (ms) & --- & --- & --- & --- \\
         \midrule
-        Deterministic & Yes & Yes & No & Yes \\
+        Deterministic & Yes & Yes & Yes (fixed seed) & Yes \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Angular jitter $\sigma_\omega$ measures the standard deviation of the estimated centerline slope across 100 repeated executions on the same input frame. Deterministic algorithms produce $\sigma_\omega = 0.00$ by definition, while \texttt{pf\_ransac} exhibits non-zero jitter due to its stochastic sampling strategy.
+Angular jitter $\sigma_\omega$ measures the standard deviation of the estimated centerline slope across 100 repeated executions on the same input frame. Deterministic algorithms produce $\sigma_\omega = 0.00$ by definition. \texttt{pf\_ransac} draws its samples from a generator with a fixed default seed, so it is also reproducible on the same frame; it shows non-zero jitter only if the seed changes between executions, which must be stated with its result.
 
 \subsubsection{Asymmetric disturbance sensitivity}
 \label{subsubsec:asymmetric_disturbance}
@@ -219,17 +211,17 @@ Discutere gli aspetti qualitativi emersi durante i test:
 \subsection{Segmentation performance}
 \label{subsec:segmentation_discussion}
 
-The architecture comparison demonstrates that LR-ASPP provides a practical accuracy--speed trade-off for robotic deployment. Its path IoU of 0.9546 on manually annotated lettuce is sufficient for geometric extraction, while its inference time supports real-time operation.
+The architecture comparison supports LR-ASPP as an accuracy--speed compromise: on the manual lettuce validation split it loses about 1.2 percentage points of mIoU with respect to FCN and DeepLabV3, with much shorter recorded inference times. IoU alone does not establish that a segmentation is sufficient for navigation; this is assessed through the geometric extraction and the robot tests.
 
-The supervision strategy comparison addresses the effort required for dataset preparation. SAM~3-assisted annotation reduces manual labeling time, but its quality and the need for inspection remain to be quantified systematically.
+The supervision comparison tested labels generated by SAM~3 and used without any manual correction. On lettuce, networks trained on these labels remain below the manual model (path IoU 0.9013 against 0.9615 for the binary network in the realistic scenario) and lose most of their accuracy on the complete test set. Part of this gap may come from a difference in label definition: the manual masks mark only the central traversable corridor as path, whereas networks trained on SAM~3 labels can also segment adjacent or non-traversable corridors, which the IoU counts as false positives. This behavior was observed visually for the deployed network but was not quantified. The deployed network required no manual annotation of its training data; the time saved with respect to manual labeling was not measured.
 
 \subsection{Geometric extraction trade-offs}
 \label{subsec:geometric_discussion}
 
-The comparative evaluation highlights structural trade-offs across the four geometric extraction paradigms. No single algorithm demonstrates unconditional superiority across all operational criteria:
+The four geometric extraction methods involve different trade-offs, and none is best on every criterion:
 
 \begin{itemize}
-    \item \textbf{Method~4 versus \texttt{pf\_ransac}:} Method~4 achieves strict determinism ($\sigma_\omega = 0.00^\circ$) and executes in sub-millisecond time ($<0.1$~ms), avoiding the iterative hypothesis-generation overhead and stochastic jitter characteristic of RANSAC. However, \texttt{pf\_ransac} operates on unstructured point clouds without requiring horizontal discretization or sequential gating. When canopy boundaries contain extended irregular gaps, RANSAC can sample valid inliers across non-adjacent rows, whereas Method~4 terminates tracking when empty strips exceed the continuity threshold ($k_{\text{gap}} > 3$).
+    \item \textbf{Method~4 versus \texttt{pf\_ransac}:} Method~4 is deterministic and needs no random hypothesis generation; \texttt{pf\_ransac} is reproducible only through its fixed seed and evaluates all boundary points in each of its 100 trials. \texttt{pf\_ransac} operates on row-wise boundary points without horizontal discretization or sequential gating. When canopy boundaries contain extended irregular gaps, RANSAC can still find inliers above and below the gap, whereas Method~4 stops the association after more than three consecutive strips without a compatible candidate.
 
     \item \textbf{Method~4 versus \texttt{pf\_centri}:} By maintaining separate linear models for the left and right corridor boundaries, Method~4 isolates asymmetric disturbances such as localized weed patches or protruding leaves. In contrast, \texttt{pf\_centri} collapses interval endpoints into midpoints prior to fitting, causing unilateral border noise to directly perturb the estimated centerline. Nevertheless, \texttt{pf\_centri} requires fewer validation checks and operates with a simpler association logic than the decoupled dual-edge architecture.
 
@@ -244,11 +236,11 @@ The experimental findings and the proposed methodology are subject to several sp
 \begin{itemize}
     \item \textbf{Seed dependency in Method~4:} The bottom-up tracking logic relies on detecting a valid corridor interval within the bottom six strips of the region of interest. If the mask immediately in front of the vehicle is corrupted by motion blur, ground glare, or chassis shadows, tracking fails to initialize, causing frame rejection even when the upper corridor is clearly segmented. Unlike global projection methods, Method~4 lacks a mechanism to re-anchor tracking from the top down.
 
-    \item \textbf{Fixed spatial gate calibration:} The continuity threshold $\Delta x_{\text{max}} = 28$~px and strip discretization parameters are fixed in image coordinates. Significant vehicle pitch or roll on rough terrain causes rapid lateral shifts of the corridor boundaries between consecutive frames. When these shifts exceed the gate, the tracker rejects valid boundaries.
+    \item \textbf{Fixed spatial gate calibration:} The continuity threshold $\Delta x_{\text{max}} = 28$~px and strip discretization parameters are fixed in image coordinates. Large vehicle pitch or roll on rough terrain causes rapid lateral shifts of the corridor boundaries between consecutive frames. When these shifts exceed the gate, the tracker rejects valid boundaries.
 
     \item \textbf{Straight-line corridor assumption:} All linear models evaluated (Method~4, \texttt{pf\_ransac}, and \texttt{pf\_centri}) assume locally straight, parallel corridor boundaries. They cannot follow curved planting geometries or guide the robot through headland turnaround maneuvers where corridor boundaries terminate or diverge.
 
-    \item \textbf{Segmentation evaluation scope:} Ground-truth segmentation evaluation is conducted on manually annotated lettuce sequences. While the multi-crop model is trained on tomato and cucumber, its generalization is evaluated through qualitative inspection and navigation performance rather than dense pixel-level error metrics on those crops.
+    \item \textbf{Segmentation evaluation scope:} Quantitative segmentation evaluation is limited to the lettuce test images. The deployed weights have no independent IoU, because their training data include the lettuce test images; the general configuration is evaluated through a separate network trained without those images, and tomato and cucumber have no manual ground truth. The deployed network was also assessed by visual inspection of its predictions, in simulation, and in field tests. In addition, the random image-level split places temporally adjacent frames in the training and test sets, so the reported IoU values may overestimate performance on unseen rows.
 
     \item \textbf{Offline versus closed-loop dynamics:} Offline benchmarks quantify reference line accuracy on static recorded frames. They do not account for dynamic wheel-ground interaction, actuator saturation, or latency jitter during physical vehicle operation.
 \end{itemize}

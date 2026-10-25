@@ -70,7 +70,7 @@ The choice of architecture affects both segmentation accuracy and inference spee
 \subsection{Transfer learning and pretraining}
 \label{subsec:transfer_learning}
 
-Transfer learning initializes network weights from models pretrained on large visual corpora such as ImageNet. The pretrained backbone serves as a generic feature extractor, while the task-specific segmentation head is adapted to produce class scores matching the target dataset. In agricultural vision, pretraining reduces training time and mitigates overfitting when domain-specific annotated datasets are limited in size. For instance, Li et al.~\cite[Section~2.2.2]{li2022multiroi} demonstrate that transferring weights learned on corn fields to other crops (such as tomatoes, cucumbers, and wheat) preserves segmentation accuracy with small training sets. Similarly, Navone et al.~\cite[Section~4.1]{navone2025gpsfree} initialize their segmentation backbone with ImageNet weights prior to fine-tuning on tree-row imagery.
+Transfer learning initializes network weights from models pretrained on large visual corpora such as ImageNet. The pretrained backbone is a generic feature extractor, while the task-specific segmentation head is adapted to produce class scores matching the target dataset. In agricultural vision, pretraining reduces training time and mitigates overfitting when domain-specific annotated datasets are limited in size. For instance, Li et al.~\cite[Section~2.2.2]{li2022multiroi} demonstrate that transferring weights learned on corn fields to other crops (such as tomatoes, cucumbers, and wheat) preserves segmentation accuracy with small training sets. Similarly, Navone et al.~\cite[Section~4.1]{navone2025gpsfree} initialize their segmentation backbone with ImageNet weights prior to fine-tuning on tree-row imagery.
 
 The extent of pretraining differs across implementations. Some setups retain pretrained segmentation heads and replace only the final classification layer, whereas others initialize only the backbone and train the segmentation head from scratch.
 
@@ -85,9 +85,9 @@ Manual pixel-level annotation requires annotators to label every pixel in traini
 \subsection{SAM and foundation models for segmentation}
 \label{subsec:sam_annotation}
 
-Foundation models for segmentation have established model-assisted annotation as an effective alternative to purely manual labeling. The Segment Anything project demonstrated that interactive models operating within a human-in-the-loop data engine can generate large-scale segmentation masks with minimal human intervention~\cite{kirillov2023sam}. While early foundation models required spatial prompts such as bounding boxes or foreground/background clicks for every target instance, Segment Anything Model~3 (SAM~3) introduces open-vocabulary concept segmentation driven directly by textual descriptions and visual exemplars~\cite{carion2026sam3}.
+Foundation models for segmentation have established model-assisted annotation as an effective alternative to purely manual labeling. The Segment Anything project built its dataset with a model-in-the-loop data engine in three stages (assisted-manual, semi-automatic, and fully automatic), obtaining more than one billion masks on 11 million images~\cite{kirillov2023sam}. While early foundation models required spatial prompts such as bounding boxes or foreground/background clicks for every target instance, Segment Anything Model~3 (SAM~3) introduces open-vocabulary concept segmentation driven directly by textual descriptions and visual exemplars~\cite{carion2026sam3}.
 
-In precision agriculture, model-assisted annotation with foundation models has been explored primarily for satellite-based field boundary delineation and canopy phenotyping. However, its systematic application to agricultural ground navigation remains largely unexplored. In this thesis, SAM~3 is employed offline as a zero-shot concept annotator to construct multi-crop training datasets across lettuce, tomato, and cucumber rows, targeting specific navigation classes (soil corridors, crop canopies, and plastic mulch). This offline annotation pipeline decouples the heavy computational burden of foundation models from the real-time inference requirements of the onboard robot controller.
+In precision agriculture, model-assisted annotation with foundation models has been explored primarily for satellite-based field boundary delineation and canopy phenotyping. However, its systematic application to agricultural ground navigation remains largely unexplored. In this thesis, SAM~3 is employed offline as a zero-shot concept annotator, and its masks are used without manual correction. On lettuce, networks trained on SAM~3 labels with different class sets (path, plants, plastic mulch) are compared against manual ground truth; binary path labels generated for the complete lettuce, tomato, and cucumber collection train the network deployed on the robot. This offline annotation pipeline decouples the heavy computational burden of foundation models from the real-time inference requirements of the onboard robot controller.
 
 \section{Geometric extraction methods}
 \label{sec:geometric_extraction}
@@ -182,11 +182,11 @@ To address the trade-off between computational determinism and disturbance decou
 \begin{equation}
     x_L(y) = m_L y + q_L, \qquad x_R(y) = m_R y + q_R
 \end{equation}
-Both boundaries are estimated using Iteratively Reweighted Least Squares (IRLS) with a Cauchy loss function:
+Both boundaries are estimated by Iteratively Reweighted Least Squares (IRLS) with the weight rule
 \begin{equation}
     w_i = \frac{1}{1 + \left(\frac{r_i}{\sigma}\right)^2}
 \end{equation}
-Because estimation operates on a discrete set of horizontal strip boundaries ($N \le 24$), the IRLS solver converges deterministically within four iterations with $O(N)$ computational complexity ($<0.1$~ms on NVIDIA Jetson Orin Nano). Asymmetric perturbations on one boundary alter only local weights for that boundary, without affecting the opposite boundary. The centerline reference $x_C(y) = (x_L(y) + x_R(y))/2$ is computed analytically only after both boundaries have converged independently.
+applied for a fixed number of four iterations to at most one boundary sample per horizontal strip ($N = 24$ by default); Chapter~\ref{cap:geometric_reference} details how \texttt{numpy.polyfit} applies these weights. A perturbation on one boundary changes only the weights and fit of that boundary. The centerline reference $x_C(y) = (x_L(y) + x_R(y))/2$ is computed after both boundary fits.
 
 \subsection{Comparison of geometric representations}
 \label{subsec:geometric_comparison}
@@ -216,7 +216,7 @@ representation and geometric output of the methods discussed above.
         \addlinespace
         Kneip et al.\ \cite{kneip2020cropedge}
         & Stereo elevation map
-        & Scanline transitions and robust linear fit
+        & Scanline transitions and IRLS linear fit
         & Ground-plane crop edge \\
         \addlinespace
         Mendez et al.\ \cite{mendez2023vineyards}
@@ -242,7 +242,7 @@ representation and geometric output of the methods discussed above.
         \addlinespace
         This thesis (Proposed DELE)
         & Predicted soil-corridor / mulch mask
-        & Discrete horizontal strips, decoupled bilateral Cauchy-IRLS fitting
+        & Discrete horizontal strips, separate IRLS fits of the two boundaries
         & Straight image-space centerline $x_C(y)$ and $(e_y, e_\theta)$ \\
         \bottomrule
     \end{tabularx}
@@ -302,9 +302,9 @@ The system developed in this thesis addresses autonomous navigation in GNSS-deni
 \begin{enumerate}
     \item \textbf{Perceptual representation (Soil corridor versus canopy):} Rather than detecting crop stalks or foliage masks, the segmentation stage targets the navigable soil corridor (and plastic mulch). This makes the navigation reference independent of crop growth stage, canopy height, and missing plants (fallanze), providing a continuous geometric guide directly at ground level.
     
-    \item \textbf{Geometric extraction (Decoupled deterministic boundaries versus centroid reduction):} Rather than collapsing strip intervals into midpoints prior to fitting (as in Li et al.~\cite{li2022multiroi}) or employing stochastic RANSAC over dense edge contours, the proposed pipeline decouples the left and right physical corridor boundaries. Each boundary is fitted independently using a Cauchy-weighted IRLS formulation that converges in four fixed iterations ($<0.1$~ms). Unilateral disturbances (such as leaf overhangs or shadows) are suppressed locally on the affected boundary without distorting the opposite side or biasing the central heading angle.
+    \item \textbf{Geometric extraction (Decoupled deterministic boundaries versus centroid reduction):} Rather than collapsing strip intervals into midpoints prior to fitting (as in Li et al.~\cite{li2022multiroi}) or employing stochastic RANSAC over dense edge contours, the proposed pipeline decouples the left and right physical corridor boundaries. Each boundary is fitted independently by iteratively reweighted least squares with a fixed number of four iterations. A disturbance on one side (such as a leaf overhang or a shadow) enters only the fit of that boundary; the centerline, as the mean of the two edge lines, receives half of that boundary's deviation.
     
-    \item \textbf{Embedded deployment feasibility:} The architecture decouples offline model-assisted dataset generation from onboard execution. Large foundation models (SAM~3) are restricted to offline zero-shot concept annotation, while real-time inference on the NVIDIA Jetson Orin Nano is handled by a lightweight LR-ASPP network (using a MobileNetV3 backbone) paired with the deterministic IRLS geometric extractor. The entire pipeline executes in closed loop at 20~Hz without requiring secondary neural networks, stereo elevation mapping, or LiDAR sensors.
+    \item \textbf{Embedded deployment feasibility:} The architecture decouples offline automatic dataset generation from onboard execution. Large foundation models (SAM~3) are restricted to offline zero-shot concept annotation, while real-time inference on the NVIDIA Jetson Orin Nano is handled by a lightweight LR-ASPP network (using a MobileNetV3 backbone) paired with the deterministic IRLS geometric extractor. The entire pipeline executes in closed loop at 20~Hz without requiring secondary neural networks, stereo elevation mapping, or LiDAR sensors.
 \end{enumerate}
 
 The chapters that follow detail and evaluate each stage of this pipeline: Chapter~\ref{cap:architectures} formulates the deep learning architectures, Chapter~\ref{cap:segmentation} analyzes the annotation protocols and comparative model training, Chapter~\ref{cap:geometric_reference} formalizes the geometric extractors, Chapter~\ref{cap:platform} describes the Demetra robotic platform and onboard ROS integration, and Chapter~\ref{cap:experiments} reports offline benchmarks and field tests.
