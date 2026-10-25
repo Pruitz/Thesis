@@ -36,7 +36,7 @@ Specificare la sorgente dei dati e le modalit\`a di raccolta:
 SAM~3 was configured to generate three label representations of the lettuce images, each used to train a separate network:
 \begin{itemize}
 \item \textbf{Four-class configuration:} background, plants, path, and plastic mulch film (covering material), matching the four classes defined in the manual lettuce annotations.
-\item \textbf{Three-class configuration:} background, plants, and path. No prompt targets the covering material; pixels not assigned to plants or path remain background.
+\item \textbf{Three-class configuration:} background, plants, and path. No prompt targets the covering material.
 \item \textbf{Binary configuration:} background and path. For row following, the path mask is the input of the geometric extraction in Chapter~\ref{cap:geometric_reference}.
 \end{itemize}
 The general binary dataset \texttt{Data\_allPlantsSAM2} uses the same two classes but a different prompt and a different image collection (Section~\ref{subsec:c5_sam_annotation}).
