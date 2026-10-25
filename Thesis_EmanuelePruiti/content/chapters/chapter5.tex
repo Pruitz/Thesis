@@ -108,13 +108,13 @@ binary configuration, the 77 lettuce test images were removed from
 \texttt{Data\_allPlantsSAM2} before splitting; the remaining 1882 of 1959
 image--mask pairs were split 80/10/10.
 
-The split is random at the level of individual images. The file names
-indicate frames extracted from acquisition sequences, so a test frame can
-have temporally adjacent, visually similar frames in the training split.
-The reported IoU values may therefore overestimate performance on rows
-not seen during training. This limitation applies to all networks of the
-comparison, since the general collection also contains the other frames of
-the lettuce sequences.
+The split is random at the level of individual images: no test image is
+used for training, but each lettuce folder, which corresponds to one
+acquisition video recorded along a different path, contributes images to
+both the training and the test split. The test images therefore show paths
+whose other images were seen during training. The reported IoU values may
+overestimate performance on paths or fields not seen during training. This
+limitation applies to all networks of the comparison.
 
 The reported operational evaluation selects 42 images from the manual
 test split belonging to \texttt{insalata\_grande1},

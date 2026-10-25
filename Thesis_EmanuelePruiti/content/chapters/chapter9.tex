@@ -63,7 +63,7 @@ The methodology and experimental findings are subject to several specific limita
 
 \item \textbf{Image-space gate tuning:} The continuity gate ($\Delta x_{\text{max}} = 28$~px) is defined in image coordinates. Large vehicle pitch and roll on uneven soil cause sudden lateral displacements of the corridor between consecutive scanlines, which can trigger premature tracking loss.
 
-\item \textbf{Dataset annotation coverage:} Segmentation accuracy was measured against manual ground truth only on lettuce. The deployed weights have no independent IoU, because their training data include the lettuce test images; the general configuration was evaluated through a separate network trained without them. Tomato and cucumber have no manual ground truth. The random image-level split also places adjacent frames in the training and test sets, so the reported IoU values may be optimistic.
+\item \textbf{Dataset annotation coverage:} Segmentation accuracy was measured against manual ground truth only on lettuce. The deployed weights have no independent IoU, because their training data include the lettuce test images; the general configuration was evaluated through a separate network trained without them. Tomato and cucumber have no manual ground truth. The random image-level split also takes training and test images from the same lettuce folders, each recorded along one path, so the reported IoU values may be optimistic for paths not seen during training.
 
 \item \textbf{Label definition mismatch:} The manual masks mark only the central traversable corridor as path, whereas networks trained on SAM~3 labels can also segment adjacent or non-traversable corridors. This lowers their IoU against the manual masks, but the size of the effect was not measured.
 
@@ -84,7 +84,7 @@ Several directions for future research emerge from this work:
 
 \begin{itemize}
 \item Measure the annotation time of manual and automatic workflows, and test whether a light correction of the SAM~3 labels improves the trained networks.
-\item Split the data by acquisition sequence rather than by image, so that no frame of a test sequence appears in training, and repeat the evaluation of the general configuration.
+\item Split the data by folder rather than by image, so that the test paths are not represented in training, and repeat the evaluation of all networks.
 \item Prepare manual ground-truth masks for tomato and cucumber to evaluate the deployed network on those crops directly.
 \item Investigate active learning strategies to select images for manual annotation that improve model generalization most effectively.
 \item Explore other foundation models or fine-tuned SAM variants specialized for agricultural segmentation.
