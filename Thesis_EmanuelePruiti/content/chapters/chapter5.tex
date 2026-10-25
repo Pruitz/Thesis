@@ -97,8 +97,8 @@ the integer parts of 80\% and 10\%, while the remaining samples form the
 test split. For the 762 image--mask pairs, this yields 609 training, 76 validation, and 77
 test samples. The indices are saved in \texttt{split\_indices.pth}.
 
-The test set is not used for gradient-based parameter updates. Checkpoint
-selection uses validation rather than test performance. The three lettuce
+The test set is not used during training. Checkpoint selection relies
+on validation rather than test performance. The three lettuce
 autolabel datasets contain the same 762 images as \texttt{Data}, in the
 same order, and the three autolabel projects use a split file identical
 to that of the manual model. The 77 test images are therefore the same
