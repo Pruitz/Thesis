@@ -80,7 +80,7 @@ The SAM~3 masks are not compared directly with the manual annotations. Their qua
 \subsection{Tomato and cucumber images}
 \label{subsec:c5_tomato_cucumber}
 
-In addition to lettuce, the image collection includes tomato and cucumber crops. These images were annotated exclusively with SAM~3 and are included only in the multi-crop dataset (\texttt{Data\_allPlantsSAM2}, and its copy without the lettuce test images described in Section~\ref{subsec:c5_dataset_splits}) used to train the general binary network deployed on the robot. They were not included in the training sets of the lettuce-specific models compared in Sections~\ref{sec:c5_architecture_comparison} and~\ref{sec:c5_supervision_comparison}.
+In addition to lettuce, the image collection includes tomato and cucumber crops. These images were annotated exclusively with SAM~3 and are included only in the multi-crop dataset (\texttt{Data\_allPlantsSAM2}) used to train the general binary network deployed on the robot. They were not included in the training sets of the lettuce-specific models.
 
 Because no manual ground truth was created for tomato and cucumber, these crops are not part of the quantitative evaluations in Section~\ref{sec:c5_supervision_comparison}. Similarly, the initial comparison among architectures (FCN, DeepLabV3, and LR-ASPP) was carried out exclusively on the lettuce dataset.
 
