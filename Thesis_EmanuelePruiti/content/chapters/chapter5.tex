@@ -121,16 +121,15 @@ The realistic scenario uses only the test images from \texttt{insalata\_grande1}
 \section{Architecture comparison: FCN, DeepLabV3, and LR-ASPP}
 \label{sec:c5_architecture_comparison}
 
-This comparison addresses the architecture choice before changing the
-annotation procedure or crop coverage. FCN, DeepLabV3, and LR-ASPP were
-trained and evaluated using the manually annotated lettuce dataset.
+This section selects the segmentation architecture used in the rest of
+the thesis. FCN, DeepLabV3, and LR-ASPP were trained and compared on the
+manually annotated lettuce dataset.
 
 \subsection{Model selection and pretrained weights}
 \label{subsec:c5_model_selection}
 
 FCN, DeepLabV3, and LR-ASPP were chosen from the implementations available
-in TorchVision. All three were trained on the manually annotated lettuce
-dataset. Their selection was practical, rather than the outcome of a
+in TorchVision. Their selection was practical, rather than the outcome of a
 comparison with every available architecture.
 
 The implementation separates each network into a backbone, which extracts
@@ -143,7 +142,9 @@ scratch.
 For FCN and DeepLabV3, the selected implementations use a ResNet-50
 backbone with pretrained segmentation weights. After these weights
 are loaded, the final convolution of the main classifier is replaced by
-a new $1\times1$ convolution with one output channel per target class.
+a new $1\times1$ convolution with one output channel per target class;
+the final convolution of the auxiliary classifier is replaced in the same
+way.
 
 LR-ASPP is initialized differently. The implementation uses a
 MobileNetV3-Large backbone and requests its default pretrained weights
@@ -165,12 +166,7 @@ starts with a new segmentation head.
 The optimization pipeline is designed to address class imbalance, memory constraints, and the two-stage transfer learning schedule across all evaluated architectures.
 
 \subsubsection{Loss function and class weighting}
-Agricultural scenes exhibit a strong pixel imbalance between the navigable soil corridor, the plant canopy, and background areas. To prevent the optimization from biasing toward dominant categories, the models are trained using a weighted multi-class cross-entropy loss:
-\begin{equation}
-    \mathcal{L}_{\text{WCE}}(Y^*, p) = -\frac{1}{\sum_{i=1}^{H}\sum_{j=1}^{W} w_{Y^*_{i,j}}} \sum_{i=1}^{H} \sum_{j=1}^{W} w_{Y^*_{i,j}} \log(p_{i,j, Y^*_{i,j}}),
-    \label{eq:weighted_ce}
-\end{equation}
-where $Y^*_{i,j} \in \{0, \dots, C-1\}$ is the ground-truth class of pixel $(i,j)$, and $w_c$ is the penalty weight assigned to category $c$.
+Agricultural scenes exhibit a strong pixel imbalance between the navigable soil corridor, the plant canopy, and background areas. To prevent the optimization from biasing toward dominant categories, the models are trained with a weighted cross-entropy loss, denoted $\mathcal{L}_{\text{WCE}}$, in which the contribution of each pixel is multiplied by the weight $w_c$ of its ground-truth class $c$, defined in Eq.~\eqref{eq:class_weights_norm}.
 
 Class weights are computed exclusively on the training split $\mathcal{D}_{\text{train}}$ to avoid information leakage from validation and test partitions. For each class $c$, the total pixel count $N_c = \sum_{k \in \mathcal{D}_{\text{train}}} \sum_{i,j} \mathbb{I}(Y^{(k)}_{i,j} = c)$ is accumulated across all training masks. The balanced inverse frequency $\text{inv}_c$ is then normalized by the mean of all inverse frequencies:
 \begin{equation}
@@ -187,17 +183,17 @@ For FCN and DeepLabV3, which incorporate an auxiliary classifier on the \texttt{
 For LR-ASPP, which lacks an auxiliary head, training relies solely on the primary loss $\mathcal{L}_{\text{WCE}}(\text{main})$.
 
 \subsubsection{Data augmentation and two-stage optimization}
-Data augmentation is applied exclusively to the training subset (\texttt{full\_\allowbreak train\_\allowbreak dataset}), incorporating random horizontal flips, scaling, and photometric adjustments to handle variable outdoor illumination. The validation and test sets (\texttt{full\_\allowbreak eval\_\allowbreak dataset}) use deterministic resizing without perturbations to preserve ground-truth geometry for objective evaluation.
+Data augmentation is applied only to the training subset (\texttt{full\_\allowbreak train\_\allowbreak dataset}): random horizontal flips with probability 0.5, random rotations between $-10^\circ$ and $10^\circ$, and, with probability 0.8, a color jitter of brightness and contrast (factors in $[0.8, 1.2]$) and saturation (factors in $[0.85, 1.15]$) to handle variable outdoor illumination. The validation and test sets (\texttt{full\_\allowbreak eval\_\allowbreak dataset}) are not augmented. Images are not resized, and all images are normalized with the ImageNet mean and standard deviation.
 
-Due to memory constraints imposed by high-resolution feature maps, models are trained with a batch size of 2 and \texttt{drop\_last=True} to prevent single-sample batches from destabilizing batch normalization layers.
+The networks were trained on an NVIDIA GeForce RTX 2080 SUPER with 8~GB of memory, with a batch size of 2.
 
 Optimization proceeds across $200$ epochs in two distinct phases:
 \begin{enumerate}
-    \item \textbf{Stage 1 (Warmup, Epochs 1--10):} Backbone parameters are frozen by setting \texttt{requires\_grad = False}. Only the segmentation heads (and auxiliary classifiers when present) are optimized using AdamW with an initial learning rate of $10^{-3}$ and weight decay of $10^{-4}$. A cosine-annealing scheduler steps each epoch down to $\eta_{\text{min}} = 10^{-6}$. This phase prevents the newly initialized output layers from perturbing the pretrained backbone features with large early gradients.
-    \item \textbf{Stage 2 (Differential Fine-Tuning, Epochs 11--200):} At epoch 10, the backbone is unfrozen. A new AdamW optimizer is instantiated with decoupled parameter groups: the backbone is assigned a learning rate of $10^{-5}$ and the segmentation heads a learning rate of $10^{-4}$. The cosine-annealing scheduler is re-initialized across the remaining 190 epochs ($T_{\text{max}} = 190, \eta_{\text{min}} = 10^{-6}$).
+    \item \textbf{Stage 1 (Warmup, Epochs 1--10):} Backbone parameters are frozen by setting \texttt{requires\_grad = False}. Only the segmentation heads (and auxiliary classifiers when present) are optimized using AdamW with an initial learning rate of $10^{-3}$ and weight decay of $10^{-4}$. A cosine-annealing scheduler steps each epoch down to $\eta_{\text{min}} = 10^{-6}$. Because the newly initialized output layers make large errors in the first epochs, their large error gradients could damage the pretrained weights; freezing the reused layers during these epochs gives the new layers time to learn reasonable weights~\cite[Chapter~11]{geron2026handson}.
+    \item \textbf{Stage 2 (Differential Fine-Tuning, Epochs 11--200):} At epoch 10, the backbone is unfrozen. A new AdamW optimizer is instantiated with decoupled parameter groups: the backbone is assigned a learning rate of $10^{-5}$ and the segmentation heads a learning rate of $10^{-4}$. The lower learning rate of the unfrozen backbone limits changes to its pretrained weights~\cite[Chapter~11]{geron2026handson}. The cosine-annealing scheduler is re-initialized across the remaining 190 epochs ($T_{\text{max}} = 190, \eta_{\text{min}} = 10^{-6}$).
 \end{enumerate}
 
-Early stopping was intentionally disabled to give models with a newly initialized head (such as LR-ASPP) a sufficient training horizon. Model checkpoints are evaluated after each epoch on the unaugmented validation set; \texttt{best.pth} is saved whenever the validation loss decreases below its historical minimum, and \texttt{last.pth} records the final epoch state.
+Early stopping was not used: all three networks were trained for the full 200 epochs, so that the complete training and validation loss curves could be recorded. Model checkpoints are evaluated after each epoch on the unaugmented validation set; \texttt{best.pth} is saved whenever the validation loss decreases below its historical minimum, and \texttt{last.pth} records the final epoch state.
 
 \placeholderfigure{fig:training_loss_curves}%
 {Training loss and validation mIoU progression across epochs for FCN, DeepLabV3, and LR-ASPP}%
@@ -207,11 +203,11 @@ Early stopping was intentionally disabled to give models with a newly initialize
 \subsection{Evaluation metrics and results}
 \label{subsec:c5_architecture_results}
 
-The comparison uses the three CSV records stored in
-\texttt{training insalata}: the FCN, DeepLabV3, and LR-ASPP
-\texttt{*\_\allowbreak validation\_\allowbreak metrics.csv} exports.
-Each contains aggregate metrics, the checkpoint epoch, and IoU values
-for background, plants, soil, and covering material. The reported mIoU
+The comparison uses the three
+\texttt{*\_\allowbreak validation\_\allowbreak metrics.csv} files
+produced by the validation script, one per network. Each contains the
+aggregate metrics, the number of parameters, the checkpoint epoch, and the
+IoU values for background, plants, soil, and covering material. The reported mIoU
 agrees with the arithmetic mean of these four class IoUs, including
 background.
 
@@ -226,16 +222,18 @@ Checkpoint epochs identify the evaluated weights, not training duration.
     \small
     \caption{Architecture comparison from the manual lettuce validation
     exports. Timing values are those recorded in the CSV files, not
-    end-to-end robot latency.}
+    end-to-end robot latency. Parameter counts refer to the trained
+    four-class models and include the auxiliary classifier of FCN and
+    DeepLabV3, which is used only during training.}
     \label{tab:c5_architecture_results}
-    \begin{tabular}{@{}l r r r r r@{}}
+    \begin{tabular}{@{}l r r r r r r@{}}
         \toprule
-        Model & Epoch & mIoU & Path IoU &
+        Model & \shortstack{Parameters\\(M)} & Epoch & mIoU & Path IoU &
         \shortstack{Mean time\\(ms)} & FPS \\
         \midrule
-        FCN & 38 & 0.9232 & 0.9621 & 58.24 & 17.17 \\
-        DeepLabV3 & 43 & 0.9228 & 0.9651 & 86.87 & 11.51 \\
-        LR-ASPP & 194 & 0.9108 & 0.9546 & 10.41 & 96.07 \\
+        FCN & 35.3 & 38 & 0.9232 & 0.9621 & 58.24 & 17.17 \\
+        DeepLabV3 & 42.0 & 43 & 0.9228 & 0.9651 & 86.87 & 11.51 \\
+        LR-ASPP & 3.2 & 194 & 0.9108 & 0.9546 & 10.41 & 96.07 \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -285,11 +283,15 @@ runs therefore used LR-ASPP while varying the output label set.
 Two limitations apply to this comparison. First, the metrics are computed
 on the validation split, which is also used to select \texttt{best.pth}
 through the minimum validation loss, so they are optimistic for all three
-networks. Second, recorded inference times depend on the conditions of each
-run: in the evaluation scripts of Section~\ref{sec:c5_supervision_comparison},
-the same LR-ASPP checkpoint records mean times between 0.010~s and 3.67~s per
-image. The 5.60-fold and 8.35-fold ratios are meaningful only if the three
-exports were produced under identical conditions.
+networks. Second, the three times were measured with the same validation
+script, one image at a time at its original resolution, with GPU
+synchronization before and after the forward pass and the argmax, but in
+separate runs whose hardware load was not recorded. Recorded times depend on
+these conditions: in the evaluation scripts of
+Section~\ref{sec:c5_supervision_comparison}, the same LR-ASPP checkpoint
+records mean times between 0.010~s and 3.67~s per image. The 5.60-fold and
+8.35-fold ratios therefore hold only if the three runs had comparable
+conditions.
 
 This choice is based on the available offline comparison. The records
 do not establish a hardware-independent speed ranking or demonstrate
