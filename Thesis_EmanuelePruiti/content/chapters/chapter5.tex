@@ -92,10 +92,10 @@ Because no manual ground truth was created for tomato and cucumber, these crops 
 \label{subsec:c5_dataset_splits}
 
 The lettuce training runs use an 80\% training, 10\% validation, and
-10\% test partition with seed 42. The training and validation counts are
+10\% test partition. The training and validation counts are
 the integer parts of 80\% and 10\%, while the remaining samples form the
 test split. For the 762 image--mask pairs, this yields 609 training, 76 validation, and 77
-test samples. The indices are saved in \texttt{split\_indices.pth}.
+test samples.
 
 The test set is not used during training. Checkpoint selection relies
 on validation rather than test performance. The three lettuce
@@ -105,9 +105,8 @@ to that of the manual model. The 77 test images are therefore the same
 physical images for all four lettuce networks, and none of them belongs
 to the 609 training images of any of these networks. For the general
 binary configuration, the 77 lettuce test images were removed from
-\texttt{Data\_allPlantsSAM2} before splitting, using SHA-256 image hashes;
-the remaining 1882 of 1959 image--mask pairs were split 80/10/10 with
-seed 42.
+\texttt{Data\_allPlantsSAM2} before splitting; the remaining 1882 of 1959
+image--mask pairs were split 80/10/10.
 
 The split is random at the level of individual images. The file names
 indicate frames extracted from acquisition sequences, so a test frame can
