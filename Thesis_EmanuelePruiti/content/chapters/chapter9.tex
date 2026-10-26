@@ -9,7 +9,7 @@ This chapter summarizes the main findings, discusses the contributions and limit
 This thesis investigated vision-based local guidance for agricultural row navigation through segmentation model selection, dataset preparation with automatic SAM~3 annotation, and geometric reference extraction. The main contributions are:
 
 \begin{itemize}
-\item \textbf{Architecture comparison for robotic segmentation:} FCN, DeepLabV3, and LR-ASPP were compared on manually annotated lettuce images. LR-ASPP was selected for its accuracy--speed compromise: on the validation split it reached a path IoU of 0.9546 with a recorded inference time of 10.41~ms, against 58.24~ms and 86.87~ms for the other architectures, at the cost of an mIoU about 1.2 percentage points lower.
+\item \textbf{Architecture comparison for robotic segmentation:} FCN, DeepLabV3, and LR-ASPP were compared on manually annotated lettuce images. LR-ASPP was selected for its accuracy--speed compromise: on the test images it reached a path IoU of 0.9566 with a recorded inference time of 10.41~ms, against 58.24~ms and 86.87~ms for the other architectures, at the cost of an mIoU about 1.3 percentage points lower.
 
 \item \textbf{Automatic dataset annotation with SAM~3:} Training labels were generated with SAM~3 text prompts and used without any manual correction. Networks trained on these labels for lettuce were compared with a network trained on manual masks, and the binary labeling was then extended to the complete lettuce, tomato, and cucumber collection to train the network deployed on the robot.
 

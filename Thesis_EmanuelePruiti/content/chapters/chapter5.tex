@@ -43,8 +43,9 @@ The labels generated with SAM~3 (Section~\ref{subsec:c5_sam_annotation}) follow 
 \begin{itemize}
 \item \textbf{Four-class configuration:} background, plants, path, and covering material, matching the four classes of the manual lettuce annotations.
 \item \textbf{Three-class configuration:} background, plants, and path. No prompt targets the covering material.
-\item \textbf{Binary configuration:} background and path. This configuration is used both for the lettuce-only binary network and for the general dataset \texttt{Data\_allPlantsSAM2}. For row following, the path mask is the input of the geometric extraction in Chapter~\ref{cap:geometric_reference}.
+\item \textbf{Binary configuration:} background and path. This configuration is used both for the lettuce-only binary network and for the general dataset \texttt{Data\_allPlantsSAM2}.
 \end{itemize}
+For row following, the path mask is the input of the geometric extraction in Chapter~\ref{cap:geometric_reference}.
 
 \section{Dataset preparation}
 \label{sec:c5_datasets}
@@ -69,14 +70,14 @@ annotations.
 \subsection{Automated zero-shot annotation via SAM~3}
 \label{subsec:c5_sam_annotation}
 
-Manual segmentation requires substantial human effort, which motivated testing whether SAM~3 can replace it. SAM~3 was run offline with text prompts, and the generated masks were used without manual filtering, cleaning, or polygon correction. Keeping the imperfect masks was an intentional choice: although the manual lettuce masks were available and more accurate, the experiment measures how well a network trained on unedited autolabels performs, and therefore whether the manual annotation step can be removed. Correcting the SAM~3 masks would likely improve the trained networks, as the higher accuracy of the network trained on manual masks suggests, but it would reintroduce manual work; this trade-off was not evaluated.
+Manual segmentation requires substantial human effort, which motivated testing whether SAM~3 can replace it. The experiment was carried out without any manual work: SAM~3 was run offline with text prompts, and its masks were used for training without inspection, filtering, or correction. Manual masks were available for lettuce and were more accurate, but keeping the unedited masks was an intentional choice, to measure how well a network performs when the annotation step is fully automatic.
 
 All autolabel masks were generated using \texttt{SAM3SemanticPredictor} with the local \texttt{sam3.pt} checkpoint and a confidence threshold of 0.25. For each text prompt, SAM~3 returned zero or more candidate masks, and pixels with mask values greater than 0.5 were assigned to the corresponding class. When masks of different prompts overlapped, the class was assigned according to a fixed prompt order, listed below for each dataset: later prompts were written only on pixels still labeled as background, so earlier classes were never overwritten. Pixels not assigned by any prompt remained background. The prompts and their order are:
 \begin{itemize}
-    \item \texttt{Data\_insalataSAM\_4class}: \texttt{plants} (class 1), then \texttt{plastic mulch film} (class 3), then \texttt{central farm path} (class 2);
-    \item \texttt{Data\_insalataSAM\_3class}: \texttt{plants} (class 1), then \texttt{central farm path} (class 2);
-    \item \texttt{Data\_insalataSAM\_2class}: \texttt{central farm path} only (class 1);
-    \item \texttt{Data\_allPlantsSAM2}: \texttt{central path} only (class 1).
+    \item \texttt{Data\_insalataSAM\_4class} (lettuce images): \texttt{plants} (class 1), then \texttt{plastic mulch film} (class 3), then \texttt{central farm path} (class 2)
+    \item \texttt{Data\_insalataSAM\_3class} (lettuce images): \texttt{plants} (class 1), then \texttt{central farm path} (class 2)
+    \item \texttt{Data\_insalataSAM\_2class} (lettuce images): \texttt{central farm path} only (class 1)
+    \item \texttt{Data\_allPlantsSAM2} (lettuce, tomato, and cucumber images): \texttt{central path} only (class 1).
 \end{itemize}
 The SAM~3 masks are not compared directly with the manual annotations. Their quality enters the evaluation only through the networks trained on them (Section~\ref{subsec:c5_supervision_configurations}).
 
@@ -96,13 +97,13 @@ Because no manual ground truth was created for tomato and cucumber, these crops 
 \label{subsec:c5_dataset_splits}
 
 The lettuce training runs use an 80\% training, 10\% validation, and
-10\% test partition. The training and validation counts are
-the integer parts of 80\% and 10\%, while the remaining samples form the
-test split. For the 762 image--mask pairs, this yields 609 training, 76 validation, and 77
+10\% test partition. For the 762 image--mask pairs, this yields 609 training, 76 validation, and 77
 test samples.
 
-The test set is not used during training. Checkpoint selection relies
-on validation rather than test performance. The three lettuce
+The training split is used to update the network weights. The
+validation split is used to compute the loss at the end of each epoch and
+to select the best checkpoint. The test split is not used during training
+and is used only afterwards, to compute the final scores. The three lettuce
 autolabel datasets contain the same 762 images as \texttt{Data}, in the
 same order, and the three autolabel projects use a split file identical
 to that of the manual model. The 77 test images are therefore the same
@@ -207,13 +208,15 @@ Early stopping was not used: all three networks were trained for the full 200 ep
 \subsection{Evaluation metrics and results}
 \label{subsec:c5_architecture_results}
 
-The comparison uses the three
-\texttt{*\_\allowbreak validation\_\allowbreak metrics.csv} files
-produced by the validation script, one per network. Each contains the
+The segmentation scores come from the three
+\texttt{*\_\allowbreak test\_\allowbreak metrics.csv} files produced by
+the test script on the 77 test images, one per network. Each contains the
 aggregate metrics, the number of parameters, the checkpoint epoch, and the
-IoU values for background, plants, soil, and covering material. The reported mIoU
-agrees with the arithmetic mean of these four class IoUs, including
-background.
+IoU values for background, plants, soil, and covering material. The
+reported mIoU agrees with the arithmetic mean of these four class IoUs,
+including background. The test script was run on the CPU, so its times
+are not used. The inference times come instead from the validation script,
+run on the GPU on the 76 validation images.
 
 Table~\ref{tab:c5_architecture_results} reports the exported metrics.
 Inference times have been converted from seconds to milliseconds.
@@ -224,9 +227,9 @@ Checkpoint epochs identify the evaluated weights, not training duration.
 \begin{table}[htbp]
     \centering
     \small
-    \caption{Architecture comparison from the manual lettuce validation
-    exports. Timing values are those recorded in the CSV files, not
-    end-to-end robot latency. Parameter counts refer to the trained
+    \caption{Architecture comparison on the 77 test images of the manual
+    lettuce dataset. Mean times were measured on the GPU on the validation
+    images and are not end-to-end robot latency. Parameter counts refer to the trained
     four-class models and include the auxiliary classifier of FCN and
     DeepLabV3, which is used only during training.}
     \label{tab:c5_architecture_results}
@@ -235,40 +238,39 @@ Checkpoint epochs identify the evaluated weights, not training duration.
         Model & \shortstack{Parameters\\(M)} & Epoch & mIoU & Path IoU &
         \shortstack{Mean time\\(ms)} & FPS \\
         \midrule
-        FCN & 35.3 & 38 & 0.9232 & 0.9621 & 58.24 & 17.17 \\
-        DeepLabV3 & 42.0 & 43 & 0.9228 & 0.9651 & 86.87 & 11.51 \\
-        LR-ASPP & 3.2 & 194 & 0.9108 & 0.9546 & 10.41 & 96.07 \\
+        FCN & 35.3 & 38 & 0.9253 & 0.9654 & 58.24 & 17.17 \\
+        DeepLabV3 & 42.0 & 43 & 0.9253 & 0.9686 & 86.87 & 11.51 \\
+        LR-ASPP & 3.2 & 194 & 0.9124 & 0.9566 & 10.41 & 96.07 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-FCN and DeepLabV3 achieve mIoU values of 0.9232 and 0.9228, respectively,
-compared with 0.9108 for LR-ASPP. Using the unrounded CSV values, the
-LR-ASPP deficit is 1.24 percentage points relative to FCN and 1.19
-relative to DeepLabV3. Its mean recorded time is 10.41~ms, compared
+FCN and DeepLabV3 reach the same mIoU on the test images (0.9253, with a
+difference below $10^{-4}$), compared with 0.9124 for LR-ASPP, a deficit of
+1.29 percentage points. Its mean recorded time is 10.41~ms, compared
 with 58.24~ms and 86.87~ms. These timings correspond to a 5.60-fold
 reduction relative to FCN and an 8.35-fold reduction relative to
 DeepLabV3.
 
 Table~\ref{tab:c5_architecture_class_iou} provides the class-level
 comparison. LR-ASPP has lower IoU than both alternatives in each class,
-although its soil/path IoU remains 0.9546. The data support a trade-off
+although its soil/path IoU remains 0.9566. The data support a trade-off
 between accuracy and latency, not a claim of equal segmentation accuracy.
 
 \begin{table}[htbp]
     \centering
     \small
-    \caption{Per-class IoU from the same manual lettuce validation
-    exports. Plants, soil, and covering material correspond to
+    \caption{Per-class IoU on the same 77 test images. Plants, soil, and
+    covering material correspond to
     \texttt{pianta}, \texttt{suolo}, and \texttt{copertura} in these files.}
     \label{tab:c5_architecture_class_iou}
     \begin{tabular}{@{}l r r r r@{}}
         \toprule
         Model & Background & Plants & Soil/path & Covering material \\
         \midrule
-        FCN & 0.9464 & 0.9280 & 0.9621 & 0.8565 \\
-        DeepLabV3 & 0.9464 & 0.9277 & 0.9651 & 0.8519 \\
-        LR-ASPP & 0.9394 & 0.9120 & 0.9546 & 0.8372 \\
+        FCN & 0.9493 & 0.9385 & 0.9654 & 0.8479 \\
+        DeepLabV3 & 0.9494 & 0.9384 & 0.9686 & 0.8448 \\
+        LR-ASPP & 0.9426 & 0.9246 & 0.9566 & 0.8257 \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -277,18 +279,17 @@ between accuracy and latency, not a claim of equal segmentation accuracy.
 \label{subsec:c5_lraspp_selection}
 
 LR-ASPP was adopted because the substantial reduction in recorded
-inference time justified accepting an mIoU approximately 1.2 percentage
+inference time justified accepting an mIoU approximately 1.3 percentage
 points below the other two configurations. It was not the most accurate
 model, but offered the practical accuracy--latency compromise sought for
 robot perception. FCN and DeepLabV3 had higher IoU but substantially
 longer recorded inference times. The subsequent SAM-supervised training
-runs therefore used LR-ASPP while varying the output label set.
+runs therefore used LR-ASPP while varying the output label set. The
+choice was made on the validation results (mIoU 0.9232, 0.9228, and
+0.9108), which show the same pattern as the test results.
 
-Two limitations apply to this comparison. First, the metrics are computed
-on the validation split, which is also used to select \texttt{best.pth}
-through the minimum validation loss, so they are optimistic for all three
-networks. Second, the three times were measured with the same validation
-script, one image at a time at its original resolution, with GPU
+The inference times have one limitation. The three times were measured
+with the same validation script, one image at a time at its original resolution, with GPU
 synchronization before and after the forward pass and the argmax, but in
 separate runs whose hardware load was not recorded. Recorded times depend on
 these conditions: in the evaluation scripts of
