@@ -6,7 +6,11 @@ Following the theoretical analysis of deep learning architectures in Chapter~\re
 
 The experimental study began by fine-tuning FCN, DeepLabV3, and LR-ASPP from pretrained weights on a manually annotated lettuce dataset for an empirical comparison. Because manual segmentation was time-consuming, this initial training was limited to lettuce rather than repeated across every target crop. Its outcome led to the adoption of LR-ASPP for embedded deployment.
 
-After the selection of LR-ASPP, the second experiment investigated whether a network trained only on masks generated automatically by SAM~3, without manual filtering or correction, segments the navigable path accurately enough for row following. The manually annotated lettuce dataset was available and more accurate, but the aim was to test labels that require no human correction at all. The comparison models were trained on lettuce images only, the crop with manual ground truth: SAM~3 produced a four-class label set (background, plants, path, covering material), a three-class set (background, plants, path), and a binary set (background, path), and one LR-ASPP network was trained on each. These three networks are evaluated by comparing their predictions with the manual lettuce masks; the SAM~3 masks themselves are not compared with the manual annotations. After this study, the binary labeling was extended to the complete image collection, labeled entirely by SAM~3 (\texttt{Data\_allPlantsSAM2}), and the network trained on it is the one deployed on the robot. To evaluate this general configuration on the same lettuce test images, a further network was trained with the same labels after removing those test images from the collection.
+The second experiment, carried out after the selection of LR-ASPP, tests whether networks trained on masks generated automatically by SAM~3, without any manual correction, can replace manual annotation. Manual masks were available for lettuce and were more accurate, but the aim was to evaluate labels that require no human work.
+
+The experiment uses only lettuce images, because lettuce is the only crop with manual ground truth. SAM~3 generated three label sets for these images, with four, three, and two classes (Section~\ref{subsec:c5_semantic_classes}), and a separate LR-ASPP network was trained on each. The predictions of each network are compared with the manual lettuce masks on all its classes. The path class matters most, because it is the only one used for row following. The SAM~3 masks themselves are not compared with the manual masks.
+
+The binary labeling was then extended to the complete image collection, labeled entirely by SAM~3 (\texttt{Data\_allPlantsSAM2}), and a network trained on this collection is the one deployed on the robot. The results of this configuration are reported in Table~\ref{tab:c5_results_binary_general}.
 
 This chapter details image acquisition, dataset partitioning, training parameters, and offline benchmark evaluations. Subsequent chapters detail geometric navigation extraction and closed-loop robot validation.
 
@@ -18,7 +22,7 @@ This chapter details image acquisition, dataset partitioning, training parameter
 
 \placeholderfigure{fig:crop_dataset_samples}%
 {Sample field images across crops and corresponding training masks}%
-{Esempi visivi delle acquisizioni di campo per lattuga, pomodoro e cetriolo, con le corrispondenti maschere di annotazione impiegate per l'addestramento (ground truth manuale per la lattuga, maschere autogenerate da SAM~3 per pomodoro e cetriolo nelle formulazioni a classi multiple o binarie).}%
+{Esempi visivi delle acquisizioni di campo per lattuga, pomodoro e cetriolo, con le corrispondenti maschere di annotazione impiegate per l'addestramento (ground truth manuale per la lattuga, maschere binarie del path autogenerate da SAM~3 per pomodoro e cetriolo).}%
 {5.5cm}
 
 \todobox{Origine delle immagini e condizioni di acquisizione}{%
@@ -78,7 +82,7 @@ The SAM~3 masks are not compared directly with the manual annotations. Their qua
 
 \placeholderfigure{fig:sam3_annotation_pipeline}%
 {SAM~3 zero-shot autolabeling and mask composition workflow}%
-{Diagramma della pipeline di autolabeling zero-shot: formulazione dei prompt testuali (\texttt{"plants"}, \texttt{"central farm path"}, \texttt{"plastic mulch film"}), generazione automatica delle maschere tramite SAM~3 e composizione deterministica delle etichette senza filtraggio o revisione manuale.}%
+{Diagramma della pipeline di autolabeling zero-shot: formulazione dei prompt testuali (\texttt{"plants"}, \texttt{"central farm path"}, \texttt{"plastic mulch film"}, \texttt{"central path"}), generazione automatica delle maschere tramite SAM~3 e composizione deterministica delle etichette senza filtraggio o revisione manuale.}%
 {5cm}
 
 \subsection{Tomato and cucumber images}
@@ -163,7 +167,7 @@ starts with a new segmentation head.
 \subsection{Training configuration and loss formulation}
 \label{subsec:c5_training_config}
 
-The optimization pipeline is designed to address class imbalance, memory constraints, and the two-stage transfer learning schedule across all evaluated architectures.
+The optimization pipeline addresses class imbalance and follows a two-stage transfer learning schedule for all evaluated architectures.
 
 \subsubsection{Loss function and class weighting}
 Agricultural scenes exhibit a strong pixel imbalance between the navigable soil corridor, the plant canopy, and background areas. To prevent the optimization from biasing toward dominant categories, the models are trained with a weighted cross-entropy loss, denoted $\mathcal{L}_{\text{WCE}}$, in which the contribution of each pixel is multiplied by the weight $w_c$ of its ground-truth class $c$, defined in Eq.~\eqref{eq:class_weights_norm}.
@@ -189,15 +193,15 @@ The networks were trained on an NVIDIA GeForce RTX 2080 SUPER with 8~GB of memor
 
 Optimization proceeds across $200$ epochs in two distinct phases:
 \begin{enumerate}
-    \item \textbf{Stage 1 (Warmup, Epochs 1--10):} Backbone parameters are frozen by setting \texttt{requires\_grad = False}. Only the segmentation heads (and auxiliary classifiers when present) are optimized using AdamW with an initial learning rate of $10^{-3}$ and weight decay of $10^{-4}$. A cosine-annealing scheduler steps each epoch down to $\eta_{\text{min}} = 10^{-6}$. Because the newly initialized output layers make large errors in the first epochs, their large error gradients could damage the pretrained weights; freezing the reused layers during these epochs gives the new layers time to learn reasonable weights~\cite[Chapter~11]{geron2026handson}.
+    \item \textbf{Stage 1 (Warmup, Epochs 1--10):} Backbone parameters are frozen by setting \texttt{requires\_grad = False}. Only the segmentation heads (and auxiliary classifiers when present) are optimized using AdamW with an initial learning rate of $10^{-3}$ and weight decay of $10^{-4}$. A cosine-annealing scheduler with $T_{\text{max}} = 200$ and $\eta_{\text{min}} = 10^{-6}$ updates the learning rate after each epoch. Because the newly initialized output layers make large errors in the first epochs, their large error gradients could damage the pretrained weights; freezing the reused layers during these epochs gives the new layers time to learn reasonable weights~\cite[Chapter~11]{geron2026handson}.
     \item \textbf{Stage 2 (Differential Fine-Tuning, Epochs 11--200):} At epoch 10, the backbone is unfrozen. A new AdamW optimizer is instantiated with decoupled parameter groups: the backbone is assigned a learning rate of $10^{-5}$ and the segmentation heads a learning rate of $10^{-4}$. The lower learning rate of the unfrozen backbone limits changes to its pretrained weights~\cite[Chapter~11]{geron2026handson}. The cosine-annealing scheduler is re-initialized across the remaining 190 epochs ($T_{\text{max}} = 190, \eta_{\text{min}} = 10^{-6}$).
 \end{enumerate}
 
 Early stopping was not used: all three networks were trained for the full 200 epochs, so that the complete training and validation loss curves could be recorded. Model checkpoints are evaluated after each epoch on the unaugmented validation set; \texttt{best.pth} is saved whenever the validation loss decreases below its historical minimum, and \texttt{last.pth} records the final epoch state.
 
 \placeholderfigure{fig:training_loss_curves}%
-{Training loss and validation mIoU progression across epochs for FCN, DeepLabV3, and LR-ASPP}%
-{Curve di apprendimento durante le epoche di addestramento: andamento della Cross-Entropy Loss e della Mean IoU su set di validazione per le tre architetture candidate sul dataset di lattuga.}%
+{Training and validation loss across epochs for FCN, DeepLabV3, and LR-ASPP}%
+{Curve di apprendimento durante le 200 epoche: loss di training e loss di validazione (dai file \texttt{training\_log.csv}) per le tre architetture candidate sul dataset di lattuga.}%
 {4.5cm}
 
 \subsection{Evaluation metrics and results}
@@ -346,10 +350,10 @@ Evaluation uses the Intersection over Union (IoU) metric:
 \end{equation}
 where $\text{TP}_c$, $\text{FP}_c$, and $\text{FN}_c$ denote true positives, false positives, and false negatives for class $c$, respectively. Mean IoU (mIoU) denotes the arithmetic mean across all evaluated classes, including background where applicable.
 
-Performance is evaluated across two distinct subsets of the 77-image test partition (split indices from \texttt{split\_indices.pth}):
+Performance is evaluated on two subsets of the 77-image test partition:
 \begin{itemize}
     \item \textbf{Complete test set (77 images):} Spans all eight lettuce acquisition folders (\texttt{insalata\_\allowbreak grande1}, \texttt{insalata\_\allowbreak grande2}, \texttt{insalata\_\allowbreak media1}, \texttt{insalata\_\allowbreak media2}, \texttt{insalata\_\allowbreak media3}, \texttt{insalata\_\allowbreak piccola}, \texttt{insalata\_\allowbreak piccola\_1}, and \texttt{insalata\_\allowbreak piccola\_2}), including viewpoints that the robot cannot reach.
-    \item \textbf{Realistic operational scenario (42 images):} Restricts evaluation to \texttt{insalata\_\allowbreak grande1}, \texttt{insalata\_\allowbreak grande2}, and \texttt{insalata\_\allowbreak media1}. These images were taken between parallel rows, in the area where the robot is meant to operate. Models were not retrained on this subset; they were trained on their respective full datasets and evaluated post-hoc on these operational images.
+    \item \textbf{Realistic operational scenario (42 images):} Restricts evaluation to \texttt{insalata\_\allowbreak grande1}, \texttt{insalata\_\allowbreak grande2}, and \texttt{insalata\_\allowbreak media1}, described in Section~\ref{subsec:c5_dataset_splits}. The networks are not retrained on this subset.
 \end{itemize}
 
 \subsection{Benchmark results across supervision strategies}
