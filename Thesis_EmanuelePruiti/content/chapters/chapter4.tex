@@ -135,7 +135,7 @@ This concatenated representation is projected back to 256 channels via a $1 \tim
 \section{MobileNetV3 and the Lite Reduced ASPP (LR-ASPP) head}
 \label{sec:mobilenet_lraspp}
 
-DeepLabV3 with a ResNet-50 backbone provides high segmentation accuracy, but it is the slowest of the three networks in the offline comparison of Chapter~\ref{cap:dataset_training} (86.87~ms mean recorded inference time). For mobile devices, Howard et al.~\cite{howard2019mobilenetv3} developed MobileNetV3, tuned to mobile phone CPUs, together with the Lite Reduced ASPP (LR-ASPP) segmentation head.
+DeepLabV3 with a ResNet-50 backbone provides high segmentation accuracy, but it is the slowest of the three networks in the offline comparison of Chapter~\ref{cap:dataset_training} (86.90~ms mean recorded inference time). For mobile devices, Howard et al.~\cite{howard2019mobilenetv3} developed MobileNetV3, tuned to mobile phone CPUs, together with the Lite Reduced ASPP (LR-ASPP) segmentation head.
 
 \subsection{Depthwise separable convolutions}
 \label{subsec:dw_conv}
@@ -325,7 +325,7 @@ A key architectural distinction must be emphasized between the foundation model 
 \begin{itemize}
     \item SAM~3 has about 850 million parameters, of which about 450 million belong to the vision encoder and 300 million to the text encoder~\cite{carion2026sam3}. Its reported speed of 30~ms per image refers to an NVIDIA H200 data-center GPU~\cite{carion2026sam3}, a hardware class not available on the robot, and the model was not evaluated on the onboard computer in this work.
     \item In this thesis, SAM~3 functions strictly as an \textbf{offline supervision generator}. Given text prompts representing crop and corridor concepts, SAM~3 generates dense candidate masks across lettuce, tomato, and cucumber image collections.
-    \item The resulting masks are used without manual correction as training targets for LR-ASPP, the network selected for onboard perception after the comparison on the manually annotated lettuce dataset (Chapter~\ref{cap:dataset_training}). LR-ASPP recorded a mean offline inference time of 10.41~ms in that comparison.
+    \item The resulting masks are used without manual correction as training targets for LR-ASPP, the network selected for onboard perception after the comparison on the manually annotated lettuce dataset (Chapter~\ref{cap:dataset_training}). LR-ASPP recorded a mean offline inference time of 8.21~ms in that comparison.
 \end{itemize}
 
 \section{Summary of architectural characteristics}
