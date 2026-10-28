@@ -16,7 +16,7 @@ mean of the two fitted edge lines.
 The function expects a two-dimensional label mask $M(y,x)$ of height $H$
 and width $W$. Image coordinates increase to the right in $x$ and downward
 in $y$. The argument \texttt{path\_class} identifies the class from which
-corridor intervals are extracted; its default is 1. A
+corridor intervals are extracted. Its default is 1. A
 binary input can therefore use 1 for the target region and 0 elsewhere.
 For a multiclass segmentation mask, this argument must match the actual
 label encoding, or the mask must first be converted appropriately. The
@@ -50,12 +50,12 @@ its own observations, although both sides must have enough samples.
 
 The processing stages are:
 \begin{enumerate}
-    \item select a lower region of interest and clean the target-class mask;
-    \item extract and merge projected intervals in horizontal strips;
-    \item select a seed interval by edge support;
-    \item associate intervals upward through the image;
-    \item fit the non-clipped left and right boundaries independently;
-    \item validate the edge geometry, calculate quality indicators, and
+    \item Select a lower region of interest and clean the target-class mask.
+    \item Extract and merge projected intervals in horizontal strips.
+    \item Select a seed interval by edge support.
+    \item Associate intervals upward through the image.
+    \item Fit the non-clipped left and right boundaries independently.
+    \item Validate the edge geometry, calculate quality indicators, and
     rasterize the center reference.
 \end{enumerate}
 
@@ -71,7 +71,7 @@ The binary target mask is
 \end{equation}
 Opening with a $5\times5$ elliptical kernel is applied first,
 then closing with a $9\times9$ rectangular kernel. Connected components
-with fewer than 500 pixels are removed; all sufficiently large components
+with fewer than 500 pixels are removed. All sufficiently large components
 are retained, not only the largest one.
 
 Let $\widetilde B$ denote the cleaned binary ROI mask. It supplies both
@@ -104,8 +104,8 @@ $y_s=y_0+(y_s^-+y_s^+)/2$, following the code's bound-based convention.
 Integer division may leave a remainder above the constructed strips.
 
 For example, with $H_R=157$ and $N=24$, the strips cover the lowest
-$24\times6=144$ ROI rows. The upper 13 ROI rows do not supply candidates;
-the ROI and the region actually sampled by the strips are therefore not
+$24\times6=144$ ROI rows. The upper 13 ROI rows do not supply candidates.
+The ROI and the region actually sampled by the strips are therefore not
 identical.
 
 Within each strip, the cleaned mask is summed vertically. A column is
@@ -129,8 +129,8 @@ With \texttt{border\_margin}=2, the flags are
 These flags indicate possible truncation by the image boundary, rather
 than verified physical corridor edges.
 
-Column projection merges evidence across different vertical locations;
-a merged interval can also contain horizontal gaps. Neither its width
+Column projection merges evidence across different vertical locations,
+and a merged interval can also contain horizontal gaps. Neither its width
 nor its endpoints prove that its rectangular interior is entirely target
 class. This matters when interpreting intervals around occlusions or
 fragmented segmentation.
@@ -146,7 +146,7 @@ fragmented segmentation.
 Method~4 computes $u_{L,i}$ and $u_{R,i}$ in separate bands centered on
 $\ell_i$ and $r_i$. The effective half-width is
 $\max(2,\texttt{local\_band\_half\_width})$, equal to 5 by default.
-These means quantify target-pixel occupancy around each boundary; they
+These means quantify target-pixel occupancy around each boundary. They
 are not boundary-detection probabilities. Because a band straddles a
 boundary, it need not be entirely target class even for a clean interval.
 
@@ -231,7 +231,7 @@ default, with scale $\sigma=18$ pixels:
 \end{equation}
 Each iteration calls \texttt{numpy.polyfit} with degree one and updated
 weights. Its weights multiply unsquared residuals
-\cite{numpyPolyfitDocumentation}; the fitted objective at that iteration is
+\cite{numpyPolyfitDocumentation}, so the fitted objective at that iteration is
 \begin{equation}
     (m,q)=\mathop{\arg\min}_{m,q}
         \sum_i \left[w_i(x_i-my_i-q)\right]^2.
@@ -241,7 +241,7 @@ Thus, the effective coefficient of each squared residual is $w_i^2$,
 not $w_i$. The implementation should not be interpreted as a different
 standard robust-loss estimator solely from the form of its weight rule.
 Weights are recomputed from the current model rather than accumulated
-across iterations; no convergence-based stopping criterion is used.
+across iterations, and no convergence-based stopping criterion is used.
 
 \placeholderfigure{fig:robust_edge_fitting}%
 {Reweighted line fitting of corridor boundaries and centerline construction}%
@@ -276,7 +276,9 @@ Rows with $D(y)\geq d_{\min}$, where $d_{\min}=8$~px is the minimum
 interval width, are treated as valid. Let $y^{\mathrm{obs}}_{\mathrm{top}}$
 and $y^{\mathrm{obs}}_{\mathrm{bot}}$ be the smallest and largest heights of
 the retained edge samples. If $|\Delta m|<10^{-6}$, the edges are treated
-as parallel and the check requires $\Delta q\geq d_{\min}$. Otherwise the
+as parallel and the check requires $\Delta q\geq d_{\min}$. In this case the
+valid range spans from $y^{\mathrm{obs}}_{\mathrm{top}}$ to $H-1$, and the length
+condition described below is not applied. Otherwise the
 width reaches $d_{\min}$ at $y_\times=(d_{\min}-\Delta q)/\Delta m$, and the
 valid range is
 \begin{equation}
@@ -300,13 +302,13 @@ valid range, and the length condition then decides. In particular,
 when $\Delta m>0$ and the crossing lies below the observed range, the
 modeled width stays below $d_{\min}$ over all observed samples, yet the fit
 is accepted if the range from $y_\times$ to the image bottom satisfies the
-length condition; the reference is then rendered only below $y_\times$. The median of $D(y)$ at 16 evenly spaced
+length condition. The reference is then rendered only below $y_\times$. The median of $D(y)$ at 16 evenly spaced
 heights in the valid range (in the observed range if the check fails) is
 returned as \texttt{width}.
 
 A separate indicator uses all accepted intervals, including those with
 border-touching endpoints. For $K$ intervals in association order, let
-$z_j=r_j-\ell_j$; unlike extraction width $d_j$, this quantity omits the
+$z_j=r_j-\ell_j$. Unlike extraction width $d_j$, this quantity omits the
 inclusive-endpoint $+1$. The width-irregularity indicator is
 \begin{equation}
     E_D=\frac{Q_{0.90}\left(\{|z_{j+2}-2z_{j+1}+z_j|\}_{j=1}^{K-2}\right)}
@@ -316,14 +318,16 @@ inclusive-endpoint $+1$. The width-irregularity indicator is
 \end{equation}
 where $Q_{0.90}$ is the 90th percentile. These are second differences in
 sample order, not derivatives normalized by vertical distance. If strips
-are skipped, sample spacing is unequal; even a width varying linearly
+are skipped, sample spacing is unequal, and even a width varying linearly
 with image height need not yield zero second differences. The indicator
 therefore measures an implementation-specific irregularity, not a
 perspective-invariant physical curvature.
 
 The tracking fraction $T$ is the number of accepted intervals divided by
-the number of strips whose center lies at or below $y_v^{\mathrm{top}}$; if
-the geometric check fails, all constructed strips are counted. Let $S$ be
+the number of strips whose center lies at or below $y_v^{\mathrm{top}}$. If
+the geometric check fails, all constructed strips are counted. $T$ is not
+clipped to 1 and can slightly exceed it when the valid range starts below
+some accepted strips. Let $S$ be
 the mean of the left support values used by the left fit and the right
 support values used by the right fit, pooled together. With
 maximum consecutive miss count $g_{\max}$ and allowed gap $g_a=3$,
@@ -341,8 +345,9 @@ rasterization, with no centerline model in the post-fit rejection branch.
 For an accepted result, the mean edge line is rasterized from the lower
 (larger $y$) of the top of the highest accepted strip and $y_v^{\mathrm{top}}$ down to
 $y_v^{\mathrm{bot}}$, which is the bottom of the image unless the edges
-converge downward ($\Delta m<0$), and then dilated with a $3\times3$
-elliptical kernel. The line can therefore extrapolate below the seed.
+converge downward ($\Delta m<0$). In each row the column of the line is
+clipped to $[0,W-1]$, so a line that leaves the image is drawn along its
+border. The result is dilated with a $3\times3$ elliptical kernel. The line can therefore extrapolate below the seed.
 Because all rendered rows lie in the valid range, the modeled width there
 is at least $d_{\min}$, and the reference is never drawn beyond a crossing
 of the two edges.
@@ -358,8 +363,8 @@ maximum gap, row bounds, and cleaned ROI mask. Earlier failures return
 
 The confidence score $C_4$ is a heuristic combining processed-mask edge
 support with geometric and gap indicators. It is not a calibrated
-probability. A downstream controller must inspect the returned status;
-the function does not specify a robot stopping or recovery policy.
+probability. A downstream controller must inspect the returned status.
+The function does not specify a robot stopping or recovery policy.
 Malformed inputs, unsuitable parameter values, or numerical exceptions
 are not comprehensively handled by the explicit failure branches.
 
@@ -426,8 +431,8 @@ For a $224\times224$ input with $\rho=0.30$, Method~4 has $y_0=67$ and
 $H_R=157$. Table~\ref{tab:c6_strip_tradeoff} shows strip heights for
 different strip counts using these dimensions. At $N=24$, the strip
 height is 6 pixels. A fit can use fewer than $N$ points because of seed
-location, missed strips, early stopping, or border-point exclusion;
-the two edges can have different sample counts.
+location, missed strips, early stopping, or border-point exclusion,
+and the two edges can have different sample counts.
 
 \begin{table}[htbp]
     \centering
@@ -481,7 +486,7 @@ The seed is the interval in the bottom six strips with the largest number of tar
 \end{equation}
 subject to a maximum allowable jump $|x_C^{(k+1)} - x_C^{(k)}| \le \max(28, 0.5\, w^{(k)})$.
 
-As in Method~4, association stops after the fourth consecutive strip without a compatible candidate, and at least three accepted intervals are required. A single centerline model $x_C(y) = m_C y + q_C$ is then fitted to the collected centers $(y_k, x_{C,k})$ with four reweighting iterations of the rule in Eq.~\eqref{eq:c6_reweight} ($\sigma=18$~px). Two details differ from Method~4: the initial weights are proportional to the pixel counts of the accepted intervals (normalized to mean one), and each new weight factor multiplies the previous weights, so down-weighting accumulates across iterations. Border-touching intervals are not excluded. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the score $0.30T+0.35F+0.25A+0.10G$ (with $T$ computed over all constructed strips) is below 0.38, where $A$ is computed from the interval widths $d$; accepted lines are rendered from the top of the highest accepted strip to the bottom of the image. Because interval midpoints are formed prior to fitting, a disturbance on one border shifts $x_{C,k}$ directly and enters the fitted centerline.
+As in Method~4, association stops after the fourth consecutive strip without a compatible candidate, and at least three accepted intervals are required. A single centerline model $x_C(y) = m_C y + q_C$ is then fitted to the collected centers $(y_k, x_{C,k})$ with four reweighting iterations of the rule in Eq.~\eqref{eq:c6_reweight} ($\sigma=18$~px). Two details differ from Method~4: the initial weights are proportional to the pixel counts of the accepted intervals (normalized to mean one), and each new weight factor multiplies the previous weights, so down-weighting accumulates across iterations. Border-touching intervals are not excluded. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the score $0.30T+0.35F+0.25A+0.10G$ (with $T$ computed over all constructed strips) is below 0.38, where $A$ is computed from the interval widths $d$. Accepted lines are rendered from the top of the highest accepted strip to the bottom of the image. Because interval midpoints are formed prior to fitting, a disturbance on one border shifts $x_{C,k}$ directly and enters the fitted centerline.
 
 \subsection{Column-histogram baseline}
 \label{subsec:c6_histogram_baseline}
@@ -491,7 +496,7 @@ The column-histogram baseline (\texttt{pf\_histogram.py}) is a simplified column
     h(x) = \sum_{y=y_0}^{H-1} \mathbf{1}\{M(y, x)=\texttt{path\_class}\}, \qquad x \in [0, W-1].
     \label{eq:c6_histogram}
 \end{equation}
-Its default starting ratio is $\rho=0$, so the whole image is used. If no column contains target pixels, the result is \texttt{lost}. Otherwise, the target column $x_{\text{target}}$ is the center of the widest contiguous run of columns whose count equals the maximum $h_{\max}=\max_x h(x)$; this resolves ties on a plateau of equal counts.
+Its default starting ratio is $\rho=0$, so the whole image is used. If no column contains target pixels, the result is \texttt{lost}. Otherwise, the target column $x_{\text{target}}$ is the center of the widest contiguous run of columns whose count equals the maximum $h_{\max}=\max_x h(x)$. This resolves ties on a plateau of equal counts.
 
 The output is the vertical line $x=x_{\text{target}}$ from $y_0$ to the bottom of the image (centerline model $m=0$, $q=x_{\text{target}}$), with confidence $h_{\max}/(H-y_0)$ and the same status thresholds (0.38 and 0.60). The method therefore yields a single horizontal setpoint rather than a line $x(y) = m y + q$ and provides no heading estimate. Because the target is the column with the largest count, it can move when the path area changes unevenly across the image.
 
@@ -500,7 +505,7 @@ The output is the vertical line $x=x_{\text{target}}$ from $y_0$ to the bottom o
 
 The RANSAC-based contour baseline (\texttt{pf\_ransac.py}) reproduces the classical boundary-fitting methodology prevalent in agricultural vision navigation~\cite{bai2023vision,sensors2025deeplabv3}. Unlike Method~4 and the center-point tracker, it operates directly over the segmented corridor mask without horizontal strip discretization or bottom-up association logic.
 
-Following lower ROI cropping ($y_0 = \lfloor 0.30 H \rfloor$) and the same morphological filtering as Method~4, only one connected component is kept among those with at least 500 pixels: the one maximizing its area plus ten times the top row of its bounding box, which favors large components that start lower in the image. For each ROI row containing pixels of this component, the leftmost and rightmost pixels define boundary points $(y, x_L(y))$ and $(y, x_R(y))$, provided the row width $w(y) = x_R(y) - x_L(y) + 1$ satisfies $w(y) \ge 10$~px. This yields two point sets, $\mathcal{P}_L$ and $\mathcal{P}_R$, with at most one point per ROI row; at least ten rows are required.
+Following lower ROI cropping ($y_0 = \lfloor 0.30 H \rfloor$) and the same morphological filtering as Method~4, only one connected component is kept among those with at least 500 pixels: the one maximizing its area plus ten times the top row of its bounding box, which favors large components that start lower in the image. For each ROI row containing pixels of this component, the leftmost and rightmost pixels define boundary points $(y, x_L(y))$ and $(y, x_R(y))$, provided the row width $w(y) = x_R(y) - x_L(y) + 1$ satisfies $w(y) \ge 10$~px. This yields two point sets, $\mathcal{P}_L$ and $\mathcal{P}_R$, with at most one point per ROI row. At least ten rows are required.
 
 Boundary lines are estimated independently on $\mathcal{P}_L$ and $\mathcal{P}_R$ using Random Sample Consensus (RANSAC)~\cite{fischler1981ransac}:
 \begin{enumerate}
@@ -517,12 +522,12 @@ The guidance centerline is calculated as the unweighted average of the left and 
     \label{eq:c6_ransac_centerline}
 \end{equation}
 
-By fitting row-wise boundary points directly, this approach avoids strip-tuning parameters. Each trial evaluates all boundary points of one edge (at most 157 for a $224\times224$ input). With the default fixed seed, repeated runs on the same frame return the same result; run-to-run variation ($\sigma_\omega>0$) appears only if the seed is changed or left unset.
+By fitting row-wise boundary points directly, this approach avoids strip-tuning parameters. Each trial evaluates all boundary points of one edge (at most 157 for a $224\times224$ input). With the default fixed seed, repeated runs on the same frame return the same result. Run-to-run variation ($\sigma_\omega>0$) appears only if the seed is changed or left unset.
 
 \section{Comparative trade-offs and structural limitations}
 \label{sec:c6_tradeoffs_and_limitations}
 
-Table~\ref{tab:c6_algorithm_tradeoffs} summarizes the structural differences between the four extractors as implemented. It describes the code, not measured performance; the experimental comparison is reported in Chapter~\ref{cap:experiments}.
+Table~\ref{tab:c6_algorithm_tradeoffs} summarizes the structural differences between the four extractors as implemented. It describes the code, not measured performance. The experimental comparison is reported in Chapter~\ref{cap:experiments}. For Method~4, the row on one-sided disturbances refers to the edge fit, since the association step uses both edges (Section~\ref{subsec:c6_method4_limitations}).
 
 \begin{table}[htbp]
     \centering
@@ -556,9 +561,9 @@ While Method~4 decouples boundary estimation and avoids the stochastic jitter of
 \begin{enumerate}
     \item \textbf{Bottom-up seed dependence:} The tracking process initializes from candidate intervals detected within the bottom six strips ($y \in [H - 6h, H-1]$). No minimum support is required for the seed, so initialization fails only if the bottom six strips contain no interval, for example when the mask immediately ahead of the vehicle has large false-negative regions. Furthermore, if the algorithm locks onto a false boundary candidate at the base of the image, the spatial continuity constraint propagates this error upward through subsequent strips. In contrast, \texttt{pf\_histogram} and \texttt{pf\_ransac} use all rows of their region of interest at once and do not depend on bottom-up seeding.
 
-    \item \textbf{Sensitivity to tracking hyperparameters:} The displacement limit $D_4=\max(28, 0.5\,d_{\mathrm{prev}})$~px and the tolerance of three consecutive strips without a compatible candidate are expressed in pixels of a $224 \times 224$ input and depend on resolution and camera mounting. Pitch and roll on uneven terrain shift the corridor in image space; displacements above the limit stop the association early. The frame is then rejected only if fewer than three intervals were accepted or if the later geometric and score checks fail.
+    \item \textbf{Sensitivity to tracking hyperparameters:} The displacement limit $D_4=\max(28, 0.5\,d_{\mathrm{prev}})$~px and the tolerance of three consecutive strips without a compatible candidate are expressed in pixels of a $224 \times 224$ input and depend on resolution and camera mounting. Pitch and roll on uneven terrain shift the corridor in image space, and displacements above the limit stop the association early. The frame is then rejected only if fewer than three intervals were accepted or if the later geometric and score checks fail.
 
     \item \textbf{Linear corridor model constraint:} Method~4 models both boundaries as straight lines ($x = m y + q$). In curved crop rows, contour-following trajectories, or headland turning areas, the linear model introduces systematic approximation error. While algorithms like the multi-ROI formulation of Li et al.~\cite{li2022multiroi} adopt cubic B-splines, Method~4 trades curve-fitting capacity for numerical stability and determinism on straight corridors.
 
-    \item \textbf{Vulnerability to one-sided gaps:} Method~4 associates whole intervals, so both edges are tracked together. Where plants are missing on one side, the path interval in the affected strips can widen or merge with neighboring regions; if the resulting edge displacement exceeds the limit in more than three consecutive strips ($3 \times 6 = 18$~px of image height at $N=24$), association stops. Every accepted interval supplies both edges, and the frame is rejected if either edge has fewer than two non-clipped samples; the code has no single-edge fallback. \texttt{pf\_histogram} still outputs a column in these conditions, because it does not track edges.
+    \item \textbf{Vulnerability to one-sided gaps:} Method~4 associates whole intervals, so both edges are tracked together. Where plants are missing on one side, the path interval in the affected strips can widen or merge with neighboring regions. If the resulting edge displacement exceeds the limit in more than three consecutive strips ($3 \times 6 = 18$~px of image height at $N=24$), association stops. Every accepted interval supplies both edges, and the frame is rejected if either edge has fewer than two non-clipped samples, and the code has no single-edge fallback. \texttt{pf\_histogram} still outputs a column in these conditions, because it does not track edges.
 \end{enumerate}
