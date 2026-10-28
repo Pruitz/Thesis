@@ -18,7 +18,7 @@
 \usepackage{amssymb}                %  AMS mathematical symbols
 \usepackage{bm}                     %  black/bold mathematical symbols
 \usepackage{booktabs}               %  better tables
-\usepackage[labelfont=bf]{caption} % font=footnotesize % to have reduced caption font size
+\usepackage[labelfont=bf,singlelinecheck=false]{caption} % font=footnotesize % to have reduced caption font size
 \usepackage{csquotes}
 \usepackage{enumitem} %left align the bulleted points
 \usepackage[footskip=36pt]{geometry}
@@ -50,3 +50,6 @@
 \usepackage{url}            % simple URL typesetting
 \usepackage{verbatim} % for extended verbatim support
 \usepackage{xcolor} % to define colors and use standard CSS names add dvipsnames as option, but it clashes with xcolor loaded in toptesi, pay attention that if it goes in conflict with tikz/beamer, simply use \documentclass[usenames,dvipsnames]{beamer}, along with other custom options when defining the document class
+\usepackage{pgfplots} % grafici disegnati dai file CSV (curve di loss)
+\pgfplotsset{compat=1.18}
+\usepackage{float} % posizionamento [H]: tabella esattamente nel punto del testo

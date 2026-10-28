@@ -23,7 +23,7 @@ Mean IoU (mIoU) averages the per-class IoU values. For the four-class configurat
 \subsubsection{Architecture comparison results}
 \label{subsubsec:architecture_results}
 
-The architecture comparison in Section~\ref{subsec:c5_architecture_results} reports, on the 77 test images of the manual lettuce dataset, a path IoU of 0.9532 for LR-ASPP, against 0.9654 for FCN and 0.9686 for DeepLabV3. The recorded GPU inference times are 8.21~ms, 59.10~ms, and 86.90~ms. LR-ASPP accepts an mIoU about 1.1 percentage points lower in exchange for 7.2 to 10.6 times shorter recorded times. As stated in Section~\ref{subsec:c5_lraspp_selection}, the time ratios hold only if the three runs were recorded under the same conditions.
+The architecture comparison in Section~\ref{subsec:c5_architecture_results} reports, on the 77 test images of the manual lettuce dataset, a path IoU of 0.9532 for LR-ASPP, against 0.9654 for FCN and 0.9686 for DeepLabV3. The recorded GPU inference times are 8.21~ms, 59.10~ms, and 86.90~ms. LR-ASPP accepts an mIoU about 1.1 percentage points lower in exchange for 7.2 to 10.6 times shorter recorded times.
 
 \subsubsection{Supervision strategy results}
 \label{subsubsec:supervision_results}
@@ -44,7 +44,7 @@ Geometric reference quality is assessed by evaluating four extraction strategies
 \item Lateral deviation $e_y$ and heading orientation error $e_\theta$ evaluated against manual centerline annotations;
 \item Sensitivity to asymmetric disturbances, quantified by the lateral deviation induced by unilateral crop intrusions or shadows;
 \item Rejection rate: percentage of test images where extraction fails validation checks (status classified as lost);
-\item Execution time per frame measured on the onboard NVIDIA Jetson Orin Nano platform.
+\item Execution time per frame measured on the onboard NVIDIA Jetson AGX Orin platform.
 \end{itemize}
 
 \placeholderfigure{fig:geometric_extraction_comparison}%

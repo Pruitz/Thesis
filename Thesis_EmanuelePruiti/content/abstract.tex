@@ -1,6 +1,6 @@
 Autonomous navigation of agricultural robots between crop rows is difficult with satellite positioning alone: dense canopies and greenhouse structures degrade the GNSS signal, and RTK corrections and 3D LiDAR sensors are expensive. A monocular RGB camera is a low-cost alternative, provided that the drivable corridor can be segmented in each image and converted into a navigation reference.
 
-This thesis develops a vision-based row-following pipeline for horticultural crops. A semantic segmentation network predicts the path between the rows, and a geometric extractor converts the predicted mask into an image-space reference line for the controller of the Demetra four-wheel-steering rover, which runs the network on an NVIDIA Jetson Orin Nano through ONNX Runtime.
+This thesis develops a vision-based row-following pipeline for horticultural crops. A semantic segmentation network predicts the path between the rows, and a geometric extractor converts the predicted mask into an image-space reference line for the controller of the Demetra four-wheel-steering rover, which runs the network on an NVIDIA Jetson AGX Orin through ONNX Runtime.
 
 FCN, DeepLabV3, and LR-ASPP were first compared on a manually annotated dataset of 762 lettuce images. On the test images, LR-ASPP reaches an mIoU of 0.9145, against 0.9253 for both FCN and DeepLabV3. It has 3.2 million parameters, against 35.3 and 42.0 million, and a recorded offline GPU inference time of 8.21~ms, against 59.10~ms and 86.90~ms. It was therefore selected.
 

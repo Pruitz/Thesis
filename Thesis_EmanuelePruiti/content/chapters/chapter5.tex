@@ -10,7 +10,7 @@ The second experiment, carried out after the selection of LR-ASPP, tests whether
 
 The experiment uses only lettuce images, because lettuce is the only crop with manual ground truth. SAM~3 generated three label sets for these images, with four, three, and two classes (Section~\ref{subsec:c5_semantic_classes}), and a separate LR-ASPP network was trained on each. The predictions of each network are compared with the manual lettuce masks on all its classes. The path class matters most, because it is the only one used for row following. The SAM~3 masks themselves are not compared with the manual masks.
 
-The binary labeling was then extended to the complete image collection, labeled entirely by SAM~3 (\texttt{Data\_allPlantsSAM2}), and a network trained on this collection is the one deployed on the robot. The results of this configuration are reported in Table~\ref{tab:c5_results_binary_general}.
+The binary labeling was then extended to the complete image collection, labeled entirely by SAM~3, and a network trained on this collection is the one deployed on the robot. The results of this configuration are reported in Table~\ref{tab:c5_results_binary_general}.
 
 This chapter details image acquisition, dataset partitioning, training parameters, and offline benchmark evaluations. Subsequent chapters detail geometric navigation extraction and closed-loop robot validation.
 
@@ -43,7 +43,7 @@ The labels generated with SAM~3 (Section~\ref{subsec:c5_sam_annotation}) follow 
 \begin{itemize}
 \item \textbf{Four-class configuration:} background, plants, path, and covering material, matching the four classes of the manual lettuce annotations.
 \item \textbf{Three-class configuration:} background, plants, and path. No prompt targets the covering material.
-\item \textbf{Binary configuration:} background and path. This configuration is used both for the lettuce-only binary network and for the multi-crop dataset \texttt{Data\_allPlantsSAM2}.
+\item \textbf{Binary configuration:} background and path. This configuration is used both for the lettuce-only binary network and for the multi-crop dataset.
 \end{itemize}
 For row following, the path mask is the input of the geometric extraction in Chapter~\ref{cap:geometric_reference}.
 
@@ -180,7 +180,7 @@ Class weights are computed exclusively on the training split $\mathcal{D}_{\text
     \text{inv}_c = \frac{\sum_{k=0}^{C-1} N_k}{C \cdot N_c}, \qquad w_c = \frac{\text{inv}_c}{\frac{1}{C}\sum_{k=0}^{C-1} \text{inv}_k}.
     \label{eq:class_weights_norm}
 \end{equation}
-This normalization enforces $\frac{1}{C} \sum_{c=0}^{C-1} w_c = 1.0$.
+where $C$ is the number of classes (four in this comparison), $k$ indexes the training masks, $Y^{(k)}_{i,j}$ is the class of pixel $(i,j)$ in mask $k$, and $\mathbb{I}(\cdot)$ equals 1 when its argument is true and 0 otherwise. A rare class therefore receives a large weight and a frequent class a small one. This normalization enforces $\frac{1}{C} \sum_{c=0}^{C-1} w_c = 1.0$.
 
 For FCN and DeepLabV3, which incorporate an auxiliary classifier on the \texttt{layer3} features (output stride 8 in the dilated TorchVision backbone), the total training objective combines the primary and auxiliary losses with an auxiliary weighting factor of $0.4$:
 \begin{equation}
@@ -190,7 +190,7 @@ For FCN and DeepLabV3, which incorporate an auxiliary classifier on the \texttt{
 For LR-ASPP, which lacks an auxiliary head, training relies solely on the primary loss $\mathcal{L}_{\text{WCE}}(\text{main})$.
 
 \subsubsection{Data augmentation and two-stage optimization}
-Data augmentation is applied only to the training subset (\texttt{full\_\allowbreak train\_\allowbreak dataset}): random horizontal flips with probability 0.5, random rotations between $-10^\circ$ and $10^\circ$, and, with probability 0.8, a color jitter of brightness and contrast (factors in $[0.8, 1.2]$) and saturation (factors in $[0.85, 1.15]$) to handle variable outdoor illumination. The validation and test sets (\texttt{full\_\allowbreak eval\_\allowbreak dataset}) are not augmented. Images are not resized, and all images are normalized with the ImageNet mean and standard deviation.
+Data augmentation is applied only to the training subset: random horizontal flips with probability 0.5, random rotations between $-10^\circ$ and $10^\circ$, and, with probability 0.8, a color jitter of brightness and contrast (factors in $[0.8, 1.2]$) and saturation (factors in $[0.85, 1.15]$) to handle variable outdoor illumination. The validation and test sets are not augmented. Images are not resized, and all images are normalized with the ImageNet mean and standard deviation.
 
 The networks were trained on an NVIDIA GeForce RTX 2080 SUPER with 8~GB of memory, with a batch size of 2.
 
@@ -200,56 +200,28 @@ Optimization proceeds across $200$ epochs in two distinct phases:
     \item \textbf{Stage 2 (Differential Fine-Tuning, Epochs 11--200):} At epoch 10, the backbone is unfrozen. A new AdamW optimizer is instantiated with decoupled parameter groups: the backbone is assigned a learning rate of $10^{-5}$ and the segmentation heads a learning rate of $10^{-4}$. The lower learning rate of the unfrozen backbone limits changes to its pretrained weights~\cite[Chapter~11]{geron2026handson}. The cosine-annealing scheduler is re-initialized across the remaining 190 epochs ($T_{\text{max}} = 190, \eta_{\text{min}} = 10^{-6}$).
 \end{enumerate}
 
-Early stopping was not used: all three networks were trained for the full 200 epochs, so that the complete training and validation loss curves could be recorded. After each epoch, the model is evaluated on the unaugmented validation set. The checkpoint \texttt{best.pth} is saved whenever the validation loss falls below its previous minimum, and \texttt{last.pth} stores the state at the final epoch.
-
-\placeholderfigure{fig:training_loss_curves}%
-{Training and validation loss across epochs for FCN, DeepLabV3, and LR-ASPP}%
-{Curve di apprendimento durante le 200 epoche: loss di training e loss di validazione (dai file \texttt{training\_log.csv}) per le tre architetture candidate sul dataset di lattuga.}%
-{4.5cm}
+Early stopping was not used: all three networks were trained for the full 200 epochs, so that the complete training and validation loss curves could be recorded. After each epoch, the model is evaluated on the unaugmented validation set. The weights are saved whenever the validation loss falls below its previous minimum, and the weights of the final epoch are saved separately.
 
 \subsection{Evaluation metrics and results}
 \label{subsec:c5_architecture_results}
 
-The segmentation scores come from the three
-\texttt{*\_\allowbreak test\_\allowbreak metrics.csv} files produced by
-the test script on the 77 test images, one per network. Each contains the
-aggregate metrics, the number of parameters, the checkpoint epoch, and the
-IoU values for background, plants, path, and covering material. The
-reported mIoU agrees with the arithmetic mean of these four class IoUs,
-including background. The same script records the inference time on
-the NVIDIA GeForce RTX 2080 SUPER used for training. Each test image is
-processed one at a time at its original resolution, and the measured
-time covers the forward pass and the argmax. These times are not
-measurements of the complete robot processing or control rate.
+The three networks are evaluated on the 77 test images. For each
+network, the IoU is computed for background, plants, path, and covering
+material, and the mIoU is the arithmetic mean of these four values,
+including background. The inference time is measured on the NVIDIA
+GeForce RTX 2080 SUPER used for training. Each test image is processed
+one at a time at its original resolution, and the measured time covers
+the forward pass and the argmax. These times are not measurements of
+the complete robot processing or control rate.
 
-Table~\ref{tab:c5_architecture_results} reports the exported metrics.
-The checkpoint epoch is the epoch of the evaluated \texttt{best.pth},
-the checkpoint with the lowest validation loss. It is not the training
-duration, since every network was trained for 200 epochs.
-
-\begin{table}[htbp]
-    \centering
-    \small
-    \caption{Architecture comparison on the 77 test images of the manual
-    lettuce dataset. Parameter counts refer to the trained
-    four-class models and include the auxiliary classifier of FCN and
-    DeepLabV3, which is used only during training.}
-    \label{tab:c5_architecture_results}
-    \begin{tabular}{@{}l r r r r r r@{}}
-        \toprule
-        Model & \shortstack{Parameters\\(M)} & Epoch & mIoU & Path IoU &
-        \shortstack{Mean time\\(ms)} & FPS \\
-        \midrule
-        FCN & 35.3 & 38 & 0.9253 & 0.9654 & 59.10 & 16.92 \\
-        DeepLabV3 & 42.0 & 43 & 0.9253 & 0.9686 & 86.90 & 11.51 \\
-        LR-ASPP & 3.2 & 162 & 0.9145 & 0.9532 & 8.21 & 121.87 \\
-        \bottomrule
-    \end{tabular}
-\end{table}
+Table~\ref{tab:c5_architecture_results} reports these metrics.
+The epoch column gives the epoch of the evaluated weights, which are
+those with the lowest validation loss. It is not the training duration,
+since every network was trained for 200 epochs.
 
 FCN and DeepLabV3 reach the same mIoU on the test images (0.9253, with a
 difference below $10^{-4}$), compared with 0.9145 for LR-ASPP, a deficit of
-1.08 percentage points. Its mean recorded time is 8.21~ms, compared
+1.08 percentage points. LR-ASPP's mean recorded time is 8.21~ms, compared
 with 59.10~ms and 86.90~ms. These timings correspond to a 7.20-fold
 reduction relative to FCN and a 10.59-fold reduction relative to
 DeepLabV3.
@@ -259,14 +231,50 @@ comparison. LR-ASPP has lower IoU than both alternatives in each class,
 although its path IoU remains 0.9532. The data support a trade-off
 between accuracy and latency, not a claim of equal segmentation accuracy.
 
+Figure~\ref{fig:training_loss_curves} shows the training and validation
+loss of the three networks. For FCN and
+DeepLabV3, the validation loss reaches its minimum at epochs 38 and 43
+(0.1116 and 0.1120). After that, both networks start to overfit, and
+their validation loss rises to 0.1412 and 0.1354 at epoch 200 while the
+training loss keeps decreasing. For LR-ASPP, the validation loss reaches a plateau
+around epoch 75 and stays between 0.0900 and 0.0950 until epoch 200,
+without rising. Its minimum is at epoch 162 (0.0900). The losses of FCN and DeepLabV3 include the auxiliary term of
+Eq.~\eqref{eq:total_training_loss}, while those of LR-ASPP do not, so
+the absolute values are not comparable across networks.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Architecture comparison on the 77 test images of the manual
+    lettuce dataset. Parameter counts refer to the trained
+    four-class models and include the auxiliary classifier of FCN and
+    DeepLabV3, which is used only during training.}
+    \label{tab:c5_architecture_results}
+    \sisetup{group-digits=false}
+    \begin{tabular}{@{}l
+        S[table-format=2.1] S[table-format=3.0]
+        S[table-format=1.4] S[table-format=1.4]
+        S[table-format=2.2] S[table-format=3.2]@{}}
+        \toprule
+        Model & {\shortstack{Parameters\\(M)}} & {Epoch} & {mIoU} & {Path IoU} &
+        {\shortstack{Mean time\\(ms)}} & {FPS} \\
+        \midrule
+        FCN & 35.3 & 38 & 0.9253 & 0.9654 & 59.10 & 16.92 \\
+        DeepLabV3 & 42.0 & 43 & 0.9253 & 0.9686 & 86.90 & 11.51 \\
+        LR-ASPP & 3.2 & 162 & 0.9145 & 0.9532 & 8.21 & 121.87 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
 \begin{table}[htbp]
     \centering
     \small
     \caption{Per-class IoU on the same 77 test images.}
     \label{tab:c5_architecture_class_iou}
-    \begin{tabular}{@{}l r r r r@{}}
+    \sisetup{group-digits=false}
+    \begin{tabular}{@{}l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]@{}}
         \toprule
-        Model & Background & Plants & Path & Covering material \\
+        Model & {Background} & {Plants} & {Path} & {Covering material} \\
         \midrule
         FCN & 0.9493 & 0.9385 & 0.9654 & 0.8479 \\
         DeepLabV3 & 0.9494 & 0.9384 & 0.9686 & 0.8448 \\
@@ -275,197 +283,207 @@ between accuracy and latency, not a claim of equal segmentation accuracy.
     \end{tabular}
 \end{table}
 
+\pgfplotsset{
+    losscurve/.style={
+        width=\linewidth, height=0.72\linewidth,
+        xmin=0, xmax=200, xtick={0,50,100,150,200}, ymin=0,
+        extra x ticks={10}, extra x tick labels={},
+        extra x tick style={grid=major, major grid style={gray, dashed}},
+        xlabel={Epoch}, ylabel={Loss},
+        ymajorgrids, grid style={gray!25},
+        tick label style={font=\scriptsize},
+        label style={font=\footnotesize},
+        legend style={font=\scriptsize, draw=none, fill=white, fill opacity=0.8, text opacity=1},
+        legend cell align=left,
+        every axis plot/.append style={line width=0.8pt, mark=none},
+    },
+}
+\newcommand{\losscurveplot}[3]{%
+    \begin{tikzpicture}
+        \begin{axis}[losscurve]
+            \addplot[blue!70!black] table[x=epoch, y=train_loss, col sep=comma]{data/training/training_log_#1.csv};
+            \addplot[orange!90!black] table[x=epoch, y=val_loss, col sep=comma]{data/training/training_log_#1.csv};
+            \addplot[only marks, mark=*, mark size=1.8pt, red!80!black] coordinates {(#2,#3)};
+        \end{axis}
+    \end{tikzpicture}%
+}
+
+\begin{figure}[htbp]
+    \centering
+    \subfloat[FCN]{\begin{minipage}{0.48\linewidth}\losscurveplot{fcn}{38}{0.11155}\end{minipage}}\hfill
+    \subfloat[DeepLabV3]{\begin{minipage}{0.48\linewidth}\losscurveplot{deeplab}{43}{0.11199}\end{minipage}}\\[4pt]
+    \subfloat[LR-ASPP]{\begin{minipage}{0.48\linewidth}\losscurveplot{lraspp}{162}{0.08997}\end{minipage}}\\[6pt]
+    \mbox{\footnotesize
+    \begin{tikzpicture}[baseline=-0.6ex]\draw[blue!70!black, line width=0.8pt] (0,0) -- (0.6,0);\end{tikzpicture}~Training loss\quad
+    \begin{tikzpicture}[baseline=-0.6ex]\draw[orange!90!black, line width=0.8pt] (0,0) -- (0.6,0);\end{tikzpicture}~Validation loss\quad
+    \begin{tikzpicture}[baseline=-0.6ex]\fill[red!80!black] (0,0) circle (1.8pt);\end{tikzpicture}~Best checkpoint\quad
+    \begin{tikzpicture}[baseline=-0.6ex]\draw[gray, dashed] (0,-0.15) -- (0,0.2);\end{tikzpicture}~Backbone unfrozen}
+    \caption{Training and validation loss per epoch of FCN, DeepLabV3, and
+    LR-ASPP on the manual lettuce dataset. The best checkpoint is the epoch
+    with the minimum validation loss, whose weights are evaluated. The
+    backbone is unfrozen after epoch 10.}
+    \label{fig:training_loss_curves}
+\end{figure}
+
 \subsection{Selection of LR-ASPP}
 \label{subsec:c5_lraspp_selection}
 
-LR-ASPP was selected mainly for its speed. Its mean inference time is
-7.20 times lower than that of FCN and 10.59 times lower than that of
-DeepLabV3, at the cost of an mIoU 1.08 percentage points lower. It was
-not the most accurate model, but it offered the accuracy--latency
+LR-ASPP was selected mainly for its speed. It was not the most accurate
+model, but its much shorter inference time offered the accuracy--latency
 compromise sought for robot perception. The subsequent SAM-supervised
 training runs therefore used LR-ASPP while varying the output label set.
 
-The inference times have one limitation. The three networks were timed
-in separate runs of the test script, and the load on the GPU during each
-run was not recorded. These conditions affect the measured time: in the
-evaluation scripts of Section~\ref{sec:c5_supervision_comparison}, an
-LR-ASPP checkpoint records mean times between 0.010~s and 3.67~s per
-image. The ratios of 7.20 and 10.59 are therefore reliable only if the
-three runs had similar conditions.
+These times were measured on the training PC, not on the robot. The
+timing of the complete perception and control pipeline on the robot is
+reported in Section~\ref{subsec:timing}.
 
-These times were measured on the training PC, not on the robot. Whether
-the complete perception and control pipeline on the Jetson Orin Nano
-meets the control timing requirements has to be verified on the robot.
-
-\section{Supervision strategy comparison}
+\section{Manual versus SAM~3 labels}
 \label{sec:c5_supervision_comparison}
 
-\subsection{Training configurations and evaluation targets}
+\subsection{Training configurations and evaluation}
 \label{subsec:c5_supervision_configurations}
 
-Table~\ref{tab:c5_supervision_configurations} summarizes the five
+Table~\ref{tab:c5_supervision_configurations} summarizes the four
 LR-ASPP networks considered in this comparison. This study is separate
-from the initial comparison of the three candidate architectures. The
-first four networks are trained on lettuce images only, so that their
+from the initial comparison of the three candidate architectures. All
+four networks are trained on lettuce images only, so that their
 predictions can be evaluated against the manual ground truth of the same
-crop. The fifth network reproduces the multi-crop binary configuration
-deployed on the robot, trained on the complete SAM~3 collection without
-the 77 lettuce test images.
+crop. The extension of the binary configuration to the multi-crop
+dataset is described in Section~\ref{subsec:c5_deployed_network}.
 
-\begin{table}[htbp]
+\begin{table}[!htb]
     \centering
     \small
-    \caption{LR-ASPP training configurations in the supervision comparison. Class counts include background; all networks are evaluated against the manual lettuce ground truth. The checkpoint epoch is the epoch of the evaluated \texttt{best.pth}, selected by minimum validation loss.}
+    \caption{LR-ASPP training configurations in the supervision comparison. All networks are trained on the same lettuce images and evaluated against the manual lettuce ground truth. The epoch is that of the evaluated weights, those with the lowest validation loss.}
     \label{tab:c5_supervision_configurations}
-    \begin{tabularx}{\textwidth}{@{}l X X c r@{}}
+    \begin{tabularx}{\textwidth}{@{}l l >{\raggedright\arraybackslash}X S[table-format=3.0]@{}}
         \toprule
-        Configuration & Training data (labels) & Output classes & Classes & Epoch \\
+        Configuration & Labels & Output classes & {Epoch} \\
         \midrule
-        Manual baseline & \texttt{Data} (manual) & Background, plants, path, covering material & 4 & 162 \\
-        SAM~3 four-class & \texttt{Data\_\allowbreak insalataSAM\_\allowbreak 4class} (SAM~3) & Background, plants, path, covering material & 4 & 30 \\
-        SAM~3 three-class & \texttt{Data\_\allowbreak insalataSAM\_\allowbreak 3class} (SAM~3) & Background, plants, path & 3 & 38 \\
-        SAM~3 binary & \texttt{Data\_\allowbreak insalataSAM\_\allowbreak 2class} (SAM~3) & Background, path & 2 & 18 \\
-        SAM~3 binary, multi-crop & \texttt{Data\_\allowbreak allPlantsSAM2} without the 77 lettuce test images (SAM~3) & Background, path & 2 & 27 \\
+        Manual baseline & Manual & Background, plants, path, covering material & 162 \\
+        SAM~3 four-class & SAM~3 & Background, plants, path, covering material & 30 \\
+        SAM~3 three-class & SAM~3 & Background, plants, path & 38 \\
+        SAM~3 binary & SAM~3 & Background, path & 18 \\
         \bottomrule
     \end{tabularx}
 \end{table}
 
-Manual masks from \texttt{Data} supply the ground truth for all comparative evaluations. The evaluation measures the generalization capability of the trained networks rather than the static quality of the raw SAM~3 masks. Specifically, no direct pixel-level comparison is performed between uncurated SAM~3 masks and manual annotations; instead, each trained LR-ASPP network executes forward inference in evaluation mode (\texttt{eval()}), computing the discrete predicted class map via:
-\begin{equation}
-    \hat{Y}_{i,j} = \arg\max_{c \in \{0,\dots,C-1\}} P(Y_{i,j} = c \mid I),
-    \label{eq:inference_argmax}
-\end{equation}
-which is subsequently compared against the human ground-truth mask.
+The SAM~3 networks reach their minimum validation loss much earlier than
+the manual baseline, between epochs 18 and 38 against epoch 162. A
+possible explanation, not verified in this work, is the noise in the
+SAM~3 labels, which are also the labels of the validation split of these
+networks. Arpit et al.~\cite{arpit2017memorization} observed that, when
+part of the training labels is random, a network first learns the
+patterns shared by the real data and only then fits the noisy labels, so
+its validation accuracy reaches its maximum before the training accuracy
+becomes high. Their experiments concern image classification with
+randomly corrupted labels, while the SAM~3 label errors observed in this
+work are not random but depend on the prompts and on the scene, so their
+result supports this explanation only as an analogy.
 
-Evaluation uses the Intersection over Union (IoU) metric:
+Each network is evaluated with the IoU between its predictions and the manual lettuce labels of the test images:
 \begin{equation}
     \text{IoU}_c = \frac{\text{TP}_c}{\text{TP}_c + \text{FP}_c + \text{FN}_c},
     \label{eq:eval_iou}
 \end{equation}
-where $\text{TP}_c$, $\text{FP}_c$, and $\text{FN}_c$ denote true positives, false positives, and false negatives for class $c$, respectively. Mean IoU (mIoU) denotes the arithmetic mean across all evaluated classes, including background where applicable.
+where $\text{TP}_c$, $\text{FP}_c$, and $\text{FN}_c$ are the true positive, false positive, and false negative pixels of class $c$. The mIoU is the arithmetic mean of the IoU of the evaluated classes.
 
 Performance is evaluated on two subsets of the 77-image test partition:
 \begin{itemize}
-    \item \textbf{Complete test set (77 images):} Spans all eight lettuce acquisition folders (\texttt{insalata\_\allowbreak grande1}, \texttt{insalata\_\allowbreak grande2}, \texttt{insalata\_\allowbreak media1}, \texttt{insalata\_\allowbreak media2}, \texttt{insalata\_\allowbreak media3}, \texttt{insalata\_\allowbreak piccola}, \texttt{insalata\_\allowbreak piccola\_1}, and \texttt{insalata\_\allowbreak piccola\_2}), including viewpoints that the robot cannot reach.
-    \item \textbf{Realistic operational scenario (42 images):} Restricts evaluation to \texttt{insalata\_\allowbreak grande1}, \texttt{insalata\_\allowbreak grande2}, and \texttt{insalata\_\allowbreak media1}, described in Section~\ref{subsec:c5_dataset_splits}. The networks are not retrained on this subset.
+    \item \textbf{Complete test set (77 images):} Spans all eight lettuce acquisition folders, including viewpoints that the robot cannot reach.
+    \item \textbf{Realistic operational scenario (42 images):} Restricts evaluation to the test images of the three folders recorded between parallel rows, described in Section~\ref{subsec:c5_dataset_splits}.
 \end{itemize}
 
-\subsection{Benchmark results across supervision strategies}
+\subsection{Results on the lettuce test images}
 \label{subsec:c5_supervision_results}
 
-All results in this section are computed on the test split. The four comparisons evaluated in \texttt{compareInsalata} are reported separately, each on the complete test set and on the realistic scenario.
+All results are computed on the test split, both on the complete test set and in the realistic scenario. Each SAM~3 network is compared with the manual baseline on the classes the two networks share. Table~\ref{tab:c5_results_4class} compares the four-class networks on all classes, Table~\ref{tab:c5_results_2class} compares the plants and path classes of the three-class network, and Table~\ref{tab:c5_results_binary_lettuce} compares the path class of the binary network.
 
-\subsubsection{Three-class autolabel model: plants and path}
-This comparison evaluates the two foreground categories shared by the 4-class manual baseline and the 3-class autolabel model (\texttt{InsalataSAM\_3class}). The other classes are ignored. As reported in Table~\ref{tab:c5_results_2class}, the manual model achieves a mean IoU of 0.9397 on the complete test set and 0.9536 in the realistic scenario. The 3-class autolabel model reaches a path IoU of only 0.4124 on the complete test set, and 0.8966 (plants IoU 0.8779) in the realistic scenario.
-
-\begin{table}[htbp]
+\begin{table}[H]
     \centering
     \small
-    \caption{Test set performance of the three-class autolabel model on plants and path (records from \texttt{3\_classi} and \texttt{3\_classi\_realisticScenario}). Mean IoU denotes the arithmetic average of plants and path IoU.}
-    \label{tab:c5_results_2class}
-    \begin{tabularx}{\textwidth}{@{}l X r r r@{}}
+    \caption{IoU of the four-class networks on the test set.}
+    \label{tab:c5_results_4class}
+    \sisetup{group-digits=false}
+    \setlength{\tabcolsep}{4.5pt}
+    \begin{tabular}{@{}l l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]@{}}
         \toprule
-        Scenario & Model & Plants IoU & Path IoU & Mean IoU \\
+        Scenario & Model & {Background} & {Plants} & {Path} & {\shortstack{Covering\\material}} & {mIoU} \\
         \midrule
         \multirow{2}{*}{Complete test set} 
-        & Manual baseline (4-class) & 0.9262 & 0.9532 & 0.9397 \\
-        & Autolabel SAM (3-class) & 0.8130 & 0.4124 & 0.6127 \\
+        & Manual baseline & 0.9439 & 0.9262 & 0.9532 & 0.8346 & 0.9145 \\
+        & SAM~3 four-class & 0.4631 & 0.8081 & 0.4124 & 0.1719 & 0.4639 \\
         \midrule
         \multirow{2}{*}{Realistic scenario} 
-        & Manual baseline (4-class) & 0.9485 & 0.9587 & 0.9536 \\
-        & Autolabel SAM (3-class) & 0.8779 & 0.8966 & 0.8873 \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsubsection{Four-class autolabel model}
-Table~\ref{tab:c5_results_4class} presents the complete 4-class evaluation comparing the manual baseline with the 4-class autolabel network (\texttt{InsalataSAM\_4class}). The manual model reaches an mIoU of 0.9145 on the complete test set and 0.9113 in the realistic scenario. The 4-class autolabel network reaches 0.4639 and 0.5925. In the realistic scenario the deficit is concentrated in the covering material (IoU 0.2495) and the background (IoU 0.3449), while its path IoU is 0.8997. Visual inspection of the SAM~3 masks showed that the \texttt{"plastic mulch film"} prompt segmented the covering poorly and also assigned the greenhouse plastic cover to this class. Since the greenhouse cover is background in the manual masks, this is consistent with the low IoU of both covering and background. A further plausible cause is that the prompt produces inaccurate masks where the film is soiled or damaged. These explanations come from visual inspection. The SAM~3 masks were not compared quantitatively with the manual annotations.
-
-\begin{table}[htbp]
-    \centering
-    \small
-    \caption{Complete four-class test set results (records from \texttt{4\_classi} and \texttt{4\_class\_realisticScenario}). mIoU is the average of all four classes including background.}
-    \label{tab:c5_results_4class}
-    \begin{tabularx}{\textwidth}{@{}l X r r r r r@{}}
-        \toprule
-        Scenario & Model & Background & Plants & Path & Covering material & mIoU \\
-        \midrule
-        \multirow{2}{*}{Complete test} 
-        & Manual baseline & 0.9439 & 0.9262 & 0.9532 & 0.8346 & 0.9145 \\
-        & Autolabel SAM & 0.4631 & 0.8081 & 0.4124 & 0.1719 & 0.4639 \\
-        \midrule
-        \multirow{2}{*}{Realistic test} 
         & Manual baseline & 0.9203 & 0.9485 & 0.9587 & 0.8178 & 0.9113 \\
-        & Autolabel SAM & 0.3449 & 0.8757 & 0.8997 & 0.2495 & 0.5925 \\
+        & SAM~3 four-class & 0.3449 & 0.8757 & 0.8997 & 0.2495 & 0.5925 \\
         \bottomrule
-    \end{tabularx}
+    \end{tabular}
 \end{table}
 
-\subsubsection{Binary autolabel model trained on lettuce only}
-Table~\ref{tab:c5_results_binary_lettuce} compares path segmentation between the manual baseline and the binary autolabel network trained only on lettuce (\texttt{InsalataSAM\_2class}, records from \texttt{2\_classi} and \texttt{2\_classi\_realisticScenario}). Its labels come from the same \texttt{central farm path} prompt used for the path class of the 3-class and 4-class datasets. The network reaches a path IoU of 0.3917 on the complete test set and 0.9013 in the realistic scenario.
-
-\begin{table}[htbp]
+\begin{table}[H]
     \centering
     \small
-    \caption{Path IoU of the binary autolabel model trained on lettuce only, on the test set. The manual model path is class~2; the binary model path is class~1.}
+    \caption{IoU of the three-class network on plants and path. The mean is computed over these two classes only.}
+    \label{tab:c5_results_2class}
+    \sisetup{group-digits=false}
+    \begin{tabular}{@{}l l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]@{}}
+        \toprule
+        Scenario & Model & {Plants IoU} & {Path IoU} & {Mean IoU} \\
+        \midrule
+        \multirow{2}{*}{Complete test set} 
+        & Manual baseline & 0.9262 & 0.9532 & 0.9397 \\
+        & SAM~3 three-class & 0.8130 & 0.4124 & 0.6127 \\
+        \midrule
+        \multirow{2}{*}{Realistic scenario} 
+        & Manual baseline & 0.9485 & 0.9587 & 0.9536 \\
+        & SAM~3 three-class & 0.8779 & 0.8966 & 0.8873 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Path IoU of the binary network trained on lettuce only.}
     \label{tab:c5_results_binary_lettuce}
-    \begin{tabularx}{\textwidth}{@{}l X r@{}}
+    \sisetup{group-digits=false}
+    \begin{tabular}{@{}l l S[table-format=1.4]@{}}
         \toprule
-        Scenario & Model & Path IoU \\
+        Scenario & Model & {Path IoU} \\
         \midrule
         \multirow{2}{*}{Complete test set}
-        & Manual baseline (4-class) & 0.9532 \\
-        & Autolabel SAM (2-class, lettuce only) & 0.3917 \\
+        & Manual baseline & 0.9532 \\
+        & SAM~3 binary & 0.3917 \\
         \midrule
         \multirow{2}{*}{Realistic scenario}
-        & Manual baseline (4-class) & 0.9587 \\
-        & Autolabel SAM (2-class, lettuce only) & 0.9013 \\
+        & Manual baseline & 0.9587 \\
+        & SAM~3 binary & 0.9013 \\
         \bottomrule
-    \end{tabularx}
+    \end{tabular}
 \end{table}
 
-\subsubsection{Multi-crop binary autolabel model}
-Table~\ref{tab:c5_results_binary_general} reports the binary network trained on the multi-crop SAM~3 collection without the lettuce test images (project \texttt{allPlantsSAM\_\allowbreak test}, records from \texttt{2\_class\_\allowbreak allPlants\_\allowbreak clean} and its realistic-scenario variant). Its labels come from the \texttt{central path} prompt, and its training data contain tomato and cucumber images together with the remaining lettuce frames. The evaluated checkpoint is the one with the lowest validation loss (epoch 27, loss 0.1159). The network reaches a path IoU of 0.6369 on the complete test set and 0.9071 in the realistic scenario.
+In the four-class network, the IoU of the covering material and of the background is low. Visual inspection of the SAM~3 masks showed that SAM~3 segmented the covering material poorly in general and also assigned the greenhouse plastic cover to this class, which is background in the manual masks. This explanation comes from visual inspection only. The low path IoU of all SAM~3 networks on the complete test set is discussed in Section~\ref{subsec:c5_binary_selection}.
 
-\begin{table}[htbp]
-    \centering
-    \small
-    \caption{Path IoU of the multi-crop binary autolabel model, trained without the lettuce test images, on the test set. The manual model path is class~2; the binary model path is class~1.}
-    \label{tab:c5_results_binary_general}
-    \begin{tabularx}{\textwidth}{@{}l X r@{}}
-        \toprule
-        Scenario & Model & Path IoU \\
-        \midrule
-        \multirow{2}{*}{Complete test set}
-        & Manual baseline (4-class) & 0.9532 \\
-        & Autolabel SAM (2-class, multi-crop) & 0.6369 \\
-        \midrule
-        \multirow{2}{*}{Realistic scenario}
-        & Manual baseline (4-class) & 0.9587 \\
-        & Autolabel SAM (2-class, multi-crop) & 0.9071 \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{Path segmentation with autolabel supervision}
+\subsection{Summary and conclusions}
 \label{subsec:c5_binary_selection}
 
-Table~\ref{tab:c5_path_summary} collects the path IoU of every network from Tables~\ref{tab:c5_results_2class}--\ref{tab:c5_results_binary_general}.
+Table~\ref{tab:c5_path_summary} collects the path IoU of every network from Tables~\ref{tab:c5_results_4class}--\ref{tab:c5_results_binary_lettuce}.
 
-\begin{table}[htbp]
+\begin{table}[!htb]
     \centering
     \small
-    \caption{Path IoU on the test set for all networks of the supervision comparison. The multi-crop network is trained without the 77 lettuce test images.}
+    \caption{Path IoU on the test set for all networks of the supervision comparison.}
     \label{tab:c5_path_summary}
-    \begin{tabular}{@{}l r r@{}}
+    \sisetup{group-digits=false}
+    \begin{tabular}{@{}l S[table-format=1.4] S[table-format=1.4]@{}}
         \toprule
-        Network & Complete test set & Realistic scenario \\
+        Network & {Complete test set} & {Realistic scenario} \\
         \midrule
-        Manual baseline (4-class) & 0.9532 & 0.9587 \\
-        SAM~3 four-class (lettuce) & 0.4124 & 0.8997 \\
-        SAM~3 three-class (lettuce) & 0.4124 & 0.8966 \\
-        SAM~3 binary (lettuce) & 0.3917 & 0.9013 \\
-        SAM~3 binary (multi-crop) & 0.6369 & 0.9071 \\
+        Manual baseline & 0.9532 & 0.9587 \\
+        SAM~3 four-class & 0.4124 & 0.8997 \\
+        SAM~3 three-class & 0.4124 & 0.8966 \\
+        SAM~3 binary & 0.3917 & 0.9013 \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -474,16 +492,40 @@ The results support the following conclusions:
 \begin{enumerate}
     \item \textbf{The manual model is the best overall.} It has the highest IoU in every comparison, with path IoU 0.9532 on the complete test set and 0.9587 in the realistic scenario.
     \item \textbf{Lettuce-only autolabel training.} In the realistic scenario, the binary network trained only on lettuce reaches a path IoU of 0.9013, 5.7 percentage points below the manual model. The three lettuce autolabel networks differ by less than 0.5 percentage points on path IoU in this scenario (0.8966--0.9013), and on the complete test set the binary network is the lowest of the three (0.3917 against 0.4124). These data do not show that removing the plant and covering classes improves path segmentation.
-    \item \textbf{Multi-crop autolabel data.} The multi-crop binary network reaches a path IoU of 0.9071 in the realistic scenario, close to the lettuce binary network (0.9013), and 0.6369 on the complete test set, against 0.3917. Its training data differ in several ways at once (tomato and cucumber images, a different set of lettuce frames, and the \texttt{central path} prompt), so the improvement cannot be attributed to one factor.
-    \item \textbf{Complete test set versus realistic scenario.} Both scenarios evaluate the same networks, trained on all eight lettuce folders; the realistic scenario is only a subset of the test images. All autolabel networks lose much of their path accuracy on the complete test set (path IoU 0.39--0.41 for the lettuce networks and 0.64 for the multi-crop network), while the manual model does not (0.9532). The drop comes from the five folders outside the operational scenario. Their images were taken from viewpoints the robot cannot reach and can show several paths: the manual masks label only the path the robot should follow, whereas the autolabel networks segment every visible path, and the IoU counts the additional paths as false positives. In addition, visual inspection showed that SAM~3 produced less accurate path masks in images taken from unusual viewpoints or where the path between the rows is not clearly visible, so the networks were trained on noisier labels for these conditions. The complete-test values therefore combine segmentation errors, label noise, and this difference in label definition; the three effects were not separated quantitatively.
+    \item \textbf{Complete test set versus realistic scenario.} Both scenarios evaluate the same networks, trained on all eight lettuce folders; the realistic scenario is only a subset of the test images. All autolabel networks lose much of their path accuracy on the complete test set (path IoU 0.39--0.41), while the manual model does not (0.9532). The drop comes from the five folders outside the operational scenario. Their images were taken from viewpoints the robot cannot reach and can show several paths: the manual masks label only the path the robot should follow, whereas the autolabel networks segment every visible path, and the IoU counts the additional paths as false positives. In addition, visual inspection showed that SAM~3 produced less accurate path masks in images taken from unusual viewpoints or where the path between the rows is not clearly visible, so the networks were trained on noisier labels for these conditions. The complete-test values therefore combine segmentation errors, label noise, and this difference in label definition; the three effects were not separated quantitatively.
     \item \textbf{Full semantic segmentation.} With an mIoU of 0.5925 in the realistic scenario, the 4-class autolabel network does not support replacing manual annotation when all four classes are required.
-    \item \textbf{Sufficiency for navigation.} Path IoU values of 0.9013 (lettuce binary) and 0.9071 (multi-crop binary) in the realistic scenario imply that more than 90\% of the ground-truth path pixels are predicted as path, since recall $\text{TP}/(\text{TP}+\text{FN})$ is never lower than IoU. Whether this accuracy is sufficient for row following depends on how the residual errors are distributed along the corridor boundaries. It must be established through an application threshold or a downstream test of the path extraction and controller (Chapters~\ref{cap:geometric_reference} and~\ref{cap:experiments}), not from IoU alone.
+    \item \textbf{Sufficiency for navigation.} A path IoU of 0.9013 for the binary network in the realistic scenario implies that more than 90\% of the ground-truth path pixels are predicted as path, since recall $\text{TP}/(\text{TP}+\text{FN})$ is never lower than IoU. Whether this accuracy is sufficient for row following depends on how the residual errors are distributed along the corridor boundaries. It must be established through an application threshold or a downstream test of the path extraction and controller (Chapters~\ref{cap:geometric_reference} and~\ref{cap:experiments}), not from IoU alone.
 \end{enumerate}
 
 
-\subsection{Network deployed on the robot}
+\subsection{Extension to the multi-crop dataset and deployed network}
 \label{subsec:c5_deployed_network}
 
-After the lettuce study, the binary labeling was extended to the complete image collection, labeled entirely by SAM~3 with the \texttt{central path} prompt and without manual correction (\texttt{Data\_allPlantsSAM2}). The binary LR-ASPP network trained on this collection (checkpoint \texttt{best\_allsam2.pth}, epoch 25) is the network used on the robot in Chapters~\ref{cap:platform} and~\ref{cap:experiments}. Its training data include the lettuce test images, so its own IoU on them would not be an independent measure and is not reported. The multi-crop network of Table~\ref{tab:c5_results_binary_general}, trained with the same labels on the collection without those images, gives the independent estimate for this configuration: path IoU 0.9071 in the realistic scenario and 0.6369 on the complete test set. It is a separate training run (best epoch 27 instead of 25), so the estimate refers to the configuration rather than to the exact deployed weights. The deployed network was also assessed qualitatively, by visual inspection of its predictions over the dataset, and then in simulation and in field tests (Chapter~\ref{cap:experiments}). The visual inspection also showed that it segments adjacent or non-traversable corridors, which the manual lettuce masks leave as background. The checkpoint documentation identifies \texttt{Data\_allPlantsSAM2} as its training set, whereas the historical training script refers to \texttt{Data\_allPlantsMIX}; the checkpoint does not store the dataset path.
+The path is the only class used by the geometric extraction, so the binary configuration was chosen for the robot. After the lettuce study, the binary labeling was extended to the complete image collection, with lettuce, tomato, and cucumber images, labeled entirely by SAM~3 with the \texttt{central path} prompt and without manual correction.
 
-For integration with the geometric extraction, a binary network outputs the path class directly. The extractor \texttt{pf4.py} receives the predicted class map and a \texttt{path\_class} parameter (default 1) and binarizes the map internally, so a multi-class output could also be used by setting \texttt{path\_class} to the index of its path class. It uses only the path class: it analyzes 24 horizontal strips and fits the left and right corridor edges with iteratively reweighted least squares (Chapter~\ref{cap:geometric_reference}).
+Table~\ref{tab:c5_results_binary_general} reports the binary network trained on the multi-crop SAM~3 collection without the lettuce test images. Its labels come from the \texttt{central path} prompt, and its training data contain tomato and cucumber images together with the remaining lettuce frames. The evaluated checkpoint is the one with the lowest validation loss (epoch 27, loss 0.1159). The network reaches a path IoU of 0.6369 on the complete test set and 0.9071 in the realistic scenario. In the realistic scenario this result is close to that of the lettuce binary network (0.9013), while on the complete test set it is clearly higher (0.6369 against 0.3917). The training data differ in several ways at once (tomato and cucumber images, a different set of lettuce frames, and the \texttt{central path} prompt), so the difference cannot be attributed to one factor. The epoch of its best checkpoint is also not directly comparable with those of Table~\ref{tab:c5_supervision_configurations}, because its training split contains about 2.5 times as many images (about 1500 against 609), so each of its epochs processes more images.
+
+\begin{table}[!htb]
+    \centering
+    \small
+    \caption{Path IoU of the multi-crop binary network, trained without the lettuce test images.}
+    \label{tab:c5_results_binary_general}
+    \sisetup{group-digits=false}
+    \begin{tabular}{@{}l l S[table-format=1.4]@{}}
+        \toprule
+        Scenario & Model & {Path IoU} \\
+        \midrule
+        \multirow{2}{*}{Complete test set}
+        & Manual baseline & 0.9532 \\
+        & SAM~3 binary, multi-crop & 0.6369 \\
+        \midrule
+        \multirow{2}{*}{Realistic scenario}
+        & Manual baseline & 0.9587 \\
+        & SAM~3 binary, multi-crop & 0.9071 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The binary LR-ASPP network trained on this collection (best epoch 25) is the network used on the robot in Chapters~\ref{cap:platform} and~\ref{cap:experiments}. Its training data include the lettuce test images, so its own IoU on them would not be an independent measure and is not reported. The multi-crop network of Table~\ref{tab:c5_results_binary_general}, trained with the same labels on the collection without those images, gives the independent estimate for this configuration: path IoU 0.9071 in the realistic scenario and 0.6369 on the complete test set. It is a separate training run (best epoch 27 instead of 25), so the estimate refers to the configuration rather than to the exact deployed weights. The deployed network was also assessed qualitatively, by visual inspection of its predictions over the dataset, and then in simulation and in field tests (Chapter~\ref{cap:experiments}). The visual inspection also showed that it segments adjacent or non-traversable corridors, which the manual lettuce masks leave as background. The checkpoint documentation identifies the multi-crop SAM~3 dataset as its training set, whereas the historical training script refers to a different dataset folder. The checkpoint does not store the dataset path.
+
+For integration with the geometric extraction, a binary network outputs the path class directly. The geometric extractor receives the predicted class map together with the index of the path class (1 by default) and binarizes the map internally, so a multi-class output could also be used by passing the index of its path class. It uses only the path class: it analyzes 24 horizontal strips and fits the left and right corridor edges with iteratively reweighted least squares (Chapter~\ref{cap:geometric_reference}).
