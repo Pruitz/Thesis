@@ -58,21 +58,32 @@ The software stack runs on Ubuntu 22.04.5 LTS with Linux kernel \texttt{5.15.148
 \subsection{ROS integration}
 \label{subsec:ros}
 
-The software pipeline is implemented using the Robot Operating System (ROS). ROS provides a modular architecture where perception, geometric extraction, and control components communicate through topics and services.
+The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph recorded on the robot during navigation. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node of the package \texttt{seg\_controller\_onnx} subscribes to these images and runs, in the same callback, the segmentation network, the path extractor, the error filter, and the steering law. It publishes the velocity commands on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes a text log on \texttt{/debug/text} and, when the debug video is enabled, three debug images on the other \texttt{/debug} topics. The debug video is used only during development and is disabled when the robot operates. The \texttt{/debug} topics are not part of the graph in the figure.
 
-\placeholderfigure{fig:ros2_architecture}%
-{ROS 2 software architecture node graph and topic communication flow}%
-{Diagramma a blocchi dei nodi ROS 2 (\texttt{camera\_node}, \texttt{controller\_node}, \texttt{motor\_driver}), con evidenziati i topic (\texttt{/camera/image\_raw}, \texttt{/path\_mask}, \texttt{/cmd\_vel}) e i relativi messaggi.}%
-{5cm}
+The image subscription keeps only the last message (\texttt{KEEP\_LAST} with depth 1) with \texttt{BEST\_EFFORT} reliability, so a frame that arrives while the callback is still running replaces the previous one instead of being queued.
 
-\todobox{Architettura dei nodi ROS 2 e politiche QoS}{%
-Descrivere l'organizzazione software nel package ROS 2 \texttt{seg\_controller\_onnx}:
-\begin{itemize}
-  \item Grafo dei nodi attivi e rispettivi ruoli nel ciclo di percezione-azione.
-  \item Topic scambiati: ricezione stream telecamera compresso, pubblicazione della maschera del sentiero, coordinate della linea di navigazione e comandi motore \texttt{/cmd\_vel}.
-  \item Politiche di Quality of Service (QoS): adozione di code a profondit\`a unitaria (\texttt{depth=1}) con policy \texttt{BEST\_EFFORT} per evitare l'accumulo di latenza su frame arretrati.
-\end{itemize}
-}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        font=\small,
+        rosnode/.style={draw, ellipse, inner sep=3pt},
+        rostopic/.style={draw, rectangle, inner sep=5pt},
+        arr/.style={-latex, thick},
+        node distance=6mm,
+    ]
+        \node[rosnode] (cam) {\texttt{/camera/camera}};
+        \node[rostopic, right=of cam] (img) {\texttt{/camera/camera/color/image\_raw/compressed}};
+        \node[rosnode, below=10mm of cam] (ctrl) {\texttt{/controller\_node}};
+        \node[rostopic, right=of ctrl] (cmd) {\texttt{/cmd\_vel}};
+        \node[rosnode, right=of cmd] (drv) {\texttt{/demetra\_node}};
+        \draw[arr] (cam) -- (img);
+        \draw[arr] (img.south) |- ($(img.south)!0.5!(img.south |- ctrl.north)$) -| (ctrl.north);
+        \draw[arr] (ctrl) -- (cmd);
+        \draw[arr] (cmd) -- (drv);
+    \end{tikzpicture}
+    \caption{ROS~2 node graph on the robot, as shown by \texttt{rqt\_graph}. Ellipses are nodes and rectangles are topics.}
+    \label{fig:ros2_architecture}
+\end{figure}
 
 \subsubsection{Perception node}
 \label{subsubsec:perception_node}
@@ -247,21 +258,25 @@ Specificare i dettagli dell'ambiente di esecuzione:
 \subsection{Timing and latency}
 \label{subsec:timing}
 
-End-to-end latency includes image acquisition, preprocessing, segmentation inference, geometric extraction, and control computation. The total pipeline latency must remain below the control update period to maintain stable navigation.
+The processing times were measured on the Jetson AGX Orin by passing 100 compressed camera frames, recorded in the \texttt{insalata\_grande1} folder, through the callback of the controller node, after 5 warm-up frames. For each frame, the node records the inference time, the time of the path extractor (\texttt{pf4.py}, an earlier version of Method~4 that selected the seed by edge support and used 24 strips), and the total time of the callback. The first 50 frames were processed with the debug video enabled, which renders and compresses the debug images, and the other 50 with the debug video disabled. Table~\ref{tab:jetson_timing} reports the mean and standard deviation of each time.
 
-\placeholderfigure{fig:jetson_timing_breakdown}%
-{Execution time breakdown of the synchronous perception-control cycle on NVIDIA Jetson}%
-{Grafico della scomposizione del tempo di ciclo medio su Jetson: decodifica JPEG (10--15 ms), inferenza ONNX su GPU (10--15 ms), estrazione geometrica (5--10 ms; indicare con quale estrattore \`e stata misurata), codifica delle 3 immagini JPEG di debug (15--25 ms). Tempo totale per ciclo: 42--76 ms (~20 Hz).}%
-{5cm}
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Processing times of the deployed pipeline on the NVIDIA Jetson AGX Orin, with \texttt{pf4.py} as path extractor (mean $\pm$ standard deviation over 50 frames per condition).}
+    \label{tab:jetson_timing}
+    \begin{tabular}{@{}l c c@{}}
+        \toprule
+        Time (ms) & With debug video & Without debug video \\
+        \midrule
+        Inference (ONNX Runtime) & $9.92 \pm 0.07$ & $9.76 \pm 0.07$ \\
+        Path extractor & $8.88 \pm 0.20$ & $8.64 \pm 0.18$ \\
+        Total callback time & $53.14 \pm 0.97$ & $23.09 \pm 0.21$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
 
-\todobox{Analisi delle latenze misurate e frequenza a 20 Hz (dati reali)}{%
-Riportare i risultati empirici ricavati dai test sul Jetson:
-\begin{itemize}
-  \item Tempo totale di esecuzione compreso tra 42 e 76 ms per ciclo (media $\approx 50$~ms), corrispondente a una frequenza di controllo di circa 20 Hz a fronte di una frequenza di cattura della telecamera di 30 fps.
-  \item Analisi del frame dropping indotto dalla callback sincrona con \texttt{depth=1} e \texttt{BEST\_EFFORT} (viene scartato circa un frame ogni tre per mantenere il controllo sul dato pi\`u recente).
-  \item Strategie per raggiungere i 30 Hz: (1) pubblicare le immagini di debug a frequenza ridotta o in un thread dedicato; (2) ottimizzare il modello tramite NVIDIA TensorRT; (3) disaccoppiare decodifica e inferenza con architettura multi-thread.
-\end{itemize}
-}
+Inference and path extraction take about 19~ms in both conditions. The rest of the total time belongs to the other operations of the callback, which were not measured separately: 4.70~ms without the debug video and 34.35~ms with it, so the debug video adds about 30~ms per frame. With the debug video enabled, the total time of 53.14~ms limits the processing rate to 18.8 frames per second, below the 30~fps of the camera. Without the debug video, the total time of 23.09~ms is shorter than the 33.3~ms frame period of the camera, so the processing time no longer limits the rate at which frames are processed. When the robot operates the debug video is disabled, so the second column of Table~\ref{tab:jetson_timing} describes the robot in operation.
 
 \subsection{Software-in-the-Loop pre-validation}
 \label{subsec:sitl}

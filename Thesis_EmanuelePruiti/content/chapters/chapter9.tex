@@ -15,7 +15,7 @@ This thesis investigated vision-based local guidance for agricultural row naviga
 
 \item \textbf{Evaluation of output label configurations:} Networks with four-class, three-class, and binary path outputs, trained on SAM~3 lettuce labels, were compared against the manual ground truth. Their path IoU values differ by less than 0.5 percentage points in the realistic scenario. The binary configuration was adopted for the robot because the path is the only class used by the geometric extraction.
 
-\item \textbf{Edge-based geometric extractor:} An extractor that converts corridor masks into image-space navigation references was implemented (\texttt{pf4.py}, Method~4). It uses horizontal strip extraction, bottom-up interval association, and independent fitting of the left and right boundaries, and it is compared with three baseline algorithms (\texttt{pf\_centri}, \texttt{pf\_histogram}, \texttt{pf\_ransac}).
+\item \textbf{Edge-based geometric extractor:} An extractor that converts corridor masks into image-space navigation references was implemented (\texttt{pf5.py}, Method~4). It uses horizontal strip extraction, bottom-up interval association with selection of the chain that gives the most edge samples, and independent fitting of the left and right boundaries, and it is compared with three baseline algorithms (\texttt{pf\_centri}, \texttt{pf\_histogram}, \texttt{pf\_ransac}).
 \end{itemize}
 
 \section{Conclusions on segmentation and annotation}
