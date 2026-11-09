@@ -186,7 +186,7 @@ Both boundaries are estimated by Iteratively Reweighted Least Squares (IRLS) wit
 \begin{equation}
     w_i = \frac{1}{1 + \left(\frac{r_i}{\sigma}\right)^2}
 \end{equation}
-applied for a fixed number of four iterations to at most one boundary sample per horizontal strip ($N = 16$ on the robot). Chapter~\ref{cap:geometric_reference} details how \texttt{numpy.polyfit} applies these weights. A perturbation on one boundary changes only the weights and fit of that boundary. The centerline reference $x_C(y) = (x_L(y) + x_R(y))/2$ is computed after both boundary fits.
+applied for a fixed number of ten iterations to at most one boundary sample per horizontal strip ($N = 16$ on the robot). Chapter~\ref{cap:geometric_reference} details how these weights enter the fit. A perturbation on one boundary changes only the weights and fit of that boundary. The centerline reference $x_C(y) = (x_L(y) + x_R(y))/2$ is computed after both boundary fits.
 
 \subsection{Comparison of geometric representations}
 \label{subsec:geometric_comparison}

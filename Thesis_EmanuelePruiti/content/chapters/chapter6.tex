@@ -91,21 +91,28 @@ Figure~\ref{fig:c6_chain} shows the association on the mask of Figure~\ref{fig:g
 \subsection{Separate fitting of the corridor edges}
 \label{sec:c6_fitting}
 
-The left edge is fitted on the left endpoints $\ell_i$ of the accepted intervals that are not clipped on the left, and the right edge on the right endpoints $r_i$ that are not clipped on the right. Each edge needs at least two samples, otherwise the result is \texttt{lost}. There is no single-edge fallback. The two fits can use different strips.
+The two edges are fitted separately. The left edge uses the left endpoints $\ell_i$ of the accepted intervals, and the right edge uses the right endpoints $r_i$. Clipped endpoints are not used, so an interval clipped on one side gives a sample only to the other edge, and the two edges can have samples in different strips. Each edge needs at least two samples. If one edge has fewer, the result is \texttt{lost}, because the centerline is never estimated from a single edge.
 
-Each edge is fitted with iteratively reweighted least squares. The first fit uses uniform weights, and ten reweighting iterations follow. At each iteration, the distance of each sample from the current line gives its new weight, and the line is fitted again. A sample far from the line gets a low weight, and a sample at distance $\sigma=18$~px gets weight 0.5. At iteration $t$, the residuals and the new weights are
+Each edge is fitted with iteratively reweighted least squares. The first fit uses uniform weights, and ten reweighting iterations follow. At each iteration, the distance of each sample from the current line gives its new weight, and the line is fitted again. A sample far from the line gets a low weight. How fast the weight decreases is set by the residual scale $\sigma$, a parameter of the extractor. A sample at distance $\sigma$ from the line gets weight 0.5. On the robot, $\sigma=18$~px (Section~\ref{sec:c6_parameter_setting}). At iteration $t$, the residuals and the new weights are
 \begin{equation}
     e_i^{(t)}=x_i-m^{(t)}y_i-q^{(t)},\qquad
     w_i^{(t+1)}=\frac{1}{1+(e_i^{(t)}/\sigma)^2},
     \label{eq:c6_reweight}
 \end{equation}
-and the line is refitted with \texttt{numpy.polyfit} of degree one. This function multiplies the unsquared residuals by the weights~\cite{numpyPolyfitDocumentation}, so each iteration solves
+and the line is fitted again by weighted least squares, with each weight applied to the residual before it is squared:
 \begin{equation}
     (m,q)=\mathop{\arg\min}_{m,q}
-        \sum_i \left[w_i(x_i-my_i-q)\right]^2,
+        \sum_i \left[w_i(x_i-my_i-q)\right]^2.
     \label{eq:c6_objective}
 \end{equation}
-and each squared residual is weighted by $w_i^2$. The weights are recomputed from the current line at every iteration, not accumulated. The reweighting reduces the effect of isolated outliers, but it cannot correct a wrong association that produces a consistent wrong line.
+Each squared residual is therefore weighted by $w_i^2$. The weights are not accumulated across iterations, since they are computed again from the current line only. The reweighting reduces the effect of isolated outliers, but it cannot correct a wrong association. When many samples come from a region outside the corridor, they lie on a consistent line, and the fit follows them. Figure~\ref{fig:robust_edge_fitting} shows the reweighting on the samples of the selected chain of Figure~\ref{fig:c6_chain}b.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{images/geometric/edge_fitting.png}
+  \caption{Reweighted fit of the two edges of Strip-IRLS on the samples of the selected chain of Figure~\ref{fig:c6_chain}b, at the start and after iterations 1, 3 and 10. The points are the endpoints of the accepted intervals that are not clipped, colored by their weight, the orange lines are the fits of the left and right edge, and the cyan line is the centerline, their mean. The three upper samples of the right edge, on the region attached to the corridor, pull the first fit toward the vertical. Their weights fall to 0.21, 0.10 and 0.09 only after several iterations, and after the tenth the line follows the edge. The result on this mask is \texttt{ok}, with a confidence of 0.67.}
+  \label{fig:robust_edge_fitting}
+\end{figure}
 
 When the upper intervals of the chain do not follow the corridor, the two fitted edges can come closer than the minimum interval width $d_{\min}=8$~px inside the chain. Before the final fit, the edges are therefore fitted once and checked. If they converge upward and the modeled width $D(y)=x_R(y)-x_L(y)$ falls to $d_{\min}$ at a row $y_\times$ below the highest accepted interval, the intervals above $y_\times$ are discarded and both edges are fitted again. With $\Delta m=m_R-m_L$ and $\Delta q=q_R-q_L$, the width is $D(y)=\Delta m\,y+\Delta q$, the edges converge upward when $\Delta m>10^{-6}$, and
 \begin{equation}
@@ -113,13 +120,6 @@ When the upper intervals of the chain do not follow the corridor, the two fitted
     \label{eq:c6_crossing}
 \end{equation}
 This check is repeated at most three times, and it ends earlier when no crossing is found, when fewer than three intervals would remain, or when an edge has fewer than two samples. The remaining intervals are used in all the following steps.
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\linewidth]{images/geometric/edge_fitting.png}
-  \caption{Reweighted fit of the two edges of Strip-IRLS on the mask of Figure~\ref{fig:c6_roi}, at the start and after iterations 1, 3 and 10. The points are the endpoints of the accepted intervals that are not clipped, colored by their weight, the orange lines are the fits of the left and right edge, and the cyan line is the centerline, their mean. The three upper samples of the right edge, on the region attached to the corridor, pull the first fit toward the vertical. Their weights fall to 0.21, 0.10 and 0.09 only after several iterations, and after the tenth the line follows the edge. The result on this mask is \texttt{ok}, with a confidence of 0.67.}
-  \label{fig:robust_edge_fitting}
-\end{figure}
 
 \subsection{Validation, confidence, and output}
 \label{sec:c6_output}
@@ -168,9 +168,12 @@ The result is \texttt{lost} if the width check fails, if $\bar e>2\sigma$, or if
 
 For a \texttt{lost} result, the output mask is empty and no centerline model is returned. Otherwise, the centerline is drawn from row $\lceil y_v^{\mathrm{top}}\rceil$ down to $y_v^{\mathrm{bot}}$. In each row its column is clipped to $[0,W-1]$, and the drawn line is dilated with a $3\times3$ elliptical kernel. The controller reads the lateral error from the analytic model $x_C(y)$, not from the drawn mask (Chapter~\ref{cap:platform}).
 
-Table~\ref{tab:c6_defaults} lists the parameters of \textit{Strip-IRLS} used on the robot.
+\subsection{Setting the parameters}
+\label{sec:c6_parameter_setting}
 
-\begin{table}[htbp]
+Table~\ref{tab:c6_defaults} lists the values of the parameters of \textit{Strip-IRLS} used on the robot. The distances and areas are in pixels of the $224\times224$ mask, so they depend on the camera mounting and on the crop. The list below discusses only the main parameters: what each one does and how it should be set. These indications come from the code and from the tests on the development masks of Chapter~\ref{cap:experiments}.
+
+\begin{table}[H]
     \centering
     \small
     \caption{Parameters of Strip-IRLS used on the robot. Distances and areas are in pixels of the $224\times224$ mask.}
@@ -202,17 +205,12 @@ Table~\ref{tab:c6_defaults} lists the parameters of \textit{Strip-IRLS} used on 
         \bottomrule
     \end{tabularx}
 \end{table}
-
-\subsection{Setting the parameters}
-\label{sec:c6_parameter_setting}
-
-Most parameters of \textit{Strip-IRLS} are lengths in pixels of the $224\times224$ mask, so they depend on the camera mounting and on the crop. The following indications for each group come from what the parameter does in the code and from the tests on the development masks of Chapter~\ref{cap:experiments}. They were not tested on another camera or crop.
 \begin{itemize}
-    \item \textbf{ROI start $\rho$.} The ROI should contain the path and as little else as possible (Section~\ref{sec:c6_roi}). A taller ROI lets the seeds and the chain see more of the corridor. On the development masks with a merging gap of 30~px, going from $\rho=0.50$ to $\rho=0.30$ lowered the gross errors on the base scenarios from 6.0\% to 0.5\%, while on the development part of the annotated frames they went from 1.6\% to 2.3\% (Section~\ref{subsubsec:c8_parameters}). Because the ROI is a whole number of strips, it changes in steps of $N$ rows when $\rho$ changes: with $N=16$, every $\rho$ from 0.29 to 0.35 gives the ROI from row 64. A change of $\rho$ that crosses a step also changes the strip height $h$, and with it the seed window ($6h$ rows) and the rows covered by the tolerated skipped strips ($3h$ rows).
-    \item \textbf{Number of strips $N$.} A hole wider than the merging gap and taller than the seed window splits every seed interval, so each seed covers only one side of the corridor. The seed window is six strips, so with fewer and taller strips it covers more rows.
-    \item \textbf{Merging gap.} It should be larger than the gaps inside the corridor that must not split it, such as holes and shadows, and smaller than the crop row between two adjacent corridors. The value depends on the field. Where no corridors run side by side, the gap can be larger. Where corridors are close, it must be smaller. The value of 40~px was chosen with an earlier strip geometry. With the final geometry, 30~px gives fewer gross errors on the development masks with adjacent corridors (Table~\ref{tab:c8_gap}), and 40~px is kept because the field tests have no corridors side by side.
-    \item \textbf{Minimum interval width, minimum area and jump limit $\Delta_{\max}$.} The minimum interval width and the minimum component area should be below the narrowest corridor and the smallest region to keep. The jump limit should be above the lateral shift of the corridor between two strips, \textcolor{red}{which grows with the offset of the robot and with the pitch and roll of the camera}.
-    \item \textbf{Residual scale $\sigma$ and thresholds.} A sample at a distance $\sigma$ from its line has weight 0.5 (Eq.~\eqref{eq:c6_reweight}), so $\sigma$ should be close to the irregularity of the edges of the predicted mask. The thresholds 0.38 and 0.60 on the confidence are not calibrated.
+    \item \textbf{ROI start $\rho$.} The ROI starts at row $\lfloor\rho H\rfloor$, and the rows above it are not used (Section~\ref{sec:c6_roi}). It should start at the highest row where the path appears, which depends on the position of the camera and on the path. Rows above the path can add regions that are not path. Their intervals can enter the chain and pull the edge fits away from the corridor. Because the ROI is a whole number of strips, its start moves in steps of $N$ rows when $\rho$ changes. On the robot, $\rho=0.30$, chosen on the development masks (Section~\ref{subsubsec:c8_parameters}).
+    \item \textbf{Number of strips $N$.} The ROI is divided into $N$ strips of equal height (Section~\ref{sec:c6_candidates}). Each strip gives at most one interval to the chain, so more strips give more samples to the edge fits. The strips are then thinner, and a hole in the mask splits or empties a thin strip more easily, because a column is active if any row of the strip contains path. $N$ should therefore be the largest value for which the holes of the predicted mask do not split or empty the strips. On the robot, $N=16$, and each strip is 10 rows high.
+    \item \textbf{Merging gap.} Two runs of active columns in the same strip separated by at most this number of columns are merged into one interval (Section~\ref{sec:c6_candidates}). It should be larger than the gaps inside the corridor, such as holes and shadows, so that they do not split it. It should be smaller than the crop row between two adjacent corridors, so that the two corridors are not merged into one interval. On the robot it is 40~px, because the field tests have no corridors side by side.
+    \item \textbf{Minimum interval width, minimum area and jump limit $\Delta_{\max}$.} The cleaning removes the connected components with fewer pixels than the minimum area (Section~\ref{sec:c6_roi}), and the intervals narrower than the minimum interval width $d_{\min}$ are discarded (Section~\ref{sec:c6_candidates}). The same $d_{\min}$ is the smallest corridor width accepted by the crossing check and by the validation (Sections~\ref{sec:c6_fitting} and~\ref{sec:c6_output}). Both values should be below the smallest corridor region and the narrowest corridor in the mask, so that the corridor itself is never removed. On the robot they are 500 pixels and 8~px. The jump limit is the largest shift of the endpoints from one accepted interval to the next (Section~\ref{sec:c6_selection}). It should be above the lateral shift of the corridor between two strips, so that the chain follows the corridor, \textcolor{red}{which grows with the offset of the robot and with the pitch and roll of the camera}, and below the shift to the regions that must be rejected. On the robot it is $\max(28,\,0.5\,d_p)$~px.
+    \item \textbf{Residual scale $\sigma$ and thresholds.} The residual scale sets how fast the weight of a sample decreases with its distance from the edge line (Eq.~\eqref{eq:c6_reweight}). It also sets the fit score $F$ and the rejection of the result when the mean residual is above $2\sigma$ (Section~\ref{sec:c6_output}). It should be close to the irregularity of the edges of the predicted mask. A smaller $\sigma$ also lowers the weight of correct samples on an irregular edge, and a larger $\sigma$ gives a high weight to the outliers too. On the robot, $\sigma=18$~px. The thresholds on the confidence $C$ assign the status: below 0.38 the result is \texttt{lost}, and from 0.60 it is \texttt{ok}. They are not calibrated.
 \end{itemize}
 
 \section{EdgeNet, an edge regression network}
@@ -241,28 +239,23 @@ The \textit{Center points} extractor uses the same mask cleaning and interval ex
 \end{equation}
 with $c_p$ and $d_p$ the midpoint and width of the last accepted interval, under the jump limit $|c_i - c_p| \le \max(28, 0.5\, d_p)$, with the same stopping rule and the same minimum of three intervals as \textit{Strip-IRLS}.
 
-One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c6_reweight}. Unlike \textit{Strip-IRLS}, the initial weights are proportional to the pixel count of each interval (normalized to mean one), the weights multiply across iterations, and clipped intervals are not excluded. The score is $0.30T+0.35F+0.25A+0.10G$, with $T$ computed over all strips, $A$ on the widths $d$ of all accepted intervals, and $G$ on the longest run of skipped strips, including the run that ends the association. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the score is below 0.38, and \texttt{degraded} if it is below 0.60. The line is drawn from the top of the highest accepted strip to the bottom of the image. Because the midpoints are formed before the fit, a disturbance on one edge moves the midpoint and enters the centerline.
+One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c6_reweight}. Unlike \textit{Strip-IRLS}, the initial weights are proportional to the pixel count of each interval (normalized to mean one), the weights multiply across iterations, and clipped intervals are not excluded. The confidence combines the same four scores as \textit{Strip-IRLS} (Section~\ref{sec:c6_output}), tracking $T$, fit $F$, regularity of the width $A$ and gaps $G$, with weights 0.30, 0.35, 0.25 and 0.10. $T$ is the number of accepted intervals divided by the number of all the strips, so the strips above the end of the corridor also lower it. $A$ uses the widths of all the accepted intervals, and $G$ also counts the skipped strips that end the association. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the confidence is below 0.38, and \texttt{degraded} if it is below 0.60. Because the midpoints are formed before the fit, a disturbance on one edge moves the midpoint and enters the centerline.
 
 \subsection{Column histogram}
 \label{subsec:c6_histogram_baseline}
 
-The \textit{Column histogram} extractor is a simplified version of the column projection of SegMin. SegMin sums a plant mask, accumulated over recent frames and refined with depth, along the image columns, smooths the profile, and takes its minimum~\cite{navone2025gpsfree}. \textit{Column histogram} uses the path mask of a single frame, without depth or smoothing, and takes the maximum. Its ROI starts at $y_0=\lfloor 0.30H\rfloor=67$, and the mask is cleaned with the same opening and closing as \textit{Strip-IRLS}, keeping components of at least 300 pixels. The column counts of its cleaned ROI mask $\widetilde M_h$ are
-\begin{equation}
-    p(x) = \sum_{y=0}^{H-y_0-1} \widetilde M_h(y, x), \qquad x \in [0, W-1].
-    \label{eq:c6_histogram}
-\end{equation}
-The target column $x_{\text{target}}$ is the center of the widest run of columns whose count equals the maximum $p_{\max}$. The confidence is $p_{\max}/(H-y_0)$, with the same thresholds as \textit{Strip-IRLS} (0.38 and 0.60). The output is the vertical line $x=x_{\text{target}}$ from $y_0$ to the bottom of the image, so the method gives a lateral position but no heading.
+The \textit{Column histogram} extractor is a simplified version of the column projection of SegMin. SegMin sums a plant mask, accumulated over recent frames and refined with depth, along the image columns, smooths the profile, and takes its minimum~\cite{navone2025gpsfree}. \textit{Column histogram} uses the path mask of a single frame, without depth or smoothing, and takes the maximum. Its ROI starts at $y_0=\lfloor 0.30H\rfloor=67$, and the mask is cleaned with the same opening and closing as \textit{Strip-IRLS}. In each column, the extractor counts the path pixels of the cleaned ROI, and the target column $x_{\text{target}}$ is the column with the most path pixels. If several columns have the maximum count, as when the corridor fills the whole height of the ROI, $x_{\text{target}}$ is the center of the widest group of adjacent ones. The confidence is the maximum count divided by the ROI height $H-y_0$, with the same thresholds as \textit{Strip-IRLS} (0.38 and 0.60). The output is the vertical line $x=x_{\text{target}}$, so the method gives a lateral position but no heading.
 
 \subsection{RANSAC edges}
 \label{subsec:c6_ransac_baseline}
 
 RANSAC line fitting is used in agricultural row detection on points of the crop rows~\cite{bai2023vision,sensors2025deeplabv3}. The RANSAC extractor applies it to the edges of the segmented corridor, without strips or bottom-up association.
 
-The ROI starts at $y_0=\lfloor 0.30H\rfloor=67$ and the mask is cleaned with the same opening and closing as \textit{Strip-IRLS}. Among the components with at least 500 pixels, the extractor keeps the one that maximizes its area plus ten times the top row of its bounding box, which favors large components that start lower in the image. In each ROI row of this component with width of at least 10~px, the leftmost and rightmost pixels are edge points. As in \textit{Strip-IRLS}, an endpoint within 2~px of the image border is clipped and is not used as an edge point. Otherwise the image border would become an edge point in every row where the corridor leaves the image. Each edge needs at least ten points, otherwise the result is \texttt{lost}. The result is also \texttt{lost} if the highest and lowest edge points of one side are less than 20 rows apart, or if the selected component has fewer than 1000 pixels. These checks reject masks in which one side of the corridor is seen only in a few rows, for example a band of path across the bottom of the image at the end of a row.
+The ROI starts at $y_0=\lfloor 0.30H\rfloor=67$ and the mask is cleaned with the same opening and closing as \textit{Strip-IRLS}. The extractor then keeps one connected component, a large one that starts low in the image. In each ROI row of this component, its leftmost and rightmost pixels are edge points. As in \textit{Strip-IRLS}, the endpoints at the image border are not used.
 
-Each edge is fitted with RANSAC~\cite{fischler1981ransac}: in 100 trials, two points drawn by a generator with fixed seed (42) define a line, and the points at a horizontal distance of at most 18~px from it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines, as in Eq.~\eqref{eq:c6_line}.
+Each edge is fitted with RANSAC~\cite{fischler1981ransac}: in 100 trials, two random points define a line, and the points within 18~px of it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines, as in Eq.~\eqref{eq:c6_line}. The random draws use a fixed seed, so the same mask always gives the same line.
 
-The result is \texttt{lost} if the mean inlier residual exceeds 36~px, if the mean inlier ratio of the two edges is below 0.30, or if the score $0.35\,(\text{inlier ratio})+0.30\,(\text{fit score})+0.20\,(\text{vertical coverage})+0.15\,(\text{width score})$ is below 0.38, and \texttt{degraded} if this score is below 0.60. The fit score is $\operatorname{clip}(1-\bar e_{\mathrm{in}}/18,0,1)$, with $\bar e_{\mathrm{in}}$ the average of the mean inlier residuals of the two edges. The inliers are within 18~px of the sampled line and the least-squares refit cannot increase their mean residual above 18~px, so the 36~px test never rejects a frame. The vertical coverage is the fraction of ROI rows of the component with width of at least 10~px, including rows with clipped endpoints. The width score is $\operatorname{clip}(1-E_w/0.30,0,1)$, with $E_w$ the median absolute difference between consecutive widths of the rows with both endpoints not clipped, divided by their median width, and it is 0.5 when fewer than five widths are available. The line is drawn from the highest edge point to the bottom of the image.
+The result is \texttt{lost} if one edge has too few points or covers too few rows, for example when the mask is a band of path across the bottom of the image at the end of a row. Otherwise a score combines the fraction of inliers, their residual, the vertical extent of the component and the regularity of its width. Below 0.38 the result is \texttt{lost}, and from 0.60 it is \texttt{ok}.
 
 \section{Structural differences and limitations}
 \label{sec:c6_tradeoffs_and_limitations}
