@@ -50,7 +50,7 @@ The thesis is organized as follows:
 
 \textbf{Chapter~\ref{cap:segmentation}} describes dataset preparation with manual annotation and automatic SAM~3 labeling, empirical comparisons among the three architectures on lettuce, and evaluations of supervision strategies across label configurations.
 
-\textbf{Chapter~\ref{cap:geometric_reference}} presents the geometric extractor that converts corridor masks into navigation references through horizontal-strip interval selection and independent edge fitting, together with three baseline algorithms used for comparison.
+\textbf{Chapter~\ref{cap:geometric_reference}} presents the two extractors developed in this work, which convert corridor masks into navigation references: Strip-IRLS, based on horizontal-strip interval selection and independent edge fitting, and EdgeNet, a network that regresses the corridor edges, which is a first experiment. Three baseline algorithms are described for comparison.
 
 \textbf{Chapter~\ref{cap:platform}} describes the robot hardware, camera configuration, software integration using ROS, and the deployment of the trained segmentation model.
 

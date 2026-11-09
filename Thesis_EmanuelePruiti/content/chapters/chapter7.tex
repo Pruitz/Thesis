@@ -1,7 +1,7 @@
 \chapter{Robot Platform and Integration}
 \label{cap:platform}
 
-This chapter describes the hardware and software components of the robot platform used for field validation. It covers the camera configuration, computing hardware, software architecture using ROS, and the deployment of the trained segmentation model for real-time inference.
+This chapter describes the robot used in the field tests, the software that runs on it, and the deployment of the segmentation network.
 
 \section{Robot hardware and sensors}
 \label{sec:hardware}
@@ -9,29 +9,27 @@ This chapter describes the hardware and software components of the robot platfor
 \subsection{Robot platform}
 \label{subsec:robot_platform}
 
-The experimental platform is a custom-built mobile robot prototype, named Demetra, developed for agricultural inspection and autonomous navigation in row-crop environments. The chassis features a four-wheel steering (4WS) and four-wheel drive (4WD) kinematic configuration. All four wheels are independently driven, and both the front and rear axles provide active steering.
+The experimental platform is Demetra, a mobile robot prototype developed by the Roboto student team of the Politecnico di Torino. The chassis features a four-wheel steering (4WS) and four-wheel drive (4WD) kinematic configuration.
 
-Steering operates in a symmetric contra-steering mode (opposite-phase steering), where the front wheels steer by an angle $\delta_f = \delta$ and the rear wheels steer by an equal and opposite angle $\delta_r = -\delta$. This configuration constrains the instantaneous center of rotation (ICR) to lie on the transverse axis passing through the geometric center of the chassis ($x = 0$). Relative to a conventional front-wheel Ackermann steering model with wheelbase $L$, symmetric four-wheel contra-steering halves the turning radius from $R = L / \tan\delta$ to:
+Steering operates in a symmetric contra-steering mode (opposite-phase steering), where the front wheels steer by an angle $\delta_f = \delta$ and the rear wheels steer by an equal and opposite angle $\delta_r = -\delta$. This configuration constrains the instantaneous center of rotation (ICR) to lie on the transverse axis passing through the geometric center of the chassis ($x = 0$). With wheelbase $L$, the turning radius is:
 \begin{equation}
     R = \frac{L}{2 \tan\delta}.
     \label{eq:turning_radius_4ws}
 \end{equation}
-This reduction in turning radius enables tight turns at row headlands without requiring the robot to swing wide into adjacent crop beds. In addition, the vehicle sideslip angle at the center of geometry remains zero under ideal kinematic rolling conditions ($\beta = 0$), so the heading of the chassis aligns with the tangent to the path.
+The vehicle sideslip angle at the center of geometry remains zero under ideal kinematic rolling conditions ($\beta = 0$), so the heading of the chassis aligns with the tangent to the path.
+
+The wheelbase is $L = 0.40$~m and the wheel diameter is 0.192~m ($r_w = 0.096$~m).
 
 \todobox{Dimensioni fisiche e peso del telaio}{%
-Inserire i valori geometrici misurati sul prototipo reale:
+Valori non presenti nel codice del driver (il pacchetto \texttt{demetra\_description} con gli URDF non e' nel workspace):
 \begin{itemize}
-  \item Passo $L$ (distanza tra asse anteriore e posteriore in metri) e carreggiata $T$ (distanza trasversale tra le ruote in metri).
-  \item Raggio nominale della ruota $r_w$ e altezza libera da terra del telaio (ground clearance).
+  \item Carreggiata $T$ (distanza trasversale tra le ruote in metri).
+  \item Altezza libera da terra del telaio (ground clearance).
   \item Massa totale del veicolo (kg) comprensiva di pacco batterie, sensori e payload.
 \end{itemize}
 }
 
-The traction subsystem comprises four DJI RoboMaster M3508 brushless DC motors, each coupled to an integrated 19:1 planetary gearbox. Operating at a nominal voltage of 24~V, each motor unit delivers up to 3.0~N$\cdot$m of continuous torque with a no-load output shaft speed of 482~rpm (peak torque up to 5.0~N$\cdot$m). Speed regulation is handled by four individual DJI RoboMaster C620 electronic speed controllers (ESCs) implementing field-oriented control (FOC) over a CAN bus interface at 1~Mbps, with continuous current limits of 20~A per channel.
-
-Active steering is actuated by four CubeMars AK70-10 KV100 robotic actuators. Each steering unit integrates a brushless DC motor, a 10:1 planetary gearhead, a 14-bit magnetic absolute encoder, and a motor driver in a single housing. A cross-roller bearing supports simultaneous axial, radial, and tilting loads transmitted from the ground through the wheel uprights. The actuators produce a continuous torque of 8.3~N$\cdot$m and a peak torque of 24.8~N$\cdot$m under 24~V operation. The integrated 14-bit encoder provides angular position feedback with a resolution of $0.022^\circ$, used for closed-loop position control over a secondary CAN bus network.
-
-Low-level actuator control, safety monitoring, and sensor feedback are executed on a DJI RoboMaster Development Board Type C. The board houses an STM32F407IGH6 microcontroller (ARM Cortex-M4 core running at 168~MHz with hardware floating-point support). Two independent CAN bus controllers interface directly with the four traction ESCs and the four steering actuators. The board also incorporates a 6-axis inertial measurement unit (IMU) mounted on a mechanical vibration-damping structure. Deterministic firmware on the microcontroller executes position and velocity loops at fixed intervals, parses motion commands from the onboard computer, and transmits wheel encoder odometry and IMU telemetry.
+Each wheel has a DJI RoboMaster M3508 brushless motor with a 19:1 planetary gearbox and a DJI RoboMaster C620 speed controller, and is steered by a CubeMars AK70-10 actuator with an integrated encoder. A DJI RoboMaster Development Board Type C (STM32F407) controls the speed controllers and the steering actuators over two CAN buses. It receives the linear velocity and the steering angle from the onboard computer and sends back the measured platform speed and steering angle.
 
 \subsection{Camera configuration}
 \label{subsec:camera}
@@ -41,16 +39,12 @@ Low-level actuator control, safety monitoring, and sensor feedback are executed 
 {Fotografia della piattaforma mobile con indicazione della telecamera RGB frontale, dell'altezza di montaggio $h$ dal terreno, dell'angolo di inclinazione (pitch) verso il suolo e dell'alloggiamento del calcolatore di bordo.}%
 {5.5cm}
 
-Visual sensing is provided by an Intel RealSense D435 camera mounted on the front section of the robot frame. The sensor connects to the onboard computer via a USB 3.2 Gen~1 interface. For the navigation pipeline, the camera operates in RGB streaming mode at a resolution of $640 \times 480$ pixels and a frame rate of 30 frames per second (fps). The stream is captured as JPEG-compressed frames to minimize transfer overhead across the ROS~2 transport layer. The camera is positioned at height $h$ above the ground with a downward tilt angle $\alpha$ toward the inter-row path, providing a field of view that encompasses the corridor surface and adjacent crop boundaries in front of the vehicle.
+The camera is an Intel RealSense D435, mounted on the front of the robot frame and connected to the onboard computer over USB 3.2 Gen~1. The color stream is used at $640 \times 480$ pixels and 30 frames per second (fps), and the controller node subscribes to its JPEG-compressed version. The camera is tilted downward, so that the image shows the corridor and the crop rows on both sides in front of the robot.
 
 \subsection{Computing platform}
 \label{subsec:computing}
 
-Onboard processing is executed on an NVIDIA Jetson AGX Orin Developer Kit (64~GB version). The computing unit incorporates a 12-core ARM Cortex-A78AE v8.2 64-bit CPU operating at 2.20~GHz and an NVIDIA Ampere architecture GPU with 2048 CUDA cores and 64 Tensor cores. The module delivers up to 275~TOPS of sparse INT8 compute capability and 138~TFLOPS in FP16 Tensor Core operations.
-
-The system shares 64~GB of unified LPDDR5 memory between the CPU and GPU over a 256-bit bus, providing a memory bandwidth of 204.8~GB/s. Persistent storage and dataset logging use a 512~GB NVMe SSD mounted over an M.2 PCIe Gen4 $\times$4 interface at \texttt{/mnt/nvme}, leaving the 64~GB onboard eMMC memory dedicated to the base operating system.
-
-The software stack runs on Ubuntu 22.04.5 LTS with Linux kernel \texttt{5.15.148-\allowbreak tegra} and NVIDIA Linux for Tegra (L4T) release R36.4.4 under JetPack 6.1. The complete robotics and deep learning environment is containerized using Docker and the NVIDIA Container Runtime, providing pass-through access to the GPU, hardware accelerators, and USB character devices. Within the container, ROS~2 Humble Hawksbill coordinates image acquisition, neural network inference with ONNX Runtime 1.23.0 using the \texttt{CUDAExecutionProvider}, geometric line extraction, and low-level serial communication.
+The onboard computer is an NVIDIA Jetson AGX Orin Developer Kit (64~GB), with a 12-core ARM Cortex-A78AE CPU and an NVIDIA Ampere GPU with 2048 CUDA cores. It runs Ubuntu 22.04 with L4T R36.4.4. The software runs in a Docker container with access to the GPU and to the USB devices. Inside the container, ROS~2 Humble runs the camera driver, the controller node, and the serial driver.
 
 \section{Software architecture}
 \label{sec:software}
@@ -58,7 +52,7 @@ The software stack runs on Ubuntu 22.04.5 LTS with Linux kernel \texttt{5.15.148
 \subsection{ROS integration}
 \label{subsec:ros}
 
-The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph recorded on the robot during navigation. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node of the package \texttt{seg\_controller\_onnx} subscribes to these images and runs, in the same callback, the segmentation network, the path extractor, the error filter, and the steering law. It publishes the velocity commands on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes a text log on \texttt{/debug/text} and, when the debug video is enabled, three debug images on the other \texttt{/debug} topics. The debug video is used only during development and is disabled when the robot operates. The \texttt{/debug} topics are not part of the graph in the figure.
+The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph recorded on the robot during navigation. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node of the package \texttt{seg\_controller\_onnx} subscribes to these images. In the same callback, it runs the segmentation network, the path extractor, the error filter, and the steering law, and publishes the velocity commands on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes a text log on \texttt{/debug/text}. When the debug video is enabled, it publishes three debug images on other \texttt{/debug} topics. The debug video is used only during development and is disabled when the robot operates. The \texttt{/debug} topics are omitted from the figure.
 
 The image subscription keeps only the last message (\texttt{KEEP\_LAST} with depth 1) with \texttt{BEST\_EFFORT} reliability, so a frame that arrives while the callback is still running replaces the previous one instead of being queued.
 
@@ -85,151 +79,105 @@ The image subscription keeps only the last message (\texttt{KEEP\_LAST} with dep
     \label{fig:ros2_architecture}
 \end{figure}
 
-\subsubsection{Perception node}
-\label{subsubsec:perception_node}
+\subsubsection{Processing of each frame}
+\label{subsubsec:frame_processing}
 
-The perception node receives camera images, runs the segmentation model, and publishes the path mask. Input images are preprocessed according to the training configuration before inference.
+For each frame, the controller node decodes the JPEG image, resizes it to $224\times224$ pixels with area interpolation, converts it from BGR to RGB, scales the values to $[0,1]$, and normalizes each channel with the ImageNet mean and standard deviation. ONNX Runtime runs the segmentation network on this tensor, and the argmax of the output logits gives the label mask. The path extractor (Chapter~\ref{cap:geometric_reference}) turns the mask into a centerline.
 
-\todobox{Dettagli implementativi del nodo di percezione}{%
-Descrivere le operazioni eseguite alla ricezione di ogni frame:
-\begin{itemize}
-  \item Decodifica dell'immagine compressa JPEG tramite \texttt{cv2.imdecode}.
-  \item Ridimensionamento e normalizzazione del tensore d'ingresso (media e deviazione standard di ImageNet).
-  \item Invocazione dell'inferenza tramite la sessione ONNX Runtime con \texttt{CUDAExecutionProvider}.
-  \item Estrazione della maschera binaria di navigazione tramite operatore \texttt{argmax}.
-\end{itemize}
-}
-
-\subsubsection{Geometric extraction node}
-\label{subsubsec:geometric_node}
-
-The geometric extraction node subscribes to the segmentation mask, applies one of the four extractors of Chapter~\ref{cap:geometric_reference} (the proposed Method~4, \texttt{pf4.py}, or one of the baselines \texttt{pf\_centri}, \texttt{pf\_histogram}, and \texttt{pf\_ransac}), and publishes the navigation reference as a line or position message. All four extractors are tested on the robot (Chapter~\ref{cap:experiments}).
-
-\todobox{Integrazione dell'estratore geometrico e tracking temporale}{%
-Dettagliare l'elaborazione geometrica:
-\begin{itemize}
-  \item Suddivisione della maschera in strisce orizzontali e selezione dei candidati.
-  \item Selezione dell'estrattore (\texttt{pf4.py}, \texttt{pf\_centri.py}, \texttt{pf\_histogram.py} o \texttt{pf\_ransac.py}) e sua applicazione a ogni frame; indicare dove avviene il filtraggio temporale della linea (ad es. il filtro EMA descritto in questo capitolo).
-  \item Gestione dei frame non validi (reiezione in caso di confidenza o supporto insufficiente).
-\end{itemize}
-}
-
-\subsubsection{Control node and error conditioning}
+\subsubsection{Error filter and steering law}
 \label{subsubsec:control_node}
 
-The control node converts the image-space geometric reference into linear and angular velocity commands $(v, \omega)$ published on the \texttt{/cmd\_vel} topic. Tracking errors extracted from the segmentation mask at reference row $y_{\mathrm{ref}} = 0.50 \cdot H$ ($y = 112\text{ px}$ for a $224 \times 224$ input resolution) are subject to sensor noise and transient occlusions. To ensure smooth closed-loop actuation without erratic steering adjustments, raw lateral pixel errors $e_{\mathrm{px}}$ pass through a multi-stage conditioning filter before entering the steering law.
+The lateral error $e_{\mathrm{px}}$ is the horizontal offset, in pixels, of the centerline from the image center at row $y_{\mathrm{ref}} = 156$ of the $W \times H = 224\times224$ input (70\% of $H$, truncated). It is positive when the centerline is on the right. Before the steering law, the error passes through a filter that depends on the status returned by the path extractor.
 
-\paragraph{Dual-regime recursive smoothing and jump rejection.}
-The core filter operates as an exponential moving average (EMA) conditioned on the path finder tracking state $\mathrm{status}_{\mathrm{pf}} \in \{\mathrm{ok}, \mathrm{degraded}\}$. The filter smoothing factor $\alpha$ and jump threshold $J_{\mathrm{thr}}$ switch dynamically between two operating regimes:
+\paragraph{Exponential filter and jump rejection.}
+With status \texttt{ok} or \texttt{degraded}, the filtered error $e_k$ is updated with an exponential moving average (EMA). The reference smoothing factor $\alpha_{\mathrm{ref}}$ and the jump threshold $J$ depend on the status:
 \begin{equation}
-    (\alpha, J_{\mathrm{thr}}) = 
+    (\alpha_{\mathrm{ref}}, J) =
     \begin{cases}
-        (0.20, \; 40.0\text{ px}) & \text{if } \mathrm{status}_{\mathrm{pf}} = \mathrm{ok}, \\
-        (0.18, \; 38.0\text{ px}) & \text{if } \mathrm{status}_{\mathrm{pf}} = \mathrm{degraded}.
+        (0.20, \; 40\text{ px}) & \text{if the status is \texttt{ok}}, \\
+        (0.18, \; 38\text{ px}) & \text{if the status is \texttt{degraded}}.
     \end{cases}
     \label{eq:filter_regimes}
 \end{equation}
-At each sampled frame $k$, the discrepancy between incoming measurement $e_{\mathrm{px},k}$ and prior filtered state $e_{k-1}$ is evaluated as $\Delta_k = |e_{\mathrm{px},k} - e_{k-1}|$. When $\Delta_k \le J_{\mathrm{thr}}$, the measurement is accepted as nominal and updated via standard EMA:
+The factor $\alpha$ used in the update is obtained from $\alpha_{\mathrm{ref}}$ with Equation~\eqref{eq:alpha_dt}. With $\Delta_k = |e_{\mathrm{px},k} - e_{k-1}|$, the measurement is accepted when $\Delta_k \le J$:
 \begin{equation}
-    e_k = (1 - \alpha) e_{k-1} + \alpha \, e_{\mathrm{px},k},
+    e_k = (1 - \alpha)\, e_{k-1} + \alpha \, e_{\mathrm{px},k}.
     \label{eq:filter_ema_update}
 \end{equation}
-with the consecutive jump counter reset to zero ($c_{\mathrm{jump}} = 0$).
+When $\Delta_k > J$ on an isolated frame, the update uses a fixed weight of 0.20, $e_k = 0.80\, e_{k-1} + 0.20\, e_{\mathrm{px},k}$. When the jump is present in two consecutive frames, the filter takes the new measurement directly, $e_k = e_{\mathrm{px},k}$.
 
-Conversely, when $\Delta_k > J_{\mathrm{thr}}$, the counter increments ($c_{\mathrm{jump}} \leftarrow c_{\mathrm{jump}} + 1$). If the anomaly occurs on a single isolated frame ($c_{\mathrm{jump}} = 1$), it is treated as a spurious segmentation outlier and heavily attenuated:
+\paragraph{Smoothing independent of the frame rate.}
+The reference factors are defined for 30 frames per second. At each frame, the node measures the time $\Delta t$ since the previous frame, limited to the interval from $1/120$ to $0.25$~s, and converts each reference factor $\alpha_{\mathrm{ref}}$ into
 \begin{equation}
-    e_k = 0.80 \, e_{k-1} + 0.20 \, e_{\mathrm{px},k}.
-    \label{eq:filter_outlier_damp}
+    \alpha = 1 - (1 - \alpha_{\mathrm{ref}})^{30\,\Delta t}.
+    \label{eq:alpha_dt}
 \end{equation}
-If the large displacement persists across consecutive frames ($c_{\mathrm{jump}} \ge 2$), the filter classifies the variation as a genuine path change, resets $c_{\mathrm{jump}} = 0$, and assigns $e_k = e_{\mathrm{px},k}$ directly to avoid phase lag.
+With $\Delta t = 1/30$~s, $\alpha = \alpha_{\mathrm{ref}}$. When frames arrive less often, $\alpha$ grows, so the time constant of the filter in seconds does not change with the processing rate.
 
-\paragraph{Temporal hold and command deadband.}
-When the path finder reports a lost tracking state or when no valid centerline is detected ($e_{\mathrm{px}} = \text{None}$), the filter initiates a zero-order temporal hold:
-\begin{equation}
-    e_k = e_{\mathrm{last\_valid}} \quad \text{for } \Delta t \le t_{\mathrm{hold}},
-    \label{eq:filter_hold}
-\end{equation}
-where $t_{\mathrm{hold}} = 0.50\text{ s}$ ($\approx 15\text{ frames}$ at $30\text{ fps}$). If perception dropouts exceed $0.50\text{ s}$, the filter clears its internal state and issues an emergency stop command ($v = 0$, $\omega = 0$).
+\paragraph{Hold, stop, and deadband.}
+When the status is \texttt{lost} or no centerline is available, the node keeps the last filtered error for up to $t_{\mathrm{hold}} = 0.5$~s. After this time, or after 15 consecutive \texttt{lost} frames, it publishes a zero velocity command. After a stop, the filter restarts from the first new measurement. A filtered error below 4~px in absolute value is set to zero in the command, while the filter keeps its internal value.
 
-To eliminate high-frequency actuator jitter when the vehicle is aligned with the corridor, an output deadband of $\pm 4.0\text{ px}$ is applied:
+\paragraph{Steering law.}
+The command error $e_{\mathrm{cmd}}$ is $e_k$ after the deadband. It is normalized by the half-width of the image and scaled by the confidence $C \in [0, 1]$ of the path extractor:
 \begin{equation}
-    e_{\mathrm{cmd},k} = 
-    \begin{cases}
-        0.0 & \text{if } |e_k| < 4.0\text{ px}, \\
-        e_k & \text{otherwise}.
-    \end{cases}
-    \label{eq:filter_deadband}
-\end{equation}
-The deadband alters only command output $e_{\mathrm{cmd},k}$, preserving internal state $e_k$ to avoid filter deadlock when crossing the zero-error threshold.
-
-\paragraph{Velocity command generation.}
-The filtered lateral error is normalized relative to the image half-width, $e_{\mathrm{norm}} = e_{\mathrm{cmd}} / (W / 2)$, and scaled by the geometric extraction confidence $C \in [0, 1]$:
-\begin{equation}
-    \omega = - K_{p,\mathrm{lat}} \cdot (0.6 + 0.4 \cdot C) \cdot e_{\mathrm{norm}},
+    \omega^{*} = - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2},
     \label{eq:control_law_omega}
 \end{equation}
-where $K_{p,\mathrm{lat}} = 1.2$ is the lateral proportional gain. Calculated angular velocity is clamped within $[-\omega_{\max}, \omega_{\max}]$, while forward linear speed is set to $v = v_{\mathrm{nom}}$. Table~\ref{tab:controller_parameters} summarizes the nominal parameters deployed on the robot platform.
+with $K_{p} = 1.2$. The value is limited to $\pm\omega_{\max} = \pm 0.58$~rad/s. With Equation~\eqref{eq:4ws_steering_angle}, this limit corresponds to $\delta \approx 30^\circ$ at $v = 0.20$~m/s. A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second, converted with Equation~\eqref{eq:alpha_dt}. The linear velocity is constant, $v = 0.20$~m/s. Table~\ref{tab:controller_parameters} lists the parameters used on the robot.
 
 \begin{table}[htbp]
     \centering
     \small
-    \caption{Nominal parameters of the error conditioning filter and steering controller deployed on Demetra.}
+    \caption{Parameters of the error filter and of the steering law used on Demetra.}
     \label{tab:controller_parameters}
     \begin{tabularx}{\textwidth}{@{}X l l@{}}
         \toprule
-        Parameter & Symbol & Nominal value \\
+        Parameter & Symbol & Value \\
         \midrule
-        Input resolution ($W \times H$) & -- & $224 \times 224\text{ px}$ \\
-        Reference evaluation row & $y_{\mathrm{ref}}$ & $112\text{ px}$ ($0.50 \cdot H$) \\
-        Smoothing factor (regime \texttt{ok}) & $\alpha_{\mathrm{ok}}$ & $0.20$ \\
-        Smoothing factor (regime \texttt{degraded}) & $\alpha_{\mathrm{deg}}$ & $0.18$ \\
-        Jump threshold (regime \texttt{ok}) & $J_{\mathrm{thr,ok}}$ & $40.0\text{ px}$ \\
-        Jump threshold (regime \texttt{degraded}) & $J_{\mathrm{thr,deg}}$ & $38.0\text{ px}$ \\
-        Outlier persistence window & $N_{\mathrm{persist}}$ & $2\text{ frames}$ \\
-        Temporal hold duration & $t_{\mathrm{hold}}$ & $0.50\text{ s}$ ($\approx 15\text{ frames}$) \\
-        Output deadband & $\delta_{\mathrm{db}}$ & $\pm 4.0\text{ px}$ \\
-        Lateral proportional gain & $K_{p,\mathrm{lat}}$ & $1.2$ \\
-        Maximum angular velocity & $\omega_{\max}$ & $0.58\text{ rad/s}$ \\
-        Nominal linear speed & $v_{\mathrm{nom}}$ & $0.20\text{ m/s}$ \\
+        Input resolution ($W \times H$) & -- & $224 \times 224$ px \\
+        Reference row & $y_{\mathrm{ref}}$ & 156 px \\
+        Smoothing factor, status \texttt{ok} & $\alpha_{\mathrm{ok}}$ & 0.20 \\
+        Smoothing factor, status \texttt{degraded} & $\alpha_{\mathrm{deg}}$ & 0.18 \\
+        Jump threshold, status \texttt{ok} & $J_{\mathrm{ok}}$ & 40 px \\
+        Jump threshold, status \texttt{degraded} & $J_{\mathrm{deg}}$ & 38 px \\
+        Weight of an isolated jump & -- & 0.20 \\
+        Frames that confirm a jump & -- & 2 \\
+        Reference frame rate of the smoothing factors & -- & 30 fps \\
+        Hold time & $t_{\mathrm{hold}}$ & 0.5 s \\
+        Consecutive \texttt{lost} frames before stopping & -- & 15 \\
+        Deadband & -- & $\pm 4$ px \\
+        Proportional gain & $K_{p}$ & 1.2 \\
+        Maximum angular velocity & $\omega_{\max}$ & 0.58 rad/s \\
+        Smoothing factor of the angular velocity & $\alpha_w$ & 0.30 \\
+        Linear velocity & $v$ & 0.20 m/s \\
         \bottomrule
     \end{tabularx}
 \end{table}
 
-\subsection{Perception pipeline implementation}
-\label{subsec:perception_pipeline}
-
-\todobox{Struttura a callback sincrona e carico delle immagini di debug}{%
-Descrivere il funzionamento del nodo unificato in un unico thread:
-\begin{itemize}
-  \item Sequenzialit\`a del ciclo: decodifica JPEG $\to$ inferenza ONNX $\to$ estrattore geometrico $\to$ generazione comandi $\to$ compressione e pubblicazione di 3 immagini di diagnostica visiva.
-  \item Analisi dell'impatto prestazionale: la compressione JPEG delle 3 immagini di debug rappresenta una frazione significativa del tempo totale di callback.
-\end{itemize}
-}
-
 \subsection{Control interface}
 \label{subsec:control_interface}
 
-The control node translates the guidance reference into velocity commands published as \texttt{geometry\_msgs/msg/Twist} messages on the \texttt{/cmd\_vel} topic. These commands specify the forward linear speed $v$ along the longitudinal chassis axis and the angular velocity $\omega$ about the vertical yaw axis.
-
-A dedicated serial communication node, \texttt{demetra\_serial\_driver}, interfaces the ROS~2 environment with the low-level STM32 microcontroller. The physical connection uses an FTDI USB-to-UART TTL converter operating at a baud rate of 115200~bps with an update loop running at 100~Hz (10~ms period). Each transmitted packet consists of 24 bytes containing six 32-bit floating-point values followed by a checksum for transmission validation.
-
-On the microcontroller, inverse kinematics converts the target $(v, \omega)$ command into individual steering angles and wheel rotation speeds according to the symmetric 4WS model. For a vehicle with wheelbase $L$ and track width $T$, the nominal steering angle $\delta$ is:
+The serial driver node (\texttt{/demetra\_node}) converts each command $(v, \omega)$ into the steering angle
 \begin{equation}
-    \delta = \arctan\left(\frac{L \omega}{2 v}\right),
+    \delta = \arctan\left(\frac{L\, \omega}{2\, v}\right),
     \label{eq:4ws_steering_angle}
 \end{equation}
-with the front axle steering at $+\delta$ and the rear axle steering at $-\delta$. The individual turn radius for the center of each axle is $R = L / (2\tan\delta)$. To account for track width $T$ and reduce wheel scuffing during cornering, individual steering angles for the left and right wheels follow dual-Ackermann geometry:
+limited to $\pm 30^\circ$. Before the conversion, the node limits $v$ to $\pm 1.5$~m/s and $\omega$ to $\pm 6.0$~rad/s. Every 10~ms it sends the last $v$ and $\delta$ to the microcontroller over a serial link at 115200~baud. If no command arrives for 500~ms, it sets the speed to zero.
+
+\begingroup\color{red}
+The microcontroller computes the steering angle of each wheel and the wheel speeds. For track width $T$ and turning radius $R = L / (2\tan\delta)$, the left and right steering angles follow the dual-Ackermann geometry:
 \begin{equation}
     \delta_{L} = \arctan\left(\frac{L/2}{R - T/2}\right), \qquad
     \delta_{R} = \arctan\left(\frac{L/2}{R + T/2}\right),
     \label{eq:ackermann_4ws}
 \end{equation}
-with $\delta_{FL} = \delta_L$, $\delta_{FR} = \delta_R$, $\delta_{RL} = -\delta_L$, and $\delta_{RR} = -\delta_R$. The corresponding wheel linear velocities $v_i$ for each wheel $i \in \{FL, FR, RL, RR\}$ are:
+with $\delta_{FL} = \delta_L$, $\delta_{FR} = \delta_R$, $\delta_{RL} = -\delta_L$, and $\delta_{RR} = -\delta_R$. The linear velocity of each wheel $i \in \{FL, FR, RL, RR\}$ is
 \begin{equation}
     v_i = \omega \sqrt{\left(\frac{L}{2}\right)^2 + R_i^2},
     \label{eq:wheel_velocity}
 \end{equation}
-where $R_i$ is the lateral distance from the ICR to the wheel center plane. Target wheel angular velocities $\omega_{w,i} = v_i / r_w$ (with wheel radius $r_w$) are converted into motor speed setpoints for the C620 ESCs via the 19:1 gear ratio, while the steering angles are tracked by the AK70-10 actuators via the internal 14-bit encoder position loops.
+where $R_i$ is the lateral distance from the ICR to the wheel center plane. The wheel speeds $v_i / r_w$ are converted into motor speed setpoints through the 19:1 gear ratio.
+\endgroup
 
 \section{Deployment configuration}
 \label{sec:deployment}
@@ -237,28 +185,12 @@ where $R_i$ is the lateral distance from the ICR to the wheel center plane. Targ
 \subsection{Model export to ONNX}
 \label{subsec:onnx_export}
 
-The deployed LR-ASPP network (the multi-crop binary model \texttt{best\_allsam2.pth}, Section~\ref{subsec:c5_deployed_network}) is exported from PyTorch to ONNX with \texttt{torch.onnx.export}. The export script rebuilds the two-class LR-ASPP, loads the checkpoint weights, and wraps the network so that it returns only the main output tensor, that is, the per-pixel class logits; softmax and argmax are not part of the exported graph. The example input is a float32 tensor of size $1\times3\times224\times224$, with the batch dimension declared dynamic and the spatial size fixed at $224\times224$. The export uses opset 17 with constant folding, and the exported graph is validated with \texttt{onnx.checker.check\_model}. The ONNX file used on the robot, \texttt{lraspp\_224x224\_allsam2.onnx}, was also compared with the PyTorch checkpoint on the same deterministic random input of size $1\times3\times224\times224$: the maximum absolute difference between the logits was $5.6\times10^{-5}$ and the mean absolute difference $4.9\times10^{-6}$, so the two outputs agree within a relative tolerance of $10^{-3}$ and an absolute tolerance of $10^{-4}$. This comparison was run with PyTorch 2.6.0 and ONNX Runtime 1.23.2 on the CPU.
-
-On the robot, camera frames are resized to $224\times224$ before inference, to match this input size. The inference times in Table~\ref{tab:c5_architecture_results} were instead measured at the original image resolution, so they do not describe the onboard model.
-
-\subsection{Real-time inference}
-\label{subsec:real_time_inference}
-
-The deployed model processes camera frames at the rate required for closed-loop control. Input preprocessing matches the training transformations. The segmentation mask is decoded and passed to the geometric extraction stage.
-
-\todobox{Configurazione del runtime ONNX}{%
-Specificare i dettagli dell'ambiente di esecuzione:
-\begin{itemize}
-  \item Configurazione dell'allocazione di memoria e provider attivo (\texttt{CUDAExecutionProvider}).
-  \item Tipologia di quantizzazione/precisione (es. FP32 standard vs FP16) e consumo di memoria VRAM sulla GPU Jetson.
-  \item Specifiche del tensore d'ingresso (normalizzazione in $[0,1]$ o con media e deviazione standard di ImageNet, risoluzione) e del tensore di uscita (logit o indici di classe, risoluzione).
-\end{itemize}
-}
+The deployed LR-ASPP network (the multi-crop binary model, Section~\ref{subsec:c5_deployed_network}) is exported from PyTorch to ONNX with a $224\times224$ input. The graph returns the per-pixel logits of the two classes, and the controller node computes the argmax. \textcolor{red}{On the same random input, the logits of the ONNX model and of the PyTorch checkpoint differ by at most $5.6\times10^{-5}$.} The inference times in Table~\ref{tab:c5_architecture_results} were measured on the RTX 2080 SUPER used for training, at the original image resolution, so they do not describe the onboard model.
 
 \subsection{Timing and latency}
 \label{subsec:timing}
 
-The processing times were measured on the Jetson AGX Orin by passing 100 compressed camera frames, recorded in the \texttt{insalata\_grande1} folder, through the callback of the controller node, after 5 warm-up frames. For each frame, the node records the inference time, the time of the path extractor (\texttt{pf4.py}, an earlier version of Method~4 that selected the seed by edge support and used 24 strips), and the total time of the callback. The first 50 frames were processed with the debug video enabled, which renders and compresses the debug images, and the other 50 with the debug video disabled. Table~\ref{tab:jetson_timing} reports the mean and standard deviation of each time.
+The processing times were measured on the Jetson AGX Orin by passing 100 compressed camera frames, recorded in the \texttt{insalata\_grande1} folder, through the callback of the controller node, after 5 warm-up frames. For each frame, the node records the inference time, the time of the path extractor (\texttt{pf4.py}, an earlier version of Strip-IRLS that selected the seed by edge support and used 24 strips), and the total time of the callback. The first 50 frames were processed with the debug video enabled, which renders and compresses the debug images, and the other 50 with the debug video disabled. Table~\ref{tab:jetson_timing} reports the mean and standard deviation of each time.
 
 \begin{table}[htbp]
     \centering
@@ -269,51 +201,49 @@ The processing times were measured on the Jetson AGX Orin by passing 100 compres
         \toprule
         Time (ms) & With debug video & Without debug video \\
         \midrule
-        Inference (ONNX Runtime) & $9.92 \pm 0.07$ & $9.76 \pm 0.07$ \\
+        Inference (normalization, ONNX Runtime, argmax) & $9.92 \pm 0.07$ & $9.76 \pm 0.07$ \\
         Path extractor & $8.88 \pm 0.20$ & $8.64 \pm 0.18$ \\
         Total callback time & $53.14 \pm 0.97$ & $23.09 \pm 0.21$ \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Inference and path extraction take about 19~ms in both conditions. The rest of the total time belongs to the other operations of the callback, which were not measured separately: 4.70~ms without the debug video and 34.35~ms with it, so the debug video adds about 30~ms per frame. With the debug video enabled, the total time of 53.14~ms limits the processing rate to 18.8 frames per second, below the 30~fps of the camera. Without the debug video, the total time of 23.09~ms is shorter than the 33.3~ms frame period of the camera, so the processing time no longer limits the rate at which frames are processed. When the robot operates the debug video is disabled, so the second column of Table~\ref{tab:jetson_timing} describes the robot in operation.
+Inference and path extraction take about 19~ms in both conditions. The rest of the total time is JPEG decoding, resizing, the filter, the command publication, the log, and, when enabled, the debug images. These steps were not measured separately. They take 4.70~ms without the debug video and 34.35~ms with it, so the debug video adds about 30~ms per frame. With the debug video enabled, the total time of 53.14~ms limits the processing rate to 18.8 frames per second, below the 30~fps of the camera. Without the debug video, the total time of 23.09~ms is shorter than the 33.3~ms frame period of the camera, so the node can process every camera frame. When the robot operates the debug video is disabled, so the second column of Table~\ref{tab:jetson_timing} describes the robot in operation.
 
-\subsection{Software-in-the-Loop pre-validation}
+The controller node selects the extractor at start-up with a launch parameter. Table~\ref{tab:jetson_extractors} compares the extractors of Chapter~\ref{cap:geometric_reference} on the Jetson. The time is that of the call \texttt{path\_finder(pred\_mask)} alone, without decoding, resizing, inference or publication. The 100 masks are the predictions of the deployed network on 100 consecutive compressed frames of the \texttt{insalata\_grande1} recording (after 10 frames not used), and each extractor was called 10 times on the first masks before timing. \textcolor{red}{Strip-IRLS was timed with the ROI starting at $\rho=0.50$, before the change to $\rho=0.30$, and the model and the output row of EdgeNet used in this measurement were not recorded.} RANSAC edges takes 14.10~ms, more than twice the time of Strip-IRLS (6.50~ms), and Column histogram takes 0.62~ms.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Time of one call of the path extractor on the NVIDIA Jetson AGX Orin, 100 masks of the \texttt{insalata\_grande1} recording (ms).}
+    \label{tab:jetson_extractors}
+    \begin{tabular}{@{}l c c c@{}}
+        \toprule
+        Extractor & Mean & Median & 95th percentile \\
+        \midrule
+        Column histogram & 0.62 & 0.62 & 0.64 \\
+        EdgeNet & 3.62 & 3.65 & 3.72 \\
+        Center points & 6.11 & 6.12 & 6.19 \\
+        Strip-IRLS & 6.50 & 6.50 & 6.57 \\
+        RANSAC edges & 14.10 & 14.15 & 14.28 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Software-in-the-Loop test}
 \label{subsec:sitl}
 
-Before deploying the navigation pipeline on the physical robot, the stability of the full closed-loop chain (segmentation, geometric extraction, error conditioning, steering law, and vehicle kinematics) was verified in a lightweight Software-in-the-Loop (SITL) environment running on a desktop workstation.
-
-\subsubsection{SITL architecture}
-\label{subsubsec:sitl_architecture}
-
-The SITL node loads a single real RGB frame acquired by the Intel RealSense D435 camera on an actual crop row. Rather than rendering a synthetic 3D scene, the simulator models the robot's lateral displacement and heading variation as a horizontal translation of the camera viewport over the original image. The frame is padded with reflective borders (400~pixels per side) to allow displacements of up to $\pm 0.45\text{ m}$ without introducing black edges.
-
-The pixel shift $\Delta x$ applied at each simulation step combines two terms derived from the D435 optical parameters:
+Before the field tests, the closed loop was tested on a desktop computer with a Software-in-the-Loop (SITL) node (\texttt{sim\_camera.py}). The node loads one $640\times480$ frame of a crop row and simulates the lateral offset $y$ and the heading $\theta$ of the robot by shifting the image horizontally. The frame is padded with 400~px of reflected border on each side, and $y$ is limited to $\pm 0.45$~m. The shift in pixels is
 \begin{equation}
-    \Delta x = -y \cdot \frac{f_x}{D} + \theta \cdot f_x,
+    \Delta x = -y\,\frac{f_x}{D} + \theta\, f_x,
     \label{eq:sitl_projection}
 \end{equation}
-where $y$ is the lateral offset of the robot from the corridor center (in meters), $\theta$ is the heading angle relative to the row axis (in radians), $f_x = 465\text{ px}$ is the horizontal focal length of the D435 at $640 \times 480$ resolution, and $D = 1.25\text{ m}$ is the lookahead distance corresponding to the reference evaluation row ($y_{\mathrm{ref}} = 0.50 \cdot H$).
-
-\subsubsection{Kinematic model}
-\label{subsubsec:sitl_kinematics}
-
-The SITL integrates the same 4WS symmetric contra-steering kinematics implemented in the onboard firmware (\texttt{kinematics.cpp}), with identical parameters: wheelbase $L = 0.40\text{ m}$, wheel diameter $d_w = 0.192\text{ m}$, and mechanical steering saturation at $\pm 30.0^\circ$. At each time step $\Delta t = 1/30\text{ s}$, the node receives $(v, \omega)$ from the \texttt{/cmd\_vel} topic published by the real \texttt{controller\_node}, computes the effective steering angle:
-\begin{equation}
-    \delta = \arctan\!\left(\frac{L \cdot \omega}{2\,v}\right), \qquad
-    \omega_{\mathrm{eff}} = \frac{2\,v\,\tan\delta}{L},
-    \label{eq:sitl_steering}
-\end{equation}
-and updates the planar state:
+where $f_x = 465$~px is the nominal focal length of the D435 at $640\times480$, computed from its $69^\circ$ horizontal field of view, and \textcolor{red}{$D = 1.25$~m is the distance of the ground point seen at the reference row}.
+At 30 steps per second, the node takes the last command $(v,\omega)$ on \texttt{/cmd\_vel}, computes $\delta$ with Equation~\eqref{eq:4ws_steering_angle} and the $\pm 30^\circ$ limit, with $L = 0.40$~m, and updates the state:
 \begin{align}
-    \theta_{k+1} &= \theta_k + \omega_{\mathrm{eff}} \cdot \Delta t, \\
-    y_{k+1} &= y_k - v \sin\theta_k \cdot \Delta t.
+    \theta_{k+1} &= \theta_k + \frac{2\,v\tan\delta}{L}\,\Delta t, \\
+    y_{k+1} &= y_k - v \sin\theta_{k+1}\,\Delta t.
     \label{eq:sitl_integration}
 \end{align}
-The translated frame is then published on the same ROS~2 topic used by the physical camera (\texttt{/camera/camera/color/image\_raw/compressed}), so the \texttt{controller\_node} processes it without any code modification.
-
-\subsubsection{Interactive perturbation testing}
-\label{subsubsec:sitl_perturbation}
-
-Keyboard inputs allow the operator to inject controlled lateral perturbations ($\pm 4\text{ cm}$ or $\pm 10\text{ cm}$) during execution, simulating sudden displacement events such as wheel slip on soft soil or an external push. This procedure was used to verify that the error conditioning filter and steering controller recover to the corridor center within approximately $10\text{--}15$ frames ($\sim 0.5\text{ s}$ at $30\text{ fps}$), without residual oscillations and without saturating the $\pm 30^\circ$ mechanical steering limit. Table~\ref{tab:controller_parameters} lists the filter and control parameters validated through these SITL tests before field deployment.
+If no command arrives for 0.5~s, the simulated robot stops. The shifted frame is published as JPEG on \texttt{/camera/camera/color/image\_raw/compressed}, so the controller node runs without changes. From the keyboard, the operator can shift $y$ by $\pm 4$~cm or $\pm 10$~cm. \textcolor{red}{This procedure was used to verify that the error conditioning filter and steering controller recover to the corridor center within approximately $10\text{--}15$ frames ($\sim 0.5\text{ s}$ at $30\text{ fps}$), without residual oscillations and without saturating the $\pm 30^\circ$ mechanical steering limit.}
 

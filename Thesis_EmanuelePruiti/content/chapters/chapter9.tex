@@ -15,7 +15,9 @@ This thesis investigated vision-based local guidance for agricultural row naviga
 
 \item \textbf{Evaluation of output label configurations:} Networks with four-class, three-class, and binary path outputs, trained on SAM~3 lettuce labels, were compared against the manual ground truth. Their path IoU values differ by less than 0.5 percentage points in the realistic scenario. The binary configuration was adopted for the robot because the path is the only class used by the geometric extraction.
 
-\item \textbf{Edge-based geometric extractor:} An extractor that converts corridor masks into image-space navigation references was implemented (\texttt{pf5.py}, Method~4). It uses horizontal strip extraction, bottom-up interval association with selection of the chain that gives the most edge samples, and independent fitting of the left and right boundaries, and it is compared with three baseline algorithms (\texttt{pf\_centri}, \texttt{pf\_histogram}, \texttt{pf\_ransac}).
+\item \textbf{Edge-based geometric extractor and its evaluation:} An extractor that converts corridor masks into image-space navigation references was implemented (Strip-IRLS). It uses horizontal strip extraction, bottom-up interval association with selection of the chain that gives the most edge samples, exclusion of the edge samples clipped by the image border, and separate fits of the left and right edges with iteratively reweighted least squares. It was compared with three baseline extractors (Center points, Column histogram, RANSAC edges) on synthetic masks with exact ground truth, on 1604 real predicted masks of three crops, and on real frames with manually annotated corridor edges.
+
+\item \textbf{Edge regression network, a first experiment:} A small network that takes the binary mask and regresses the two corridor edges was designed and trained on synthetic masks. It has the same interface as the geometric extractors and was compared with them in the same tests. It is at an early stage.
 \end{itemize}
 
 \section{Conclusions on segmentation and annotation}
@@ -27,49 +29,50 @@ On lettuce, the manual model remains the best: path IoU 0.9532 on the complete t
 
 The choice of output label configuration affects both annotation effort and downstream geometric extraction. Binary path segmentation focuses the model directly on the navigation target, simplifying both the labeling task and the geometric stage. This comes at the cost of discarding plant and covering-material information that might be useful for other tasks.
 
-\section{Conclusions on geometric extraction}
+\section{Conclusions on path extraction}
 \label{sec:geometric_conclusions}
 
-The geometric extraction stage converts binary corridor segmentation masks into navigation setpoints. The comparative study examined four distinct architectural paradigms:
-\begin{enumerate}
-    \item Global column projection (\texttt{pf\_histogram}) maximizes simplicity and eliminates tracking failure modes, but discards heading angle information and exhibits sensitivity to asymmetric vegetation distribution.
-    \item Centerline strip regression (\texttt{pf\_centri}) provides both lateral offset and heading estimates with low computational demand, but transfers unilateral canopy noise directly into the navigation line.
-    \item Random sample consensus (\texttt{pf\_ransac}) handles scattered boundary points and wide gaps without strip discretization, but relies on random sampling: its result is reproducible only with a fixed seed, and each trial evaluates all boundary points.
-    \item Decoupled dual-edge tracking (Method~4) provides deterministic execution and boundary-level noise decoupling, but introduces strict dependencies on near-field seed detection and heuristic jump gates.
-\end{enumerate}
+The geometric extraction stage converts binary corridor segmentation masks into navigation setpoints. The offline comparison of Chapter~\ref{cap:experiments} gives the following results:
+\begin{itemize}
+    \item On real frames with manually annotated edges, Strip-IRLS and RANSAC edges have the fewest failures, with 2.3\% and 2.3\% gross errors on the development frames and 2.5\% and 0.8\% on the test frames. The difference is a few frames and the order changes between the two parts. The network has 3.0\% and 6.6\%, Center points and Column histogram 7.6 to 18.8\%.
+    \item The synthetic masks show a different failure case for each extractor: for Strip-IRLS a hole wider than its merging gap and taller than its seed window, and a narrow row between adjacent corridors, for RANSAC edges adjacent corridors, for Center points disturbances on one side, for Column histogram an offset or rotated robot, and for EdgeNet an apex below the control row.
+    \item Variants of Strip-IRLS tuned on the synthetic development masks were not better on the real annotated frames. Synthetic benchmarks written by the same author as the extractors are useful to find failure cases, but the choice between versions needs real annotated data.
+    \item EdgeNet needs no geometric parameters, so adapting it means changing its generator instead of tuning thresholds. With one model for three crops it is close to the geometric extractors but not better, and its accuracy depends on how well the generator covers the field masks. At this early stage, these results make learning the extraction from the mask a promising direction.
+    \item For Strip-IRLS, RANSAC edges and EdgeNet the status is a weak indicator of a correct line, because most of their gross errors are classified as \texttt{ok}.
+\end{itemize}
 
-These characteristics demonstrate that no individual extractor is universally superior; selection depends on sensor setup, platform compute limits, and field layout.
+No extractor is best on every test set.
 
 \todobox{Sintesi quantitativa finale dell'estrazione geometrica e navigazione}{%
 Sintetizzare i dati conclusivi:
 \begin{itemize}
   \item Margine di precisione medio dell'asse stimato (scostamento in pixel e in centimetri).
   \item Tasso medio di affidabilit\`a e di reiezione dei frame lungo i test eseguiti.
-  \item Conferma della sostenibilit\`a del controllo a 20 Hz su piattaforma embedded Jetson in condizioni di campo.
+  \item Conferma della sostenibilit\`a del controllo alla frequenza della telecamera (30 fps) su piattaforma embedded Jetson in condizioni di campo.
 \end{itemize}
 }
 
 \section{Limitations}
 \label{sec:limitations}
 
-The methodology and experimental findings are subject to several specific limitations:
+The main limitations of the work are:
 
 \begin{itemize}
-\item \textbf{Bottom-up seed dependency in Method~4:} The tracking algorithm initializes exclusively from the bottom six horizontal strips. Occlusions immediately in front of the camera (such as robot chassis shadows, soil buildup, or puddles) prevent track initialization and lead to frame rejections, even when the distant corridor is visible.
+\item \textbf{Structural limits of Strip-IRLS:} The dependence on the seed in the bottom strips, the thresholds in pixels and the one-sided gaps are described in Section~\ref{sec:c6_tradeoffs_and_limitations}. In the offline evaluation they appear as the frames lost in \texttt{pomodori\_maturi1}.
 
-\item \textbf{Geometric model constraints:} Method~4, \texttt{pf\_ransac}, and \texttt{pf\_centri} assume locally straight, parallel corridor boundaries. They cannot follow curved crop rows or navigate headland turnaround maneuvers where crop boundaries terminate or diverge.
+\item \textbf{Geometric model constraints:} Strip-IRLS, RANSAC edges, Center points and the edge network model the corridor with straight lines. They cannot follow curved crop rows or navigate headland turnaround maneuvers where crop boundaries terminate or diverge.
 
-\item \textbf{One-sided gap vulnerability:} Method~4 tracks whole intervals, so both edges are associated together. If missing plants on one side make the edge displacement exceed the limit in more than three consecutive strips ($18$~px), association stops, and the frame is rejected if either edge has fewer than two non-clipped samples. There is no single-edge fallback, whereas the column histogram still provides a lateral setpoint.
-
-\item \textbf{Image-space gate tuning:} The continuity gate ($\Delta x_{\text{max}} = 28$~px) is defined in image coordinates. Large vehicle pitch and roll on uneven soil cause sudden lateral displacements of the corridor between consecutive scanlines, which can trigger premature tracking loss.
-
-\item \textbf{Dataset annotation coverage:} Segmentation accuracy was measured against manual ground truth only on lettuce. The deployed weights have no independent IoU, because their training data include the lettuce test images; the multi-crop configuration was evaluated through a separate network trained without them. Tomato and cucumber have no manual ground truth. The random image-level split also takes training and test images from the same lettuce folders, each recorded along one path, so the reported IoU values may be optimistic for paths not seen during training.
+\item \textbf{Dataset annotation coverage:} Segmentation accuracy was measured against manual ground truth only on lettuce. The deployed weights have no independent IoU, because their training data include the lettuce test images. The multi-crop configuration was evaluated through a separate network trained without them. Tomato and cucumber have no manual ground truth. The random image-level split also takes training and test images from the same lettuce folders, each recorded along one path. No test image is used for training, but the reported IoU values may be optimistic for paths not seen during training.
 
 \item \textbf{Label definition mismatch:} The manual masks mark only the central traversable corridor as path, whereas networks trained on SAM~3 labels can also segment adjacent or non-traversable corridors. This lowers their IoU against the manual masks, but the size of the effect was not measured.
 
-\item \textbf{Quality of the SAM~3 labels:} Visual inspection showed that SAM~3 segmented the plastic mulch film poorly and also assigned the greenhouse plastic cover to the covering class, and that its path masks were less accurate in images taken from unusual viewpoints or where the path between the rows is not clearly visible. Because the labels were used without correction, these errors enter the training data; their extent was not measured.
+\item \textbf{Quality of the SAM~3 labels:} Visual inspection showed that SAM~3 segmented the plastic mulch film poorly and also assigned the greenhouse plastic cover to the covering class, and that its path masks were less accurate in images taken from unusual viewpoints or where the path between the rows is not clearly visible. Because the labels were used without correction, these errors enter the training data, and their extent was not measured.
 
 \item \textbf{Annotation effort measurement:} The time saved by automatic labeling with respect to manual annotation was not measured.
+
+\item \textbf{Offline test data:} The synthetic masks have straight edges, while the real predictions often have rounded boundaries. In the tomato-based set the ground truth above the apex is a linear extension with no physical meaning. Only 255 real frames have an annotated ground truth, marked once by one person, and the frames skipped or with a nearly horizontal edge, which are among the most difficult, are excluded. The 1604 masks of the SAM~3 dataset come from images used to train the network, so they are probably cleaner than predictions on new images.
+
+\item \textbf{Confidence of the extractors:} The confidence scores are heuristic and not calibrated, and most gross errors of Strip-IRLS, RANSAC edges and the edge network are classified as \texttt{ok}.
 
 \item \textbf{Closed-loop dynamics:} Offline benchmarks evaluate reference accuracy on static test images. They do not account for vehicle inertia, steering backlash, or dynamic latency variations under closed-loop field control.
 \end{itemize}
@@ -105,7 +108,10 @@ Several directions for future research emerge from this work:
 
 \begin{itemize}
 \item Extend the geometric representation from linear models to piecewise linear or polynomial formulations to support curved rows and headland turns.
-\item Implement top-down recovery logic and single-edge asymmetric tracking to maintain guidance when bottom-up seeding fails or unilateral row dropouts occur.
+\item Implement top-down recovery logic to maintain guidance when bottom-up seeding fails, and handle a corridor that rises from a full-width band of path.
+\item Annotate more real frames, from new recordings and by more than one annotator, so that the differences of a few frames between the best extractors can be resolved and the annotation error can be measured.
+\item Calibrate the confidence of the extractors, or add a temporal consistency check, so that wrong lines can be rejected before they reach the controller.
+\item Evaluate the edge network on annotated frames of new recordings and on the Jetson AGX Orin, and calibrate its status thresholds for its own confidence.
 \item Adapt spatial gate thresholds dynamically using vehicle attitude telemetry from an onboard IMU to prevent false tracking loss during pitch and roll variations.
 \item Incorporate temporal Bayesian tracking (such as an Extended Kalman Filter) to smooth reference parameters across frame dropouts.
 \end{itemize}
@@ -126,4 +132,4 @@ Several directions for future research emerge from this work:
 
 This thesis addressed the segmentation, dataset preparation, and geometric extraction stages of vision-based agricultural navigation. The selection of LR-ASPP balances accuracy and speed for robotic deployment. Labels generated by SAM~3 without manual correction were used to train the network deployed on the robot, and the geometric extractor converts masks into navigation references using horizontal strip selection and independent edge fitting.
 
-The work establishes a foundation for camera-based local guidance in structured crop environments. Future research should complete field validation, extend the geometric model to handle curves and gaps, and evaluate the deployed network on independent, sequence-level test data.
+Future research should complete field validation, extend the geometric model to handle curves and gaps, and evaluate the deployed network on independent, sequence-level test data.
