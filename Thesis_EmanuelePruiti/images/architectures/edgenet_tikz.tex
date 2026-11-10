@@ -1,0 +1,76 @@
+% Architettura di EdgeNet (Code/rete_bordi_server/modello.py, modello sul robot).
+% Ogni parallelepipedo e' una mappa di attivazione: lo spessore orizzontale
+% cresce con i canali, altezza e profondita' con la dimensione spaziale.
+\begin{tikzpicture}[
+    font=\footnotesize,
+    arr/.style={-{Stealth[length=4pt]}, thick, black!70},
+    dim/.style={font=\scriptsize, black!75, align=center},
+  ]
+  \definecolor{cin}{RGB}{200,200,200}
+  \definecolor{cpool}{RGB}{140,190,140}
+  \definecolor{cconvs}{RGB}{230,140,60}
+  \definecolor{cconv}{RGB}{250,200,120}
+  \definecolor{cfc}{RGB}{120,160,220}
+  % \cub{x sinistro}{spessore}{altezza}{profondita'}{colore}{nome}
+  \newcommand{\cub}[6]{%
+    \pgfmathsetmacro{\cdx}{0.36*#4}\pgfmathsetmacro{\cdy}{0.24*#4}%
+    \begin{scope}[shift={(#1,{-0.5*#3-0.5*\cdy})}]
+      \draw[fill=#5, draw=black!60] (0,0) rectangle (#2,#3);
+      \draw[fill=#5!55!white, draw=black!60] (0,#3) -- (#2,#3) -- ({#2+\cdx},{#3+\cdy}) -- (\cdx,{#3+\cdy}) -- cycle;
+      \draw[fill=#5!75!black, draw=black!60] (#2,0) -- ({#2+\cdx},\cdy) -- ({#2+\cdx},{#3+\cdy}) -- (#2,#3) -- cycle;
+      \coordinate (#6-w) at (0,{0.5*#3+0.5*\cdy});
+      \coordinate (#6-e) at ({#2+\cdx},{0.5*#3+0.5*\cdy});
+      \coordinate (#6-b) at ({0.5*#2},0);
+      \coordinate (#6-t) at ({0.5*#2+0.5*\cdx},{#3+\cdy});
+    \end{scope}}
+  % blocco: conv 3x3 stride 2 + conv 3x3 (stessa dimensione), a contatto
+  \newcommand{\blk}[5]{% x, spessore, lato, nome, etichetta
+    \cub{#1}{#2}{#3}{#3}{cconvs}{#4a}
+    \cub{#1+#2}{#2}{#3}{#3}{cconv}{#4b}
+    \node[dim, above=1pt] at (#4b-t) {#5};}
+
+  % ingresso 1 x 224 x 224
+  \cub{0}{0.06}{2.6}{2.6}{cin}{in}
+  \node[dim, above=1pt] at (in-t) {$1\times224\times224$};
+  \node[dim, below=2pt] at (in-b) {mask};
+  % media 2x2 + canali x, y -> 3 x 112 x 112
+  \cub{1.35}{0.18}{1.9}{1.9}{cpool}{pool}
+  \node[dim, below=2pt] at (pool-b) {$3\times112\times112$};
+  % quattro blocchi
+  \blk{2.75}{0.26}{1.55}{b1}{$16\times56\times56$}
+  \blk{4.3}{0.38}{1.12}{b2}{$32\times28\times28$}
+  \blk{5.9}{0.52}{0.80}{b3}{$64\times14\times14$}
+  \blk{7.6}{0.66}{0.56}{b4}{$96\times7\times7$}
+  % testa: flatten 4704 -> FC 128 -> FC 5
+  \cub{10.3}{0.14}{2.2}{0.35}{cfc}{fc1}
+  \node[dim, above=1pt] at (fc1-t) {128};
+  \cub{11.0}{0.14}{0.75}{0.35}{cfc}{fc2}
+  \node[dim, above=1pt] at (fc2-t) {5};
+
+  \draw[arr] (in-e) -- (pool-w);
+  \draw[arr] (pool-e) -- (b1a-w);
+  \draw[arr] (b1b-e) -- (b2a-w);
+  \draw[arr] (b2b-e) -- (b3a-w);
+  \draw[arr] (b3b-e) -- (b4a-w);
+  \draw[arr] (b4b-e) -- node[dim, above=2pt, pos=0.45] {flatten} node[dim, below=2pt, pos=0.45] {4704} (fc1-w);
+  \draw[arr] (fc1-e) -- (fc2-w);
+
+  % uscite
+  \node[dim, right=6pt of fc2-e, anchor=west, align=left] (out) {%
+    $x_L,x_R$ at row 156\\[-1pt]$x_L,x_R$ at row 223\\[-1pt]validity logit};
+  \draw[arr] (fc2-e) -- (out.west);
+
+  % legenda
+  \begin{scope}[shift={(1.35,-2.25)}]
+    \foreach \c/\t [count=\i from 0] in {%
+        cpool/{$2\times2$ average pooling, $+\,x,y$ channels},
+        cconvs/{$3\times3$ conv, stride 2, BN, ReLU},
+        cconv/{$3\times3$ conv, BN, ReLU},
+        cfc/{fully connected}} {
+      \pgfmathsetmacro{\lxx}{\i<2 ? 0 : 6.3}
+      \pgfmathsetmacro{\lyy}{mod(\i,2)==0 ? 0 : -0.42}
+      \draw[fill=\c, draw=black!60] (\lxx,\lyy) rectangle ++(0.3,0.22);
+      \node[anchor=west, font=\scriptsize] at ({\lxx+0.4},{\lyy+0.11}) {\t};
+    }
+  \end{scope}
+\end{tikzpicture}

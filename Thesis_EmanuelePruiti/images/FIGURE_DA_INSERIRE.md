@@ -100,3 +100,12 @@ Nessun placeholder rimanente nel Capitolo 4.
 ### `fig:geometric_extraction_comparison` (Capitolo 8, riga 58)
 * **Descrizione:** Confronto tra l'estrazione geometrica proposta (Dual-Edge IRLS) e i metodi baseline tradizionali (RANSAC sui contorni, istogramma a colonne).
 * **Elementi:** Dimostrare visivamente come in presenza di foglie sporgenti asimmetriche il baricentro dell'istogramma subisca una deviazione laterale, mentre il metodo IRLS disaccoppiato mantenga la corretta traiettoria centrale.
+
+---
+
+## Figure aggiunte di recente (Capitolo 6)
+
+### `fig:c6_edgenet` (Capitolo 6, Sezione 6.3) -- [COMPLETATO]
+* **File:** `images/architectures/edgenet_tikz.tex` (TikZ, inserito con `\input`, richiede la libreria `arrows.meta` in `common/packages.tex`).
+* **Contenuto:** architettura di EdgeNet a parallelepipedi: maschera 1x224x224, media 2x2 + canali x, y (3x112x112), quattro blocchi conv 3x3 stride 2 + conv 3x3 con BN e ReLU (16x56x56, 32x28x28, 64x14x14, 96x7x7), flatten 4704, FC 128 e FC 5, uscite x_L, x_R alle righe 156 e 223 e logit di validità.
+* **Fonte:** `Code/rete_bordi_server/modello.py` (stesso md5 dell'ONNX sul robot), verificato riga per riga.
