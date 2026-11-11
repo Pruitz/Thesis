@@ -9,35 +9,33 @@ This chapter describes the robot used in the field tests, the software that runs
 \subsection{Robot platform}
 \label{subsec:robot_platform}
 
-The experimental platform is Demetra, a mobile robot prototype developed by the Roboto student team of the Politecnico di Torino. The chassis features a four-wheel steering (4WS) and four-wheel drive (4WD) kinematic configuration.
+The experimental platform is Demetra, a mobile robot prototype developed by the Roboto student team of the Politecnico di Torino. It has four-wheel steering (4WS) and four-wheel drive (4WD).
 
-Each wheel has a DJI RoboMaster M3508 brushless motor with a 19:1 planetary gearbox and a DJI RoboMaster C620 speed controller, and is steered by a CubeMars AK70-10 actuator with an integrated encoder. A DJI RoboMaster Development Board Type C (STM32F407) controls the speed controllers and the steering actuators over two CAN buses. It receives the linear velocity and the steering angle from the onboard computer and sends back the measured platform speed and steering angle.
+Each wheel has a DJI RoboMaster M3508 brushless motor with a DJI RoboMaster C620 speed controller, and its own CubeMars AK70-10 actuator for steering. A DJI RoboMaster Development Board Type C (STM32F407) controls the speed controllers and the steering actuators. It receives the linear velocity and the steering angle from the onboard computer and sends back the measured platform speed and steering angle. The wheelbase is $L = 40$~cm, the track width is $T = 34$~cm, the wheel diameter is 19~cm ($r_w = 9.5$~cm) and the chassis is 15~cm above the ground.
 
-Steering is described with a kinematic bicycle model with symmetric opposite-phase steering: the equivalent front and rear steering angles are $\delta_f=\delta$ and $\delta_r=-\delta$. Assuming pure rolling without lateral slip, the instantaneous center of rotation (ICR) lies on the transverse axis through the midpoint between the two axles. With wheelbase $L$, the signed turning radius of this midpoint is
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=0.85\linewidth]{images/platform/demetra_side.png}
+  \caption{Side view of Demetra, with the wheel diameter, the wheelbase $L$, the camera height $h_{\mathrm{cam}}$ and the adjustable tilt $\theta$ of the camera.}
+  \label{fig:robot_camera_setup}
+\end{figure}
+
+Steering is described by a kinematic bicycle model with opposite-phase steering (Figure~\ref{fig:c7_kinematics}), where the equivalent front and rear steering angles are $\delta_f=\delta$ and $\delta_r=-\delta$. With pure rolling, the turning radius of the mid-axle point $M$ is
 \begin{equation}
     R = \frac{L}{2 \tan\delta}.
     \label{eq:turning_radius_4ws}
 \end{equation}
-The wheelbase is $L = 0.40$~m and the wheel diameter is 0.192~m ($r_w = 0.096$~m).
-
-\todobox{Dimensioni fisiche e peso del telaio}{%
-Valori non presenti nel codice del driver (il pacchetto \texttt{demetra\_description} con gli URDF non e' nel workspace):
-\begin{itemize}
-  \item Carreggiata $T$ (distanza trasversale tra le ruote in metri).
-  \item Altezza libera da terra del telaio (ground clearance).
-  \item Massa totale del veicolo (kg) comprensiva di pacco batterie, sensori e payload.
-\end{itemize}
-}
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=0.65\linewidth]{images/platform/demetra_top.png}
+  \caption{Top view of the opposite-phase 4WS kinematics of Demetra, with the equivalent bicycle in orange, the ICR and the turning radius $R$ of the mid-axle point $M$ (Equation~\eqref{eq:turning_radius_4ws}).}
+  \label{fig:c7_kinematics}
+\end{figure}
 
 \subsection{Camera configuration}
 \label{subsec:camera}
 
-\placeholderfigure{fig:robot_camera_setup}%
-{Physical mobile robot platform and front camera mounting setup}%
-{Fotografia della piattaforma mobile con indicazione della telecamera RGB frontale, dell'altezza di montaggio $h$ dal terreno, dell'angolo di inclinazione (pitch) verso il suolo e dell'alloggiamento del calcolatore di bordo.}%
-{5.5cm}
-
-The camera is an Intel RealSense D435, mounted on the front of the robot frame. The color stream is used at $640 \times 480$ pixels and 30 frames per second. The camera is tilted downward, so that the image shows the corridor and the crop rows on both sides in front of the robot.
+The camera is an Intel RealSense D435, mounted on the front of the robot frame on a mount with adjustable tilt (Figure~\ref{fig:robot_camera_setup}). The color stream is used at $640 \times 480$ pixels and 30 frames per second. The camera is tilted downward by a few degrees, so that the image shows mainly the path, which covers about the lower 70\% of the image, as the region of interest of the extractors. The tilt is adjusted to the field.
 
 \subsection{Computing platform}
 \label{subsec:computing}
@@ -50,11 +48,11 @@ The onboard computer is an NVIDIA Jetson AGX Orin Developer Kit (64~GB), with a 
 \subsection{ROS integration}
 \label{subsec:ros}
 
-The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph recorded on the robot during navigation. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the path extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes a text log on \texttt{/debug/text}. When the debug video is enabled, it publishes three debug images on other \texttt{/debug} topics. The debug video is used only during development and is disabled when the robot operates. The \texttt{/debug} topics are omitted from the figure.
+The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph of the robot. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the path extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes debug topics under \texttt{/debug}, which are used during configuration and are omitted from the figure. When the debug video is enabled, it also publishes three debug images (segmentation, region of interest and path), shown in Figure~\ref{fig:debug_video}. The debug video makes the node skip camera frames (Section~\ref{subsec:timing}), so it should be disabled when the robot operates. The text log on \texttt{/debug/text} is always active. It carries important information on each frame and its cost is small, so the node still processes every camera frame.
 
-The image subscription keeps only the last frame, so frames that arrive during the processing are not queued.
+The image subscription keeps only the last frame, so frames that arrive during the processing are not queued and the controller always processes the most recent image seen by the robot.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
     \centering
     \begin{tikzpicture}[
         font=\small,
@@ -77,76 +75,12 @@ The image subscription keeps only the last frame, so frames that arrive during t
     \label{fig:ros2_architecture}
 \end{figure}
 
-\subsection{Controller node}
-\label{subsubsec:control_node}
-
-For each frame, the controller node decodes the image, resizes it to $224\times224$ pixels and normalizes it with the ImageNet mean and standard deviation. The segmentation network turns the image into the label mask, and the path extractor (Chapter~\ref{cap:geometric_reference}) turns the mask into a centerline.
-
-The lateral error $e_{\mathrm{px}}$ is the horizontal offset, in pixels, of the centerline from the image center at row $y_{\mathrm{ref}} = 156$ of the $W \times H = 224\times224$ input (70\% of $H$, truncated). It is positive when the centerline is on the right. Before the steering law, the error passes through a filter that depends on the status returned by the path extractor.
-
-\paragraph{Exponential filter and jump rejection.}
-With status \texttt{ok} or \texttt{degraded}, the filtered error $e_k$ is updated with an exponential moving average (EMA). The reference smoothing factor $\alpha_{\mathrm{ref}}$ and the jump threshold $J$ depend on the status:
-\begin{equation}
-    (\alpha_{\mathrm{ref}}, J) =
-    \begin{cases}
-        (0.20, \; 40\text{ px}) & \text{if the status is \texttt{ok}}, \\
-        (0.18, \; 38\text{ px}) & \text{if the status is \texttt{degraded}}.
-    \end{cases}
-    \label{eq:filter_regimes}
-\end{equation}
-The factor $\alpha$ used in the update is obtained from $\alpha_{\mathrm{ref}}$ with Equation~\eqref{eq:alpha_dt}. With $\Delta_k = |e_{\mathrm{px},k} - e_{k-1}|$, the measurement is accepted when $\Delta_k \le J$:
-\begin{equation}
-    e_k = (1 - \alpha)\, e_{k-1} + \alpha \, e_{\mathrm{px},k}.
-    \label{eq:filter_ema_update}
-\end{equation}
-When $\Delta_k > J$ on an isolated frame, the update uses a fixed weight of 0.20, $e_k = 0.80\, e_{k-1} + 0.20\, e_{\mathrm{px},k}$. When the jump is present in two consecutive frames, the filter takes the new measurement directly, $e_k = e_{\mathrm{px},k}$.
-
-\paragraph{Smoothing independent of the frame rate.}
-The reference factors are defined for 30 frames per second. At each frame, the node measures the time $\Delta t$ since the previous frame, limited to the interval from $1/120$ to $0.25$~s, and converts each reference factor $\alpha_{\mathrm{ref}}$ into
-\begin{equation}
-    \alpha = 1 - (1 - \alpha_{\mathrm{ref}})^{30\,\Delta t}.
-    \label{eq:alpha_dt}
-\end{equation}
-With $\Delta t = 1/30$~s, $\alpha = \alpha_{\mathrm{ref}}$. When frames arrive less often, $\alpha$ grows, so the time constant of the filter in seconds does not change with the processing rate.
-
-\paragraph{Hold, stop, and deadband.}
-When the status is \texttt{lost} or no centerline is available, the node keeps the last filtered error for up to $t_{\mathrm{hold}} = 0.5$~s. After this time it publishes a zero velocity command. After a stop, the error filter restarts from the first new measurement and the filter of the angular velocity, described below, from zero. A filtered error below 4~px in absolute value is set to zero in the command, while the filter keeps its internal value.
-
-\paragraph{Steering law.}
-The command error $e_{\mathrm{cmd}}$ is $e_k$ after the deadband. It is normalized by the half-width of the image and scaled by the confidence $C \in [0, 1]$ of the path extractor:
-\begin{equation}
-    \omega^{*} = - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2},
-    \label{eq:control_law_omega}
-\end{equation}
-with $K_{p} = 1.2$. The value is limited to $\pm\omega_{\max} = \pm 0.58$~rad/s. With Equation~\eqref{eq:4ws_steering_angle}, this limit corresponds to $\delta \approx 30^\circ$ at $v = 0.20$~m/s. A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second, converted with Equation~\eqref{eq:alpha_dt}. The linear velocity is constant, $v = 0.20$~m/s. Table~\ref{tab:controller_parameters} lists the parameters used on the robot.
-
-\begin{table}[htbp]
+\begin{figure}[H]
     \centering
-    \small
-    \caption{Parameters of the error filter and of the steering law used on Demetra.}
-    \label{tab:controller_parameters}
-    \begin{tabularx}{\textwidth}{@{}X l l@{}}
-        \toprule
-        Parameter & Symbol & Value \\
-        \midrule
-        Input resolution ($W \times H$) & -- & $224 \times 224$ px \\
-        Reference row & $y_{\mathrm{ref}}$ & 156 px \\
-        Smoothing factor, status \texttt{ok} & $\alpha_{\mathrm{ok}}$ & 0.20 \\
-        Smoothing factor, status \texttt{degraded} & $\alpha_{\mathrm{deg}}$ & 0.18 \\
-        Jump threshold, status \texttt{ok} & $J_{\mathrm{ok}}$ & 40 px \\
-        Jump threshold, status \texttt{degraded} & $J_{\mathrm{deg}}$ & 38 px \\
-        Weight of an isolated jump & -- & 0.20 \\
-        Frames that confirm a jump & -- & 2 \\
-        Reference frame rate of the smoothing factors & -- & 30 fps \\
-        Hold time & $t_{\mathrm{hold}}$ & 0.5 s \\
-        Deadband & -- & $\pm 4$ px \\
-        Proportional gain & $K_{p}$ & 1.2 \\
-        Maximum angular velocity & $\omega_{\max}$ & 0.58 rad/s \\
-        Smoothing factor of the angular velocity & $\alpha_w$ & 0.30 \\
-        Linear velocity & $v$ & 0.20 m/s \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
+    \includegraphics[width=\linewidth]{images/platform/debug_video.png}
+    \caption{Frame of the debug video recorded during a field run with Strip-IRLS. From left to right: segmentation (the segmentation before the morphological cleaning), region of interest (the cleaned segmentation, on which the path extractor operates) and path (the extracted path drawn on the camera image).}
+    \label{fig:debug_video}
+\end{figure}
 
 \subsection{Control interface}
 \label{subsec:control_interface}
@@ -156,7 +90,7 @@ The serial driver node (\texttt{/demetra\_node}) converts each command $(v, \ome
     \delta = \arctan\left(\frac{L\, \omega}{2\, v}\right),
     \label{eq:4ws_steering_angle}
 \end{equation}
-limited to $\pm 30^\circ$. Before the conversion, the node limits $v$ to $\pm 1.5$~m/s and $\omega$ to $\pm 6.0$~rad/s. Every 10~ms it sends the last $v$ and $\delta$ to the microcontroller over a serial link at 115200~baud. If no command arrives for 500~ms, it sets the speed to zero.
+limited to $\pm 30^\circ$. Before the conversion, the node limits $v$ to $\pm 1.5$~m/s and $\omega$ to $\pm 6.0$~rad/s. Every 10~ms it sends the last $v$ and $\delta$ to the microcontroller. If no command arrives for 500~ms, it sets the speed to zero.
 
 \begingroup\color{red}
 The microcontroller computes the steering angle of each wheel and the wheel speeds. For track width $T$ and turning radius $R = L / (2\tan\delta)$, the left and right steering angles follow the dual-Ackermann geometry:
@@ -173,55 +107,271 @@ with $\delta_{FL} = \delta_L$, $\delta_{FR} = \delta_R$, $\delta_{RL} = -\delta_
 where $R_i$ is the lateral distance from the ICR to the wheel center plane. The wheel speeds $v_i / r_w$ are converted into motor speed setpoints through the 19:1 gear ratio.
 \endgroup
 
+\subsection{Controller node}
+\label{subsubsec:control_node}
+
+For each frame, the controller node decodes the image, resizes it to $224\times224$ pixels and normalizes it with the ImageNet mean and standard deviation. The segmentation network turns the image into the label mask, and the path extractor (Chapter~\ref{cap:geometric_reference}) turns the mask into a centerline.
+
+The lateral error $e$ is the horizontal offset, in pixels, of the centerline from the image center at row $y_{\mathrm{ref}} = 156$ of the $W \times H = 224\times224$ input. It is positive when the centerline is on the right. The error then passes through a filter that depends on the status returned by the path extractor (Section~\ref{sec:c6_output}), a deadband and the steering law, which gives the angular velocity command.
+
+\paragraph{Error filter.}
+The error is smoothed with an exponential moving average (EMA). At each frame $k$, the filtered error is a weighted average of the previous filtered error $\hat{e}_{k-1}$ and of the new measurement $e_k$:
+\begin{equation}
+    \hat{e}_k = (1 - \alpha)\, \hat{e}_{k-1} + \alpha \, e_k.
+    \label{eq:filter_ema_update}
+\end{equation}
+The smoothing factor $\alpha$ is the weight of the new value. With $\alpha = 0.20$ the filter keeps 80\% of the previous value at each frame, so after three frames it has covered about half of a step of the input and after about 13 frames 95\% of it. At 30 frames per second this takes 0.1~s and 0.45~s. The angular velocity sent to the robot is smoothed in the same way.
+
+\paragraph{Smoothing independent of the frame rate.}
+If the node runs slower, the same three frames last longer and the filter reacts later. With the debug video enabled, for example, the node processes 17 to 24 frames per second (Section~\ref{subsec:timing}). The smoothing factors are therefore defined as reference values $\alpha_{\mathrm{ref}}$ for 30 frames per second. At each frame, the node measures the time $\Delta t$ since the previous frame, limited to the interval from $1/120$ to $0.25$~s, and converts each reference factor into
+\begin{equation}
+    \alpha = 1 - (1 - \alpha_{\mathrm{ref}})^{30\,\Delta t}.
+    \label{eq:alpha_dt}
+\end{equation}
+With $\Delta t = 1/30$~s, $\alpha = \alpha_{\mathrm{ref}}$. At 15 frames per second, for example, $\alpha_{\mathrm{ref}} = 0.20$ gives $\alpha = 1 - 0.8^{2} = 0.36$, so the filter keeps 64\% of the previous value at each frame, as in two frames at 30 frames per second. The filter therefore follows the same response in time, only with fewer updates (Table~\ref{tab:ema_frame_rate}). Figure~\ref{fig:ema_frame_rate} shows the two responses.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Fraction of a step of the input covered by the filter of Equation~\eqref{eq:filter_ema_update} with $\alpha_{\mathrm{ref}} = 0.20$, at 30 and 15 frames per second. A dash marks a time with no frame at 15 frames per second.}
+    \label{tab:ema_frame_rate}
+    \begin{tabular}{@{}lcccccccc@{}}
+        \toprule
+        Time (s) & 0.033 & 0.067 & 0.100 & 0.133 & 0.167 & 0.200 & 0.233 & 0.467 \\
+        \midrule
+        30 fps, $\alpha = 0.20$ & 20.0\% & 36.0\% & 48.8\% & 59.0\% & 67.2\% & 73.8\% & 79.0\% & 95.6\% \\
+        15 fps, $\alpha = 0.36$ & -- & 36.0\% & -- & 59.0\% & -- & 73.8\% & -- & 95.6\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=0.85\linewidth, height=0.45\linewidth,
+            xmin=0, xmax=0.5, ymin=0, ymax=1.05,
+            xtick={0,0.1,0.2,0.3,0.4,0.5},
+            xlabel={Time after the step (s)},
+            ylabel={Fraction of the step},
+            grid=both, grid style={gray!20},
+            legend pos=south east, legend style={font=\scriptsize}, legend cell align=left,
+            tick label style={font=\scriptsize}, label style={font=\footnotesize},
+        ]
+            \addplot[gray, dashed, domain=0:0.5, samples=60, forget plot] {1-0.8^(30*x)};
+            \addplot[green!50!black, only marks, mark=triangle*, mark size=3.4pt, domain=1:7, samples=7, forget plot] ({x/15}, {1-0.64^x});
+            \addplot[blue!70!black, only marks, mark=*, mark size=1.6pt, domain=1:15, samples=15, forget plot] ({x/30}, {1-0.8^x});
+            \addlegendimage{blue!70!black, only marks, mark=*, mark size=1.6pt}
+            \addlegendentry{30 fps, $\alpha = 0.20$}
+            \addlegendimage{green!50!black, only marks, mark=triangle*, mark size=3.4pt}
+            \addlegendentry{15 fps, $\alpha = 0.36$}
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Response of the filter of Equation~\eqref{eq:filter_ema_update} to a step of the input, with $\alpha_{\mathrm{ref}} = 0.20$. At 15 frames per second, the factor converted with Equation~\eqref{eq:alpha_dt} gives the same response in time as at 30 frames per second (dashed line).}
+    \label{fig:ema_frame_rate}
+\end{figure}
+
+
+\paragraph{Parameters per status and jumps.}
+When the status is \texttt{ok} or \texttt{degraded}, the filter updates the error with a reference smoothing factor $\alpha_{\mathrm{ref}}$ and a jump threshold $J$ that depend on the status:
+\begin{equation}
+    (\alpha_{\mathrm{ref}}, J) =
+    \begin{cases}
+        (0.20, \; 40\text{ px}) & \text{if the status is \texttt{ok}}, \\
+        (0.18, \; 38\text{ px}) & \text{if the status is \texttt{degraded}}.
+    \end{cases}
+    \label{eq:filter_regimes}
+\end{equation}
+In our case the values for the two statuses are close to each other and worked well. The filter keeps them separate, so that the values for \texttt{degraded} can be changed if the segmentation is worse. When the status is \texttt{lost}, the error is not updated and the robot stops after a short hold, described at the end of this section.
+
+The jump is the distance $\Delta_k = |e_k - \hat{e}_{k-1}|$ between the new measurement and the previous filtered error. The filtered error is
+\begin{equation}
+    \hat{e}_k =
+    \begin{cases}
+        (1 - \alpha)\, \hat{e}_{k-1} + \alpha \, e_k & \text{if } \Delta_k \le J, \\
+        e_k & \text{if } \Delta_k > J,\ \Delta_{k-1} > J \text{ and } |e_k - e_{k-1}| \le J_c, \\
+        \hat{e}_{k-1} & \text{otherwise}.
+    \end{cases}
+    \label{eq:filter_jump}
+\end{equation}
+A measurement within the threshold is smoothed with Equation~\eqref{eq:filter_ema_update}. A jump on an isolated frame is ignored, so a segmentation error on a single frame does not reach the command. A jump present in two consecutive frames is taken directly only if the two measurements agree, that is, if they differ by at most the tolerance $J_c$. Otherwise both frames are ignored.
+
+We chose $J_c$ from the raw errors recorded during the field runs with Strip-IRLS (Section~\ref{sec:field_validation}). When a jump lasted two frames, the two measurements were either within 18~px of each other or more than 50~px apart. In the first case the two frames agree on the new position of the centerline. In the second case they place it in two different positions, so at least one of them is an error. $J_c = 25$~px accepts the first case and rejects the second.
+
+\paragraph{Steering law.}
+The steering law uses the command error
+\begin{equation}
+    e_{\mathrm{cmd}} =
+    \begin{cases}
+        0 & \text{if } |\hat{e}_k| < 4\text{ px}, \\
+        \hat{e}_k & \text{otherwise}.
+    \end{cases}
+    \label{eq:deadband}
+\end{equation}
+This deadband avoids small oscillations of the steering around the center of the row. It acts only on the command, so the filter keeps its internal value $\hat{e}_k$. The angular velocity target is
+\begin{equation}
+    \omega^{*} = - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2},
+    \label{eq:control_law_omega}
+\end{equation}
+with $K_{p} = 1.2$. Dividing by the half-width $W/2 = 112$~px gives the error as a fraction of the image, from 0 at the center to $\pm 1$ at the edges, so $K_p$ does not depend on the input resolution. The confidence $C \in [0, 1]$ of the path extractor reduces the gain when the result is less reliable. With $C = 1$ the full gain $K_p$ is used, and with $C = 0.38$, the lowest value before \texttt{lost}, about 75\% of it. The minus sign makes the robot turn towards the centerline. The controller limits the value to $\pm\omega_{\max} = \pm 0.58$~rad/s. This limit is chosen from $v$ so that it matches the steering limit of $30^\circ$ (Equation~\eqref{eq:4ws_steering_angle}): a larger $\omega$ would not turn the wheels further. The command therefore saturates for errors above
+\begin{equation}
+    e_{\mathrm{sat}} = \frac{\omega_{\max}\, (W/2)}{K_p\, (0.6 + 0.4\, C)},
+    \label{eq:error_saturation}
+\end{equation}
+which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_p$ sets how strongly the robot reacts to the error (Figure~\ref{fig:steering_law}b). A larger $K_p$ gives a larger command for the same error and reaches $30^\circ$ at a smaller error. A smaller $K_p$ gives a smoother response and reaches the limit later. A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second (converted with Equation~\eqref{eq:alpha_dt}, so this filter is also independent of the frame rate). The linear velocity is constant, $v = 0.20$~m/s.
+
+\begin{figure}[p]
+    \centering
+    \pgfplotsset{
+        steermain/.style={
+            width=0.85\linewidth, height=0.42\linewidth,
+            xmin=-80, xmax=80, ymin=-0.7, ymax=0.7,
+            xtick={-80,-60,-40,-20,0,20,40,60,80}, ytick={-0.58,-0.3,0,0.3,0.58},
+            ytick pos=left,
+            yticklabels={$-0.58$,$-0.3$,$0$,$0.3$,$0.58$},
+            xlabel={$e_{\mathrm{cmd}}$ (px)},
+            ylabel={$\omega^{*}$ (rad/s)},
+            grid=both, grid style={gray!20},
+            tick label style={font=\scriptsize}, label style={font=\footnotesize}, title style={font=\footnotesize},
+            legend style={font=\scriptsize, draw=none, fill=white, fill opacity=0.8, text opacity=1, at={(0.97,0.97)}, anchor=north east},
+            legend cell align=left,
+            every axis plot/.append style={line width=0.9pt, mark=none},
+            samples=400,
+        },
+        steerright/.style={
+            width=0.85\linewidth, height=0.42\linewidth,
+            xmin=-80, xmax=80, ymin=-0.7, ymax=0.7,
+            axis x line=none, axis y line*=right,
+            ytick={-0.5774,-0.3640,-0.1763,0,0.1763,0.3640,0.5774},
+            yticklabels={$-30$,$-20$,$-10$,$0$,$10$,$20$,$30$},
+            ylabel={Steering angle $\delta = \arctan(\omega)$ ($^\circ$)},
+            tick label style={font=\scriptsize}, label style={font=\footnotesize}, title style={font=\footnotesize},
+        },
+    }
+    \begin{tikzpicture}
+        \begin{axis}[steermain, title={(a) $K_p = 1.2$, different confidences}]
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {0.58};
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {-0.58};
+            \addplot[forget plot, black, domain=-4:4, samples=2] {0};
+            \addplot[blue!70!black, domain=4:80] {max(-0.58, -1.2*(0.6+0.4*1)*x/112)};
+            \addlegendentry{$C=1$}
+            \addplot[forget plot, blue!70!black, domain=-80:-4] {min(0.58, -1.2*(0.6+0.4*1)*x/112)};
+            \addplot[orange!90!black, dash pattern=on 4pt off 2pt, domain=4:80] {max(-0.58, -1.2*(0.6+0.4*0.60)*x/112)};
+            \addlegendentry{$C=0.60$}
+            \addplot[forget plot, orange!90!black, dash pattern=on 4pt off 2pt, domain=-80:-4] {min(0.58, -1.2*(0.6+0.4*0.60)*x/112)};
+            \addplot[green!50!black, dash pattern=on 1pt off 2pt, domain=4:80] {max(-0.58, -1.2*(0.6+0.4*0.38)*x/112)};
+            \addlegendentry{$C=0.38$}
+            \addplot[forget plot, green!50!black, dash pattern=on 1pt off 2pt, domain=-80:-4] {min(0.58, -1.2*(0.6+0.4*0.38)*x/112)};
+        \end{axis}
+        \begin{axis}[steerright, title={\phantom{(a)}}]
+            \addplot[draw=none, forget plot] coordinates {(0,0)};
+        \end{axis}
+    \end{tikzpicture}
+
+    \vspace{6pt}
+    \begin{tikzpicture}
+        \begin{axis}[steermain, title={(b) $C = 1$, different gains}]
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {0.58};
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {-0.58};
+            \addplot[forget plot, black, domain=-4:4, samples=2] {0};
+            \addplot[red!70!black, dash pattern=on 4pt off 2pt, domain=4:80] {max(-0.58, -1.8*x/112)};
+            \addlegendentry{$K_p=1.8$}
+            \addplot[forget plot, red!70!black, dash pattern=on 4pt off 2pt, domain=-80:-4] {min(0.58, -1.8*x/112)};
+            \addplot[blue!70!black, domain=4:80] {max(-0.58, -1.2*x/112)};
+            \addlegendentry{$K_p=1.2$}
+            \addplot[forget plot, blue!70!black, domain=-80:-4] {min(0.58, -1.2*x/112)};
+            \addplot[violet!80!black, dash pattern=on 1pt off 2pt, domain=4:80] {max(-0.58, -0.9*x/112)};
+            \addlegendentry{$K_p=0.9$}
+            \addplot[forget plot, violet!80!black, dash pattern=on 1pt off 2pt, domain=-80:-4] {min(0.58, -0.9*x/112)};
+        \end{axis}
+        \begin{axis}[steerright, title={\phantom{(b)}}]
+            \addplot[draw=none, forget plot] coordinates {(0,0)};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Angular velocity target $\omega^{*}$ of the steering law as a function of the error $e_{\mathrm{cmd}}$. (a) Gain used on the robot, $K_p = 1.2$, for $C=1$ and for the confidence at the two status thresholds of the path extractors, $C=0.60$ between \texttt{ok} and \texttt{degraded} and $C=0.38$ below which the result is \texttt{lost}. (b) Three gains with $C = 1$: the command saturates at 36~px with $K_p = 1.8$, 54~px with $K_p = 1.2$ and 72~px with $K_p = 0.9$. The command is zero inside the deadband ($|e_{\mathrm{cmd}}| < 4$~px) and is limited to $\pm 0.58$~rad/s (dashed lines). The right axis gives the steering angle $\delta$. With $L = 0.4$~m and $v = 0.20$~m/s, Equation~\eqref{eq:4ws_steering_angle} reduces to $\delta = \arctan(\omega)$, so the limit of 0.58~rad/s corresponds to $30^\circ$.}
+    \label{fig:steering_law}
+\end{figure}
+
+
+The values of $K_p$ and $\omega_{\max}$ above hold for $v = 0.20$~m/s. The steering angle of Equation~\eqref{eq:4ws_steering_angle} depends on the ratio $\omega / v$, so at a higher speed the same $\omega$ turns the wheels less. If only $v$ is increased, the robot steers less for the same error. At $v = 0.50$~m/s, for example, $\omega_{\max} = 0.58$~rad/s gives at most $13^\circ$. To keep the same steering angle for each error at a different speed, $\omega_{\max}$ and $K_p$ should be multiplied by the same factor as $v$:
+\begin{equation}
+    \omega_{\max} = \frac{2\, v \tan 30^\circ}{L} \approx 2.89\, v, \qquad K_p = 1.2\, \frac{v}{0.20~\text{m/s}}.
+    \label{eq:speed_scaling}
+\end{equation}
+In this way $\omega_{\max}$ still corresponds to $30^\circ$ and each error gives the same steering angle as at 0.20~m/s. At $v = 0.30$~m/s, for example, $\omega_{\max} = 0.87$~rad/s and $K_p = 1.8$.
+
+\paragraph{Missing centerline and stop.}
+When the status is \texttt{lost} or no centerline is available, the node keeps the last filtered error for up to $t_{\mathrm{hold}} = 0.5$~s. After this time it publishes a zero velocity command. After a stop, the error filter restarts from the first new measurement and the filter of the angular velocity from zero. Table~\ref{tab:controller_parameters} lists the parameters used on the robot.
+
+\begin{table}[!htb]
+    \centering
+    \small
+    \caption{Parameters of the error filter and of the steering law used on Demetra.}
+    \label{tab:controller_parameters}
+    \begin{tabularx}{\textwidth}{@{}X l l@{}}
+        \toprule
+        Parameter & Symbol & Value \\
+        \midrule
+        Input resolution ($W \times H$) & -- & $224 \times 224$ px \\
+        Reference row & $y_{\mathrm{ref}}$ & 156 px \\
+        Reference frame rate of the smoothing factors & -- & 30 fps \\
+        Smoothing factor, status \texttt{ok} & $\alpha_{\mathrm{ok}}$ & 0.20 \\
+        Smoothing factor, status \texttt{degraded} & $\alpha_{\mathrm{deg}}$ & 0.18 \\
+        Jump threshold, status \texttt{ok} & $J_{\mathrm{ok}}$ & 40 px \\
+        Jump threshold, status \texttt{degraded} & $J_{\mathrm{deg}}$ & 38 px \\
+        Frames that confirm a jump & -- & 2 \\
+        Coherence tolerance of two jumps & $J_c$ & 25 px \\
+        Deadband & -- & $\pm 4$ px \\
+        Proportional gain & $K_{p}$ & 1.2 \\
+        Maximum angular velocity & $\omega_{\max}$ & 0.58 rad/s \\
+        Smoothing factor of the angular velocity & $\alpha_w$ & 0.30 \\
+        Linear velocity & $v$ & 0.20 m/s \\
+        Hold time & $t_{\mathrm{hold}}$ & 0.5 s \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
 \section{Deployment and testing}
 \label{sec:deployment}
 
 \subsection{Timing and latency}
 \label{subsec:timing}
 
-The deployed LR-ASPP network (Section~\ref{subsec:c5_deployed_network}) is exported from PyTorch to ONNX and run with ONNX Runtime. The inference times in Table~\ref{tab:c5_architecture_results} were measured on the RTX 2080 SUPER used for training, at the original image resolution, so they do not describe the onboard model.
+The inference times in Table~\ref{tab:c5_architecture_results} were measured on the training GPU at the original image resolution, so they do not describe the onboard model. The times in this section were measured on the Jetson AGX Orin in the MAXN power mode, with the clock frequencies fixed at their maximum by \texttt{jetson\_clocks}, so that the runs are comparable. For each path extractor, the controller node processed the same recording of a row, played at its original speed, once with the debug video disabled and once with it enabled. For each run, 100 callbacks were measured. Table~\ref{tab:jetson_extractors} lists the mean and standard deviation of the time of the path extractor and of the whole callback.
 
-The processing times were measured on the Jetson AGX Orin by passing 100 compressed camera frames, recorded in the \texttt{insalata\_grande1} folder, through the callback of the controller node, after 5 warm-up frames. For each frame, the node records the inference time, the time of the path extractor (\texttt{pf4.py}, an earlier version of Strip-IRLS that selected the seed by edge support and used 24 strips), and the total time of the callback. The first 50 frames were processed with the debug video enabled, which renders and compresses the debug images, and the other 50 with the debug video disabled. Table~\ref{tab:jetson_timing} reports the mean and standard deviation of each time.
-
-\begin{table}[htbp]
+\begin{table}[H]
     \centering
     \small
-    \caption{Processing times of the deployed pipeline on the NVIDIA Jetson AGX Orin, with \texttt{pf4.py} as path extractor (mean $\pm$ standard deviation over 50 frames per condition).}
-    \label{tab:jetson_timing}
-    \begin{tabular}{@{}l c c@{}}
-        \toprule
-        Time (ms) & With debug video & Without debug video \\
-        \midrule
-        Inference (normalization, ONNX Runtime, argmax) & $9.92 \pm 0.07$ & $9.76 \pm 0.07$ \\
-        Path extractor & $8.88 \pm 0.20$ & $8.64 \pm 0.18$ \\
-        Total callback time & $53.14 \pm 0.97$ & $23.09 \pm 0.21$ \\
-        \bottomrule
-    \end{tabular}
-\end{table}
-
-Inference and path extraction take about 19~ms in both conditions. The rest of the total time is JPEG decoding, resizing, the filter, the command publication, the log, and, when enabled, the debug images. These steps were not measured separately. They take 4.70~ms without the debug video and 34.35~ms with it, so the debug video adds about 30~ms per frame. With the debug video enabled, the total time of 53.14~ms limits the processing rate to 18.8 frames per second, below the 30~fps of the camera. Without the debug video, the total time of 23.09~ms is shorter than the 33.3~ms frame period of the camera, so the node can process every camera frame. When the robot operates the debug video is disabled, so the second column of Table~\ref{tab:jetson_timing} describes the robot in operation.
-
-The controller node selects the extractor at start-up with a launch parameter. Table~\ref{tab:jetson_extractors} compares the extractors of Chapter~\ref{cap:geometric_reference} on the Jetson. The time is that of the call \texttt{path\_finder(pred\_mask)} alone, without decoding, resizing, inference or publication. The 100 masks are the predictions of the deployed network on 100 consecutive compressed frames of the \texttt{insalata\_grande1} recording (after 10 frames not used), and each extractor was called 10 times on the first masks before timing. \textcolor{red}{Strip-IRLS was timed with the ROI starting at $\rho=0.50$, before the change to $\rho=0.30$, and the model and the output row of EdgeNet used in this measurement were not recorded.} RANSAC edges takes 14.10~ms, more than twice the time of Strip-IRLS (6.50~ms), and Column histogram takes 0.62~ms.
-
-\begin{table}[htbp]
-    \centering
-    \small
-    \caption{Time of one call of the path extractor on the NVIDIA Jetson AGX Orin, 100 masks of the \texttt{insalata\_grande1} recording (ms).}
+    \caption{Time of the path extractor and of the whole callback on the Jetson AGX Orin (mean $\pm$ standard deviation, ms). The inference takes about 5.8~ms, and the other steps of the callback (decoding, resizing, filter, command and log) about 4.7~ms without the debug video.}
     \label{tab:jetson_extractors}
     \begin{tabular}{@{}l c c c@{}}
         \toprule
-        Extractor & Mean & Median & 95th percentile \\
+        Extractor & Path extractor & Callback, debug off & Callback, debug on \\
         \midrule
-        Column histogram & 0.62 & 0.62 & 0.64 \\
-        EdgeNet & 3.62 & 3.65 & 3.72 \\
-        Center points & 6.11 & 6.12 & 6.19 \\
-        Strip-IRLS & 6.50 & 6.50 & 6.57 \\
-        RANSAC edges & 14.10 & 14.15 & 14.28 \\
+        Strip-IRLS & $11.07 \pm 0.21$ & $21.62 \pm 0.24$ & $53.73 \pm 0.69$ \\
+        EdgeNet & $4.68 \pm 0.18$ & $14.72 \pm 0.22$ & $47.64 \pm 0.71$ \\
+        RANSAC edges & $15.52 \pm 0.24$ & $26.24 \pm 0.28$ & $57.75 \pm 0.77$ \\
+        Center points & $7.27 \pm 0.27$ & $17.97 \pm 0.30$ & $47.40 \pm 0.72$ \\
+        Column histogram & $0.91 \pm 0.04$ & $11.30 \pm 0.14$ & $41.45 \pm 0.31$ \\
         \bottomrule
     \end{tabular}
 \end{table}
+
+Without the debug video, the callback takes from 11.3~ms with Column histogram to 26.2~ms with RANSAC edges, less than the 33.3~ms frame period of the camera. The node therefore processes every camera frame, and at $v=0.20$~m/s the robot moves about 0.67~cm between two processed frames. The debug video adds 29 to 33~ms, and every callback becomes longer than the frame period. The node then processes 17 to 24 frames per second and skips the others, so the robot moves 0.8 to 1.2~cm between two processed frames. The smoothing factors are corrected for the time between frames (Equation~\eqref{eq:alpha_dt}), so the response of the filters in time does not change. The difference between the two cases is small, so the field tests of Chapter~\ref{cap:experiments} were run with the debug video enabled, to record the debug images. In normal operation it should still be disabled, so that every frame is used.
 
 \subsection{Software-in-the-Loop test}
 \label{subsec:sitl}
 
-Before the field tests, the complete pipeline was tested in closed loop on a desktop computer, without moving the robot. A simulation node shifts a recorded camera frame horizontally according to the lateral offset and the heading of a simulated robot, which it updates from the velocity commands with the kinematic model of Section~\ref{subsec:robot_platform}. The controller node runs on these frames without changes.
+Before the field tests, the complete pipeline was tested in the laboratory with the robot raised, so that the wheels could steer without moving the robot. A simulation node replaces the camera. It publishes a recorded frame of a row on the camera topic at 30 frames per second, and the controller node runs on these frames without changes. The simulation node keeps a lateral offset and a heading of a simulated robot, updates them from the velocity commands with the steering model of the driver (Equation~\eqref{eq:4ws_steering_angle}), and shifts the frame horizontally by the corresponding number of pixels. During the test, the image is shifted from the keyboard, which moves the simulated robot to either side of the row. Figure~\ref{fig:sitl_test} shows three frames of the test.
+
+The test checks that the commands computed from the images are correct: after each displacement, the wheels steered towards the center of the row and the simulated offset returned to the center without oscillating. It is not a verification of the stability of the closed loop, because the scene is a single shifted frame and the projection is approximate. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}.
+
+\begin{figure}[H]
+    \centering
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_debug_a.jpg}}%
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_debug_b.jpg}}%
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_debug_c.jpg}}\\[4pt]
+    \includegraphics[width=\linewidth]{images/platform/sitl_robot_steer.png}
+    \caption{Frames of the video of the Software-in-the-Loop test, with the robot raised. Top: debug path image on the monitor. Bottom: the robot. (a) and (b) The image is shifted to the two sides, with a lateral error of about $-51$~px and $+39$~px, and the wheels steer in opposite directions to bring the simulated robot back to the center. (c) The simulated robot is back at the center, with an error below 1~px, and the wheels are straight.}
+    \label{fig:sitl_test}
+\end{figure}
