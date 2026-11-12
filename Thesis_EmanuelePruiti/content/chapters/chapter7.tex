@@ -311,11 +311,15 @@ which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_
     \label{fig:steering_law}
 \end{figure}
 
-A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second (converted with Equation~\eqref{eq:alpha_dt}, so this filter is also independent of the frame rate). The linear velocity is constant, $v = 0.20$~m/s.
+A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second (converted with Equation~\eqref{eq:alpha_dt}, so this filter is also independent of the frame rate). The linear velocity $v$ is constant.
 
 
 
-The values of $K_p$ and $\omega_{\max}$ above hold for $v = 0.20$~m/s. The steering angle of Equation~\eqref{eq:4ws_steering_angle} depends on the ratio $\omega / v$, so at a higher speed the same $\omega$ turns the wheels less. If only $v$ is increased, the robot steers less for the same error. At $v = 0.50$~m/s, for example, $\omega_{\max} = 0.58$~rad/s gives at most $13^\circ$. To keep the same steering angle for each error at a different speed, $\omega_{\max}$ and $K_p$ should be multiplied by the same factor as $v$:
+The values of $K_p$ and $\omega_{\max}$ above hold for $v = 0.20$~m/s. The steering angle of Equation~\eqref{eq:4ws_steering_angle} depends on the ratio $\omega / v$, so at a higher speed the same $\omega$ turns the wheels less. If only $v$ is increased, the robot steers less for the same error and can no longer reach the maximum steering angle of $30^\circ$. At $v = 0.50$~m/s, for example, $\omega_{\max} = 0.58$~rad/s gives at most $13^\circ$.
+
+This can be a desired behavior. The same steering angle gives the same turning radius $R$ at any speed (Equation~\eqref{eq:turning_radius_4ws}), so the lateral acceleration $v^2/R$ grows with the square of the speed, and steering less at a higher speed keeps it lower.
+
+If instead the same steering angle is wanted for each error, $\omega_{\max}$ and $K_p$ can be multiplied by the same factor as $v$:
 \begin{equation}
     \omega_{\max} = \frac{2\, v \tan 30^\circ}{L} \approx 2.89\, v, \qquad K_p = 1.2\, \frac{v}{0.20~\text{m/s}}.
     \label{eq:speed_scaling}
@@ -381,19 +385,30 @@ The inference times in Table~\ref{tab:c5_architecture_results} were measured on 
 
 Without the debug video, the callback takes from 11.3~ms with Column histogram to 26.2~ms with RANSAC edges, less than the 33.3~ms frame period of the camera. The node therefore processes every camera frame, and at $v=0.20$~m/s the robot moves about 0.67~cm between two processed frames. The debug video adds 29 to 33~ms, and every callback becomes longer than the frame period. The node then processes 17 to 24 frames per second and skips the others, so the robot moves 0.8 to 1.2~cm between two processed frames. The smoothing factors are corrected for the time between frames (Equation~\eqref{eq:alpha_dt}), so the response of the filters in time does not change. The difference between the two cases is small, so the field tests of Chapter~\ref{cap:experiments} were run with the debug video enabled, to record the debug images. In normal operation it should still be disabled, so that every frame is used.
 
-\subsection{Software-in-the-Loop test}
+\subsection{Processor-in-the-Loop test}
 \label{subsec:sitl}
 
-Before the field tests, the complete pipeline was tested in the laboratory with the robot raised, so that the wheels could steer without moving the robot. A simulation node replaces the camera. It publishes a recorded frame of a row on the camera topic at 30 frames per second, and the controller node runs on these frames without changes. The simulation node keeps a lateral offset and a heading of a simulated robot, updates them from the velocity commands with the steering model of the driver (Equation~\eqref{eq:4ws_steering_angle}), and shifts the frame horizontally by the corresponding number of pixels. During the test, the image is shifted from the keyboard, which moves the simulated robot to either side of the row. Figure~\ref{fig:sitl_test} shows three frames of the test.
+Before the field tests, the complete pipeline was tested in the laboratory with the robot raised, so that the wheels could steer without moving the robot. The purpose of the test was to check that the whole chain, from the image to the steering of the wheels, gives steering commands coherent with the position of the row in the image. A simulation node replaces the camera. It publishes a recorded frame of a row on the camera topic at 30 frames per second, and the controller node runs on these frames without changes. Both the simulation node and the controller node ran on the Jetson AGX Orin of the robot, and the driver sent the commands to the real steering actuators. The simulation node keeps the lateral offset $d$ and the heading $\psi$ of a simulated robot with respect to the row. The offset $d$ is positive when the robot is to the right of the center of the row, and $\psi$ is positive when the robot points to the left. At each step of $\Delta t = 1/30$~s, the node converts the velocity command into the steering angle $\delta$ with Equation~\eqref{eq:4ws_steering_angle}, limited to $\pm 30^\circ$, and updates the pose with the kinematic model of the robot:
+\begin{equation}
+    \psi_k = \psi_{k-1} + \frac{2\, v \tan\delta}{L}\, \Delta t, \qquad
+    d_k = d_{k-1} - v \sin\psi_k\, \Delta t.
+    \label{eq:sitl_pose}
+\end{equation}
+It then shifts the frame horizontally by
+\begin{equation}
+    s = -\frac{f}{D}\, d + f\, \psi
+    \label{eq:sitl_shift}
+\end{equation}
+pixels, positive to the right, where $f = 465$~px is the nominal focal length of the camera and $D = 1.25$~m is the assumed distance of the image row where the error is measured. A lateral offset therefore moves the row in the image by $f/D \approx 372$~px per meter, and a rotation by 465~px per radian. During the test, a lateral offset was added from the keyboard. The simulated pose was computed from the velocity command, assuming that the wheels follow the commanded steering angle, and the wheels visibly reached the commanded angle. Figure~\ref{fig:sitl_test} shows three frames of the test.
 
-The test checks that the commands computed from the images are correct: after each displacement, the wheels steered towards the center of the row and the simulated offset returned to the center without oscillating. It is not a verification of the stability of the closed loop, because the scene is a single shifted frame and the projection is approximate. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}.
+The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate physical path tracking, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
 
 \begin{figure}[H]
     \centering
-    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_debug_a.jpg}}%
-    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_debug_b.jpg}}%
-    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_debug_c.jpg}}\\[4pt]
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_a.jpg}}%
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_b.jpg}}%
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_c.jpg}}\\[4pt]
     \includegraphics[width=\linewidth]{images/platform/sitl_robot_steer.png}
-    \caption{Frames of the video of the Software-in-the-Loop test, with the robot raised. Top: debug path image on the monitor. Bottom: the robot. (a) and (b) The image is shifted to the two sides, with a lateral error of about $-51$~px and $+39$~px, and the wheels steer in opposite directions to bring the simulated robot back to the center. (c) The simulated robot is back at the center, with an error below 1~px, and the wheels are straight.}
+    \caption{Processor-in-the-Loop test. Top: frame of the simulation node shifted with Equation~\eqref{eq:sitl_shift}, with the edges (blue and green), the centerline (red) and the lateral error at $y_{\mathrm{ref}}$ (magenta) extracted offline by the network and Strip-IRLS. Bottom: the raised robot during the test, at similar lateral errors. (a) and (b) Lateral error of $-48$~px and $+39$~px: the wheels steer in opposite directions to bring the simulated robot back to the center. (c) Error below 1~px: the simulated robot is back at the center and the wheels are straight. The mirrored vegetation comes from the border that the simulation node adds before the shift.}
     \label{fig:sitl_test}
 \end{figure}
