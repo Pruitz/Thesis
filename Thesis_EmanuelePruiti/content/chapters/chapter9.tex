@@ -15,7 +15,7 @@ This thesis investigated vision-based local guidance for agricultural row naviga
 
 \item \textbf{Evaluation of output label configurations:} Networks with four-class, three-class, and binary path outputs, trained on SAM~3 lettuce labels, were compared against the manual ground truth. Their path IoU values differ by less than 0.5 percentage points in the realistic scenario. The binary configuration was adopted for the robot because the path is the only class used by the geometric extraction.
 
-\item \textbf{Edge-based geometric extractor and its evaluation:} An extractor that converts corridor masks into image-space navigation references was implemented (Strip-IRLS). It uses horizontal strip extraction, bottom-up interval association with selection of the chain that gives the most edge samples, exclusion of the edge samples clipped by the image border, and separate fits of the left and right edges with iteratively reweighted least squares. It was compared with three baseline extractors (Center points, Column histogram, RANSAC edges) on synthetic masks with exact ground truth, on 1604 real predicted masks of three crops, and on real frames with manually annotated corridor edges.
+\item \textbf{Edge-based geometric extractor and its evaluation:} An extractor that converts corridor masks into image-space navigation references was implemented (Strip-IRLS). It uses horizontal strip extraction, bottom-up interval association with selection of the chain that gives the most edge samples, exclusion of the edge samples clipped by the image border, and separate fits of the left and right edges with iteratively reweighted least squares. It was compared with three baseline extractors (Center points, Column histogram, RANSAC edges) on synthetic masks with exact ground truth and on real frames of three crops with manually annotated corridor edges.
 
 \item \textbf{Edge regression network, a first experiment:} A small network that takes the binary mask and regresses the two corridor edges was designed and trained on synthetic masks. It has the same interface as the geometric extractors and was compared with them in the same tests. It is at an early stage.
 \end{itemize}
@@ -58,7 +58,7 @@ Sintetizzare i dati conclusivi:
 The main limitations of the work are:
 
 \begin{itemize}
-\item \textbf{Structural limits of Strip-IRLS:} The dependence on the seed in the bottom strips, the thresholds in pixels and the one-sided gaps are described in Section~\ref{sec:c6_tradeoffs_and_limitations}. In the offline evaluation they appear as the frames lost in \texttt{pomodori\_maturi1}.
+\item \textbf{Structural limits of Strip-IRLS:} The dependence on the seed in the bottom strips, the thresholds in pixels and the one-sided gaps are described in Section~\ref{sec:c6_tradeoffs_and_limitations}. On the synthetic masks the seed and the merging gap cause the gross errors in \texttt{hole\_bottom\_tall} and \texttt{adjacent+offset} (Section~\ref{subsubsec:geometric_comparison}).
 
 \item \textbf{Geometric model constraints:} Strip-IRLS, RANSAC edges, Center points and the edge network model the corridor with straight lines. They cannot follow curved crop rows or navigate headland turnaround maneuvers where crop boundaries terminate or diverge.
 
@@ -70,7 +70,7 @@ The main limitations of the work are:
 
 \item \textbf{Annotation effort measurement:} The time saved by automatic labeling with respect to manual annotation was not measured.
 
-\item \textbf{Offline test data:} The synthetic masks have straight edges, while the real predictions often have rounded boundaries. In the tomato-based set the ground truth above the apex is a linear extension with no physical meaning. Only 255 real frames have an annotated ground truth, marked once by one person, and the frames skipped or with a nearly horizontal edge, which are among the most difficult, are excluded. The 1604 masks of the SAM~3 dataset come from images used to train the network, so they are probably cleaner than predictions on new images.
+\item \textbf{Offline test data:} The synthetic masks have straight edges, while the real predictions often have rounded boundaries. Only 255 real frames have an annotated ground truth, marked once by one person, and the frames skipped or with a nearly horizontal edge, which are among the most difficult, are excluded. The annotated frames of the SAM~3 dataset come from images used to train the network, so their masks are probably cleaner than predictions on new images.
 
 \item \textbf{Parameters of the geometric extractors:} The parameters of Strip-IRLS and of the baselines were chosen for the camera, its mounting and the fields of this work (Section~\ref{sec:c6_parameter_setting}). They have to be set again for another camera, mounting or crop.
 
