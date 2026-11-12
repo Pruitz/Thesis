@@ -92,20 +92,7 @@ The serial driver node (\texttt{/demetra\_node}) converts each command $(v, \ome
 \end{equation}
 limited to $\pm 30^\circ$. Before the conversion, the node limits $v$ to $\pm 1.5$~m/s and $\omega$ to $\pm 6.0$~rad/s. Every 10~ms it sends the last $v$ and $\delta$ to the microcontroller. If no command arrives for 500~ms, it sets the speed to zero.
 
-\begingroup\color{red}
-The microcontroller computes the steering angle of each wheel and the wheel speeds. For track width $T$ and turning radius $R = L / (2\tan\delta)$, the left and right steering angles follow the dual-Ackermann geometry:
-\begin{equation}
-    \delta_{L} = \arctan\left(\frac{L/2}{R - T/2}\right), \qquad
-    \delta_{R} = \arctan\left(\frac{L/2}{R + T/2}\right),
-    \label{eq:ackermann_4ws}
-\end{equation}
-with $\delta_{FL} = \delta_L$, $\delta_{FR} = \delta_R$, $\delta_{RL} = -\delta_L$, and $\delta_{RR} = -\delta_R$. The linear velocity of each wheel $i \in \{FL, FR, RL, RR\}$ is
-\begin{equation}
-    v_i = \omega \sqrt{\left(\frac{L}{2}\right)^2 + R_i^2},
-    \label{eq:wheel_velocity}
-\end{equation}
-where $R_i$ is the lateral distance from the ICR to the wheel center plane. The wheel speeds $v_i / r_w$ are converted into motor speed setpoints through the 19:1 gear ratio.
-\endgroup
+The microcontroller receives $v$ and $\delta$ from the driver and actuates them with the steering actuators and the traction motors of the four wheels.
 
 \subsection{Controller node}
 \label{subsubsec:control_node}
@@ -120,7 +107,37 @@ The error is smoothed with an exponential moving average (EMA). At each frame $k
     \hat{e}_k = (1 - \alpha)\, \hat{e}_{k-1} + \alpha \, e_k.
     \label{eq:filter_ema_update}
 \end{equation}
-The smoothing factor $\alpha$ is the weight of the new value. With $\alpha = 0.20$ the filter keeps 80\% of the previous value at each frame, so after three frames it has covered about half of a step of the input and after about 13 frames 95\% of it. At 30 frames per second this takes 0.1~s and 0.45~s. The angular velocity sent to the robot is smoothed in the same way.
+The smoothing factor $\alpha$ is the weight of the new value. With $\alpha = 0.20$ the filter keeps 80\% of the previous value at each frame. If the measured error jumps to a new value and then stays constant, the filter covers about half of the step after three frames and 95.6\% of it after 14 frames, which at 30 frames per second take 0.1~s and 0.47~s.
+
+In practice the measured error changes at every frame, because of the noise of the segmentation and of the path extractor and because the robot moves. Replacing $\hat{e}_{k-1}$ with Equation~\eqref{eq:filter_ema_update} written for the previous frame, and repeating this for the older frames, gives
+\begin{equation}
+    \hat{e}_k = \alpha\, e_k + \alpha (1-\alpha)\, e_{k-1} + \alpha (1-\alpha)^2\, e_{k-2} + \dots
+    \label{eq:ema_weights}
+\end{equation}
+Each measurement enters the filtered error with weight $\alpha$, and its weight is multiplied by $1-\alpha$ at every following frame. With $\alpha = 0.20$ the newest measurement weighs $0.20$, the previous one $0.20 \cdot 0.8 = 0.16$ and the one before $0.20 \cdot 0.8^2 = 0.128$. The weights of the last $n$ measurements add up to $1 - 0.8^{n}$, so more than 95\% of the filtered value depends on the last 14 measurements. Within them, the most recent measurements count the most, while the oldest weigh almost nothing, for example $0.20 \cdot 0.8^{13} \approx 0.011$ for the fourteenth. A change that lasts one frame therefore enters the filtered error only with weight 0.20, while a change that lasts several frames enters all the recent measurements and is followed with a short delay. Figure~\ref{fig:ema_field_example} shows an example from a field run. In the 1.5~s shown, the mean difference between two consecutive frames is 10.8~px for the measured error and 4.2~px for the filtered error.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=0.85\linewidth, height=0.38\linewidth,
+            xmin=0, xmax=1.5, ymin=-20, ymax=52,
+            clip=true,
+            xlabel={Time (s)},
+            ylabel={Lateral error (px)},
+            grid=both, grid style={gray!20},
+            legend pos=north east, legend style={font=\scriptsize}, legend cell align=left,
+            tick label style={font=\scriptsize}, label style={font=\footnotesize},
+        ]
+            \addplot[gray, thin, mark=*, mark size=0.9pt] coordinates {(0.042,24.8) (0.123,49.2) (0.202,2.4) (0.281,24.7) (0.366,12.0) (0.442,-7.2) (0.520,-10.5) (0.597,-10.4) (0.674,12.2) (0.752,-7.6) (0.831,-12.1) (0.911,-13.6) (0.990,-9.9) (1.068,-9.6) (1.145,-11.0) (1.223,-8.0) (1.301,-2.7) (1.378,-3.9) (1.463,-6.0)};
+            \addlegendentry{Measured error $e_k$}
+            \addplot[blue!70!black, line width=1.1pt] coordinates {(0.042,15.6) (0.123,29.4) (0.202,18.2) (0.281,20.8) (0.366,17.2) (0.442,6.6) (0.520,-0.2) (0.597,-4.3) (0.674,2.3) (0.752,-1.7) (0.831,-5.9) (0.911,-9.1) (0.990,-9.4) (1.068,-9.5) (1.145,-10.1) (1.223,-9.2) (1.301,-6.6) (1.378,-5.5) (1.463,-5.7)};
+            \addlegendentry{Filtered error $\hat{e}_k$}
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Measured lateral error $e_k$ and filtered error $\hat{e}_k$ during 1.5~s of a field run with Strip-IRLS. The filtered error was computed from the recorded measurements with Equation~\eqref{eq:filter_ema_update} and the smoothing factor of Equation~\eqref{eq:alpha_dt} for the recorded time between frames.}
+    \label{fig:ema_field_example}
+\end{figure}
 
 \paragraph{Smoothing independent of the frame rate.}
 If the node runs slower, the same three frames last longer and the filter reacts later. With the debug video enabled, for example, the node processes 17 to 24 frames per second (Section~\ref{subsec:timing}). The smoothing factors are therefore defined as reference values $\alpha_{\mathrm{ref}}$ for 30 frames per second. At each frame, the node measures the time $\Delta t$ since the previous frame, limited to the interval from $1/120$ to $0.25$~s, and converts each reference factor into
@@ -194,9 +211,9 @@ The jump is the distance $\Delta_k = |e_k - \hat{e}_{k-1}|$ between the new meas
     \end{cases}
     \label{eq:filter_jump}
 \end{equation}
-A measurement within the threshold is smoothed with Equation~\eqref{eq:filter_ema_update}. A jump on an isolated frame is ignored, so a segmentation error on a single frame does not reach the command. A jump present in two consecutive frames is taken directly only if the two measurements agree, that is, if they differ by at most the tolerance $J_c$. Otherwise both frames are ignored.
+A measurement within the threshold is smoothed with Equation~\eqref{eq:filter_ema_update}. A jump on an isolated frame is ignored, so a segmentation error on a single frame does not reach the command. A jump present in two consecutive frames is taken directly only if the two measurements agree, that is, if they differ by at most the tolerance $J_c$. Otherwise both frames are ignored. Taking the measurement directly lets the filter follow a sudden real change of the centerline position, for example when an obstacle under a wheel suddenly rotates the robot, without waiting for the slower response of Equation~\eqref{eq:filter_ema_update}.
 
-We chose $J_c$ from the raw errors recorded during the field runs with Strip-IRLS (Section~\ref{sec:field_validation}). When a jump lasted two frames, the two measurements were either within 18~px of each other or more than 50~px apart. In the first case the two frames agree on the new position of the centerline. In the second case they place it in two different positions, so at least one of them is an error. $J_c = 25$~px accepts the first case and rejects the second.
+We chose $J_c$ in offline tests, by applying the filter to recorded errors of Strip-IRLS. When two consecutive jumps agreed on the new position of the centerline, their measurements differed by at most 18~px, while in the other cases they differed by more than 50~px. $J_c = 25$~px accepts the first case with some margin and rejects the second.
 
 \paragraph{Steering law.}
 The steering law uses the command error
@@ -210,17 +227,19 @@ The steering law uses the command error
 \end{equation}
 This deadband avoids small oscillations of the steering around the center of the row. It acts only on the command, so the filter keeps its internal value $\hat{e}_k$. The angular velocity target is
 \begin{equation}
-    \omega^{*} = - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2},
+    \omega^{*} = \operatorname{sat}_{\omega_{\max}}\!\left( - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2} \right),
     \label{eq:control_law_omega}
 \end{equation}
-with $K_{p} = 1.2$. Dividing by the half-width $W/2 = 112$~px gives the error as a fraction of the image, from 0 at the center to $\pm 1$ at the edges, so $K_p$ does not depend on the input resolution. The confidence $C \in [0, 1]$ of the path extractor reduces the gain when the result is less reliable. With $C = 1$ the full gain $K_p$ is used, and with $C = 0.38$, the lowest value before \texttt{lost}, about 75\% of it. The minus sign makes the robot turn towards the centerline. The controller limits the value to $\pm\omega_{\max} = \pm 0.58$~rad/s. This limit is chosen from $v$ so that it matches the steering limit of $30^\circ$ (Equation~\eqref{eq:4ws_steering_angle}): a larger $\omega$ would not turn the wheels further. The command therefore saturates for errors above
+with $K_{p} = 1.2$, where $\operatorname{sat}_{\omega_{\max}}$ limits the value to $\pm\omega_{\max} = \pm 0.58$~rad/s. Dividing by the half-width $W/2 = 112$~px gives the error as a fraction of the image, from 0 at the center to $\pm 1$ at the edges, so $K_p$ does not depend on the input resolution. The confidence $C \in [0, 1]$ of the path extractor reduces the gain when the result is less reliable. The effective proportional gain is $K_p (0.6 + 0.4\, C)$, which equals $K_p$ with $C = 1$ and $0.75\, K_p$ with $C = 0.38$, the lowest value before \texttt{lost}. The minus sign makes the robot turn towards the centerline.
+
+The limit $\omega_{\max}$ is chosen from $v$ so that it matches the steering limit of $30^\circ$ (Equation~\eqref{eq:4ws_steering_angle}): a larger $\omega$ would not turn the wheels further. The command therefore saturates for errors above
 \begin{equation}
     e_{\mathrm{sat}} = \frac{\omega_{\max}\, (W/2)}{K_p\, (0.6 + 0.4\, C)},
     \label{eq:error_saturation}
 \end{equation}
-which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_p$ sets how strongly the robot reacts to the error (Figure~\ref{fig:steering_law}b). A larger $K_p$ gives a larger command for the same error and reaches $30^\circ$ at a smaller error. A smaller $K_p$ gives a smoother response and reaches the limit later. A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second (converted with Equation~\eqref{eq:alpha_dt}, so this filter is also independent of the frame rate). The linear velocity is constant, $v = 0.20$~m/s.
+which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_p$ sets how strongly the robot reacts to the error (Figure~\ref{fig:steering_law}b). A larger $K_p$ gives a larger command for the same error and reaches $30^\circ$ at a smaller error. A smaller $K_p$ gives a smoother response and reaches the limit later.
 
-\begin{figure}[p]
+\begin{figure}[H]
     \centering
     \pgfplotsset{
         steermain/.style={
@@ -288,9 +307,12 @@ which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_
             \addplot[draw=none, forget plot] coordinates {(0,0)};
         \end{axis}
     \end{tikzpicture}
-    \caption{Angular velocity target $\omega^{*}$ of the steering law as a function of the error $e_{\mathrm{cmd}}$. (a) Gain used on the robot, $K_p = 1.2$, for $C=1$ and for the confidence at the two status thresholds of the path extractors, $C=0.60$ between \texttt{ok} and \texttt{degraded} and $C=0.38$ below which the result is \texttt{lost}. (b) Three gains with $C = 1$: the command saturates at 36~px with $K_p = 1.8$, 54~px with $K_p = 1.2$ and 72~px with $K_p = 0.9$. The command is zero inside the deadband ($|e_{\mathrm{cmd}}| < 4$~px) and is limited to $\pm 0.58$~rad/s (dashed lines). The right axis gives the steering angle $\delta$. With $L = 0.4$~m and $v = 0.20$~m/s, Equation~\eqref{eq:4ws_steering_angle} reduces to $\delta = \arctan(\omega)$, so the limit of 0.58~rad/s corresponds to $30^\circ$.}
+    \caption{Angular velocity target $\omega^{*}$ of Equation~\eqref{eq:control_law_omega} as a function of the command error $e_{\mathrm{cmd}}$. (a) Effect of the confidence, with the gain used on the robot, $K_p = 1.2$. The curves are for $C = 1$, $C = 0.60$ (threshold between \texttt{ok} and \texttt{degraded}) and $C = 0.38$ (threshold below which the status is \texttt{lost}). (b) Effect of the gain, with $C = 1$. The command saturates at 36~px with $K_p = 1.8$, at 54~px with $K_p = 1.2$ and at 72~px with $K_p = 0.9$. In both plots the command is zero inside the deadband ($|e_{\mathrm{cmd}}| < 4$~px) and is limited to $\pm 0.58$~rad/s. The right axis gives the corresponding steering angle $\delta$ at $v = 0.20$~m/s, where Equation~\eqref{eq:4ws_steering_angle} becomes $\delta = \arctan(\omega)$, so 0.58~rad/s corresponds to $30^\circ$.}
     \label{fig:steering_law}
 \end{figure}
+
+A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second (converted with Equation~\eqref{eq:alpha_dt}, so this filter is also independent of the frame rate). The linear velocity is constant, $v = 0.20$~m/s.
+
 
 
 The values of $K_p$ and $\omega_{\max}$ above hold for $v = 0.20$~m/s. The steering angle of Equation~\eqref{eq:4ws_steering_angle} depends on the ratio $\omega / v$, so at a higher speed the same $\omega$ turns the wheels less. If only $v$ is increased, the robot steers less for the same error. At $v = 0.50$~m/s, for example, $\omega_{\max} = 0.58$~rad/s gives at most $13^\circ$. To keep the same steering angle for each error at a different speed, $\omega_{\max}$ and $K_p$ should be multiplied by the same factor as $v$:
