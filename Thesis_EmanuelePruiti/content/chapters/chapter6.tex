@@ -216,34 +216,38 @@ Table~\ref{tab:c6_defaults} lists the parameters of \textit{Strip-IRLS} on the r
     \item \textbf{Residual scale $\sigma$.} Samples much closer to the line than $\sigma$ keep almost all their weight, and samples much farther lose most of it. $\sigma$ should therefore be larger than the distance of the correct samples, which comes from the irregular edges of the mask, and smaller than the distance of the outliers. A smaller $\sigma$ lowers $F$, so more results are \texttt{degraded} or \texttt{lost}. A larger $\sigma$ keeps the outliers in the fit and raises the threshold $2\sigma$.
     \item \textbf{Status thresholds.} Higher thresholds give more \texttt{lost} and \texttt{degraded} results, which the controller filters differently (Section~\ref{subsubsec:control_node}).
 \end{itemize}
-The values are set for the camera, its mounting and the fields of this work, and they have to be set again for another camera, mounting or crop. This is one of the reasons for \textit{EdgeNet} (Section~\ref{sec:c6_network}).
+The values are set for the camera, its mounting and the fields of this work. With another camera, mounting or crop, they may need to be adjusted to get the best results. This is one of the reasons for \textit{EdgeNet} (Section~\ref{sec:c6_network}).
 
 \section{EdgeNet, an edge regression network}
 \label{sec:c6_network}
 
-\textit{EdgeNet} is a first test of replacing the geometric steps of \textit{Strip-IRLS} with a learned model. Like the second network of M{\"u}ller et al.~\cite{muller2018driving} (Section~\ref{subsec:bilateral_vs_centroids}), it takes a segmentation mask and not the image, but it regresses the two corridor edges instead of waypoints. It has no geometric parameters to set by hand for each scenario (Section~\ref{sec:c6_parameter_setting}).
+\textit{EdgeNet} is a first test of replacing the geometric steps of \textit{Strip-IRLS} with a learned model. Like the second network of M{\"u}ller et al.~\cite{muller2018driving} (Section~\ref{subsec:bilateral_vs_centroids}), it takes a segmentation mask and not the image, but it regresses the two corridor edges instead of waypoints. It has no geometric parameters to set by hand for each scenario.
 
-The network is a small CNN of about 0.8 million parameters, shown in Figure~\ref{fig:c6_edgenet}. Its input is the $224\times224$ mask, and it has five outputs: the $x$ positions of the left and right edges at rows 156 and 223, and a logit $z$. The sigmoid of the logit, $p_{\mathrm{valid}}=1/(1+e^{-z})$, is the estimate of the network that the mask contains a corridor. The mask is 1 on the path pixels and 0 elsewhere. The four positions are given normalized as $(x-112)/112$, so the columns 0 and 223 correspond to $-1$ and about 1. Each edge line passes through its two predicted points, and the centerline is the mean of the two lines, as in Eq.~\eqref{eq:c6_line}.
+The network is a small CNN of about 0.8 million parameters, shown in Figure~\ref{fig:c6_edgenet}. Its input is the $224\times224$ mask, and it has five outputs: the $x$ positions of the left and right edges at rows 156 and 223, and the validity $p_{\mathrm{valid}}$, the estimate of the network that the mask contains a corridor.
 
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{images/architectures/edgenet_tikz}%
-    \caption{Architecture of \textit{EdgeNet}. Each box is a feature map, colored by the layer that produces it and labeled with channels $\times$ height $\times$ width. The two maps of a block have the same size and share one label. The mask is averaged over $2\times2$ blocks, and two channels with the $x$ and $y$ coordinates of each pixel, scaled to $[-1,1]$ as in CoordConv~\cite{liu2018coordconv}, are added, so the convolutions also see where each pixel is. Each of the four blocks halves the size with a stride-2 convolution and then applies a second convolution. The $96\times7\times7$ map is flattened and passed to two fully connected layers, the first followed by ReLU and dropout 0.1.}
+    \caption{Architecture of \textit{EdgeNet}. Each box is a feature map, colored by the layer that produces it and labeled with channels $\times$ height $\times$ width. The two maps of a block have the same size and share one label. The mask is averaged over $2\times2$ blocks, and two channels with the $x$ and $y$ coordinates of each pixel, scaled to $[-1,1]$ as in CoordConv~\cite{liu2018coordconv}, are added, so the convolutions also see where each pixel is. Each of the four blocks halves the size with a stride-2 convolution and then applies a second convolution. The $96\times7\times7$ map is flattened and passed to two fully connected layers, the first followed by ReLU. A sigmoid turns the last output into $p_{\mathrm{valid}}$.}
     \label{fig:c6_edgenet}
 \end{figure}
+
+The four positions are given normalized as $(x-112)/112$, so the columns 0 and 223 correspond to $-1$ and about 1. Each edge line passes through its two predicted points, and the centerline is the mean of the two lines, as in Eq.~\eqref{eq:c6_line}.
 
 The confidence is $C=p_{\mathrm{valid}}\cdot\mathrm{IoU}$. The IoU compares the region between the two edge lines with the path pixels of the mask, not cleaned as in \textit{Strip-IRLS}, in the rows from 64 to 223, the ROI of \textit{Strip-IRLS}, which contains the row read by the controller:
 \begin{equation}
     \mathrm{IoU}=\frac{N_{\mathrm{in}}}{N_{\mathrm{in}}+N_{\mathrm{out}}+N_{\mathrm{bg}}},
     \label{eq:c6_edgenet_iou}
 \end{equation}
-where $N_{\mathrm{in}}$ is the number of path pixels between the lines, $N_{\mathrm{out}}$ the number of path pixels outside them, and $N_{\mathrm{bg}}$ the number of pixels between the lines that are not path. The IoU is 1 when the region between the lines covers exactly the path. Above the crossing of the lines the region between them is empty. The status is \texttt{lost} if $p_{\mathrm{valid}}<0.5$, if the distance between the two predicted edges at row 223 is below 8~px (in higher rows the two edge lines can cross, so their order can be swapped), or if $C<0.38$. Otherwise it is \texttt{degraded} for $C<0.60$ and \texttt{ok} for $C\geq0.60$.
+where $N_{\mathrm{in}}$ is the number of path pixels between the lines, $N_{\mathrm{out}}$ the number of path pixels outside them, and $N_{\mathrm{bg}}$ the number of pixels between the lines that are not path. The IoU is 1 when the region between the lines covers exactly the path. Above the crossing of the lines the region between them is empty. The status is \texttt{lost} if $p_{\mathrm{valid}}<0.5$, if the distance between the two predicted edges at row 223 is below 8~px, or if $C<0.38$. Otherwise it is \texttt{degraded} for $C<0.60$ and \texttt{ok} for $C\geq0.60$.
 
-The network is trained only on synthetic masks. Its input has the same format as on the robot, and the labels are computed from the corridor model of the generator and not from an extractor, so they are exact, need no manual annotation and do not contain the errors of an algorithm. M{\"u}ller et al.\ obtain realistic errors by applying a real segmentation network to simulated images. Here no segmentation network is used for training. The errors of the segmentation, such as holes, blobs and irregular edges, are drawn by the generator, with shapes and probabilities chosen in its code. The masks are therefore realistic only as far as these disturbances resemble the errors of the real segmentation. The generator draws perspective corridors whose apex, the row where the two edges meet, goes from above the image down to row 190, and a quarter of the corridors are curved. It adds disturbances found in predicted masks, such as irregular edges, adjacent corridors, holes, blobs and the end of the row. It does not use the masks of the synthetic test sets of Chapter~\ref{cap:experiments}, which come from a different program, but it contains disturbances of the same kinds as their scenarios (Table~\ref{tab:c8_scenarios}).
+The network is trained only on synthetic masks. Its input has the same format as on the robot, and the labels are computed from the corridor model of the generator and not from an extractor, so they are exact, need no manual annotation and do not contain the errors of an algorithm. M{\"u}ller et al.\ obtain realistic errors by applying a real segmentation network to simulated images. Here no segmentation network is used for training. The errors of the segmentation are drawn by the generator, with shapes and probabilities chosen in its code. The masks are therefore realistic only as far as these disturbances resemble the errors of the real segmentation. The generated masks look like the predicted ones, with irregular edges, holes, blobs, adjacent corridors and the end of the row.
 
-The labels are the positions of the edge lines of the corridor model at rows 156 and 223, normalized as the outputs. The edge line of a wide or offset corridor can pass outside the image, and limiting it to the image would move the centerline. The labels are therefore clipped only to $[-2,2]$, from $-112$ to 336~px. In the training set, 36.8\% of the valid masks have at least one label outside $[-1,1]$, and 8.2\% have one clipped. The validity label is 1 when the corridor drawn before the disturbances has at least 800 pixels and at least one of its two edge lines lies inside the image, more than 2~px from the border, in at least 15 rows from row 64. It is 0 for the other masks and for the masks without a corridor, so a corridor partly erased by the disturbances is still valid. About 14\% of the 300\,000 training masks have no valid corridor.
+The labels are the positions of the edge lines of the corridor model at rows 156 and 223, normalized as the outputs. The edge line of a wide or offset corridor can pass outside the image, and limiting it to the image would move the centerline. The labels are therefore clipped only to $[-2,2]$, from $-112$ to 336~px. In the training set, 36.8\% of the valid masks have at least one label outside $[-1,1]$, and 8.2\% have one clipped. The validity label is 1 when the corridor drawn before the disturbances has at least 800 pixels and at least one of its two edge lines is visible, more than 2~px from the image border, in at least 15 of the rows from 64 to 223. It is 0 for the other masks and for the masks without a corridor, so a corridor partly erased by the disturbances is still valid. About 14\% of the 300\,000 training masks have no valid corridor.
 
-The loss is a smooth L1 loss on the four edge positions, plus twice the same loss on the centerline at row 156, both only on masks with a valid corridor, plus 0.2 times the binary cross-entropy on the validity. Figure~\ref{fig:c6_edgenet_examples} shows three validation masks with their labels and three masks of the field tests with the lines estimated by the network. The network is evaluated on the synthetic test masks in Section~\ref{subsec:geometric_accuracy} and in the field in Section~\ref{sec:field_validation}.
+The loss is the sum of three terms: a smooth L1 loss on the four edge positions, twice the same loss on the centerline at row 156, which is the value used by the controller, and 0.2 times the binary cross-entropy of the validity. The first two terms are computed only on masks with a valid corridor.
+
+Figure~\ref{fig:c6_edgenet_examples} shows three validation masks with their labels and three masks of the field tests with the lines estimated by the network. The network is evaluated on the synthetic test masks in Section~\ref{subsec:geometric_accuracy} and in the field in Section~\ref{sec:field_validation}.
 
 \begin{figure}[H]
     \centering
@@ -260,30 +264,26 @@ The loss is a smooth L1 loss on the four edge positions, plus twice the same los
 \subsection{Center points}
 \label{subsec:c6_center_baseline}
 
-The \textit{Center points} extractor uses the same mask cleaning and interval extraction as \textit{Strip-IRLS}, with the same merging gap of 30 columns. Its ROI is built as in \textit{Strip-IRLS} (Section~\ref{sec:c6_candidates}), with $\rho=0.30$ and $N=24$ strips. The strips are $h=\lceil 157/24\rceil=7$~px high, so the ROI is extended upward from row 67 to row $y_0=H-Nh=56$. Each interval is reduced to its midpoint $c=(\ell+r)/2$ and its width $d=r-\ell+1$. The seed is the interval of the bottom six strips with the most path pixels, with ties broken by width. Intervals are associated upward with the cost
+\textit{Center points} uses the same mask cleaning, ROI and interval extraction as \textit{Strip-IRLS}, but with $N=24$ strips. Each interval is reduced to its midpoint $c=(\ell+r)/2$ and its width $d=r-\ell+1$. The seed is the interval of the bottom six strips with the most path pixels. Intervals are associated upward with the cost
 \begin{equation}
     J_i = |c_i - c_p| + 0.4\, |d_i - d_p|,
     \label{eq:c6_center_cost}
 \end{equation}
-with $c_p$ and $d_p$ the midpoint and width of the last accepted interval, under the jump limit $|c_i - c_p| \le \max(28, 0.5\, d_p)$, with the same stopping rule and the same minimum of three intervals as \textit{Strip-IRLS}.
+where $c_p$ and $d_p$ are the midpoint and width of the last accepted interval, under the jump limit $|c_i - c_p| \le \max(28, 0.5\, d_p)$. The stopping rule and the minimum of three intervals are those of \textit{Strip-IRLS}.
 
-One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c6_reweight}. Unlike \textit{Strip-IRLS}, the initial weights are proportional to the pixel count of each interval (normalized to mean one), the weights multiply across iterations, and clipped intervals are not excluded. The confidence combines the same four scores as \textit{Strip-IRLS} (Section~\ref{sec:c6_output}), tracking $T$, fit $F$, regularity of the width $A$ and gaps $G$, with weights 0.30, 0.35, 0.25 and 0.10. $T$ is the number of accepted intervals divided by the number of all the strips, so the strips above the end of the corridor also lower it. $A$ uses the widths of all the accepted intervals, and $G$ also counts the skipped strips that end the association. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the confidence is below 0.38, and \texttt{degraded} if it is below 0.60. Because the midpoints are formed before the fit, a disturbance on one edge moves the midpoint and enters the centerline.
+One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c6_reweight}, starting from weights proportional to the pixel count of each interval. Clipped intervals are not excluded. The confidence combines tracking, fit, width regularity and gap scores similar to those of \textit{Strip-IRLS} (Section~\ref{sec:c6_output}), with weights 0.30, 0.35, 0.25 and 0.10. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the confidence is below 0.38, and \texttt{degraded} if it is below 0.60. Because the midpoints are formed before the fit, a disturbance on one edge moves the midpoint and enters the centerline.
 
 \subsection{Column histogram}
 \label{subsec:c6_histogram_baseline}
 
-The \textit{Column histogram} extractor is a simplified version of the column projection of SegMin. SegMin sums a plant mask, accumulated over recent frames and refined with depth, along the image columns, smooths the profile, and takes its minimum~\cite{navone2025gpsfree}. \textit{Column histogram} uses the path mask of a single frame, without depth or smoothing, and takes the maximum. Its ROI starts at $y_0=\lfloor 0.30H\rfloor=67$, and the mask is cleaned with the same opening and closing as \textit{Strip-IRLS}. The connected components with fewer than 300 pixels are then removed. In each column, the extractor counts the path pixels of the cleaned ROI, and the target column $x_{\text{target}}$ is the column with the most path pixels. If several columns have the maximum count, as when the corridor fills the whole height of the ROI, $x_{\text{target}}$ is the center of the widest group of adjacent ones. If two or more groups have the same largest width, no column is chosen and the result is \texttt{lost}. The confidence is the maximum count divided by the ROI height $H-y_0$, with the same thresholds as \textit{Strip-IRLS} (0.38 and 0.60). The output is the vertical line $x=x_{\text{target}}$, so the method gives a lateral position but no heading.
+\textit{Column histogram} is a simplified version of the column projection of SegMin~\cite{navone2025gpsfree}, which sums a plant mask, accumulated over recent frames and refined with depth, along the image columns, smooths the profile and takes its minimum. \textit{Column histogram} uses the path mask of a single frame, without depth or smoothing, and takes the maximum. It cleans the ROI from row 67 as \textit{Strip-IRLS}, removes the components with fewer than 500 pixels and counts the path pixels of each column. The target column $x_{\text{target}}$ is the column with the most path pixels, or the center of the widest group of adjacent columns with the maximum count. If two groups have the same width, the result is \texttt{lost}. The confidence is the maximum count divided by the ROI height, with the thresholds 0.38 and 0.60. The output is the vertical line $x=x_{\text{target}}$, a lateral position without heading.
 
 \subsection{RANSAC edges}
 \label{subsec:c6_ransac_baseline}
 
-RANSAC line fitting is used in agricultural row detection on points of the crop rows~\cite{bai2023vision,sensors2025deeplabv3}. The RANSAC extractor applies it to the edges of the segmented corridor, without strips or bottom-up association.
+RANSAC line fitting is used in agricultural row detection on points of the crop rows~\cite{bai2023vision,sensors2025deeplabv3}. The RANSAC extractor applies it to the edges of the segmented corridor. It cleans the ROI from row 67 as \textit{Strip-IRLS} and keeps one large connected component that starts low in the image. The leftmost and rightmost pixels of each row of the component are the edge points, except in rows where they are less than 10~px apart and at the image border.
 
-The ROI starts at $y_0=\lfloor 0.30H\rfloor=67$ and the mask is cleaned with the same opening and closing as \textit{Strip-IRLS}. The extractor then keeps one connected component, a large one that starts low in the image. In each ROI row of this component, its leftmost and rightmost pixels are edge points. Rows where they are less than 10~px apart are skipped. As in \textit{Strip-IRLS}, the endpoints at the image border are not used.
-
-Each edge is fitted with RANSAC~\cite{fischler1981ransac}: in 100 trials, two random points define a line, and the points within 18~px of it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines, as in Eq.~\eqref{eq:c6_line}. The random draws use a fixed seed, so the same mask always gives the same line.
-
-The result is \texttt{lost} if one edge has fewer than 10 points or its points span fewer than 20 rows, for example when the mask is a band of path across the bottom of the image at the end of a row. It is also \texttt{lost} if the component has fewer than 1000 pixels in the ROI, or if the mean fraction of inliers of the two edges is below 0.30. Otherwise a score combines the fraction of inliers, their residual, the vertical extent of the component and the regularity of its width. Below 0.38 the result is \texttt{lost}, below 0.60 \texttt{degraded}, and from 0.60 \texttt{ok}.
+Each edge is fitted with RANSAC~\cite{fischler1981ransac}: in 100 trials, two random points define a line, and the points within 18~px of it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines. The result is \texttt{lost} if an edge has fewer than 10 points or spans fewer than 20 rows, as at the end of a row, if the component has fewer than 1000 pixels in the ROI, or if the mean fraction of inliers is below 0.30. Otherwise a score combines the fraction of inliers, their residual, the vertical extent of the component and the regularity of its width, with the thresholds 0.38 and 0.60.
 
 \section{Structural differences and limitations}
 \label{sec:c6_tradeoffs_and_limitations}
@@ -293,31 +293,31 @@ Table~\ref{tab:c6_algorithm_tradeoffs} summarizes how the five extractors differ
 \begin{table}[htbp]
     \centering
     \footnotesize
-    \setlength{\tabcolsep}{3pt}
-    \renewcommand{\arraystretch}{1.2}
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.3}
+    \renewcommand{\tabularxcolumn}[1]{m{#1}}
     \caption{Structural comparison of the five extractors. Row extremes are the leftmost and rightmost pixels of the selected component in each ROI row. LS is a least-squares refit on the inliers.}
     \label{tab:c6_algorithm_tradeoffs}
-    \resizebox{\textwidth}{!}{%
-    \begin{tabular}{@{}lccccc@{}}
+    \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}m{3.6cm}*{5}{>{\centering\arraybackslash}X}@{}}
         \toprule
         Characteristic & Strip-IRLS & EdgeNet & Center points & Column histogram & RANSAC edges \\
         \midrule
         Output & Line & Line & Line & Vertical line & Line \\
         Heading estimate & Yes & Yes & Yes & No & Yes \\
         First row used & 64 & 0 (network), 64 (IoU) & 56 & 67 & 67 \\
-        Mask cleaning & Open, close, $\geq$500 px & None & Open, close, $\geq$500 px & Open, close, $\geq$300 px & Open, close, one component $\geq$500 px \\
+        Mask cleaning & Open, close, $\geq$500 px & None & Open, close, $\geq$500 px & Open, close, $\geq$500 px & Open, close, one component $\geq$500 px \\
         Edges fitted separately & Yes & Regressed & No & N/A & Yes \\
         Edge points & Chain endpoints & N/A & N/A & N/A & Row extremes \\
         Clipped endpoints excluded & Yes & N/A & No & N/A & Yes \\
         Bottom-up seed and jump limit & Yes & No & Yes & No & No \\
         Line estimator & IRLS & CNN regression & IRLS & N/A & RANSAC, LS \\
         \bottomrule
-    \end{tabular}}
+    \end{tabularx}
 \end{table}
 
 \textit{Strip-IRLS} has three structural limitations:
 \begin{itemize}
     \item \textbf{Seed dependence.} The seeds are searched only in the bottom six strips. If these contain no interval, the result is \texttt{lost} even if the upper part of the corridor is segmented. If a hole wider than the merging gap and taller than these strips splits the bottom of the corridor, the chain follows only one part (Section~\ref{subsubsec:geometric_comparison}). At a fork above these strips, the chain takes the branch with the lowest cost and never revises it.
-    \item \textbf{Number of parameters.} \textit{Strip-IRLS} has 16 arguments and 13 constants (Table~\ref{tab:c6_defaults}), most of them in pixels of the mask, and several act together. They were set for the camera, its mounting and the fields of this work, and have to be set again for a new scenario (Section~\ref{sec:c6_parameter_setting}).
+    \item \textbf{Number of parameters.} \textit{Strip-IRLS} has 16 arguments and 13 constants (Table~\ref{tab:c6_defaults}), most of them in pixels of the mask, and several act together. They were set for the camera, its mounting and the fields of this work, and in a new scenario they may need to be adjusted to get the best results (Section~\ref{sec:c6_parameter_setting}).
     \item \textbf{Missing plants on one side.} The interval widens on that side. Within the jump limit it is accepted, and its endpoint on that side is a wrong sample that only the reweighting can reduce. Beyond the limit the strip is skipped. If the interval reaches the image border, its endpoint on that side gives no sample.
 \end{itemize}

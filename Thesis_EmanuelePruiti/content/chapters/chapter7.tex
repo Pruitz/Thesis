@@ -357,6 +357,18 @@ When the status is \texttt{lost} or no centerline is available, the node keeps t
     \end{tabularx}
 \end{table}
 
+\section{Complete pipeline}
+\label{sec:complete_pipeline}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{images/pipeline/pipeline.pdf}
+    \caption{Complete pipeline on the robot.}
+    \label{fig:complete_pipeline}
+\end{figure}
+
+Figure~\ref{fig:complete_pipeline} summarizes the steps that run on the robot for each camera frame. The controller node resizes the color image to $224\times224$ pixels, and the segmentation network turns it into the path mask (Chapter~\ref{cap:segmentation}). The path extractor turns the mask into the centerline (Chapter~\ref{cap:geometric_reference}). The controller computes the lateral error $e$ at row $y_{\mathrm{ref}}=156$, filters it and gives the command $(v,\omega)$ (Section~\ref{subsubsec:control_node}). The serial driver converts the command into the speed and the steering angle sent to the microcontroller (Section~\ref{subsec:control_interface}).
+
 \section{Deployment and testing}
 \label{sec:deployment}
 
@@ -409,6 +421,6 @@ The test checked the integration of the perception, control and actuation chain.
     \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_b.jpg}}%
     \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_c.jpg}}\\[4pt]
     \includegraphics[width=\linewidth]{images/platform/sitl_robot_steer.png}
-    \caption{Processor-in-the-Loop test. Top: frame of the simulation node shifted with Equation~\eqref{eq:sitl_shift}, with the edges (blue and green), the centerline (red) and the lateral error at $y_{\mathrm{ref}}$ (magenta) extracted offline by the network and Strip-IRLS. Bottom: the raised robot during the test, at similar lateral errors. (a) and (b) Lateral error of $-48$~px and $+39$~px: the wheels steer in opposite directions to bring the simulated robot back to the center. (c) Error below 1~px: the simulated robot is back at the center and the wheels are straight. The mirrored vegetation comes from the border that the simulation node adds before the shift.}
+    \caption{Processor-in-the-Loop test. Top: frame of the simulation node shifted with Equation~\eqref{eq:sitl_shift}, with the edges (blue and green), the centerline (red) and the lateral error at $y_{\mathrm{ref}}$ (magenta) extracted offline by the network and Strip-IRLS. Bottom: the raised robot during the test, at similar lateral errors. (a) and (b) Lateral error to the left and to the right: the wheels steer toward the center of the row. (c) Error below 1~px: the simulated robot is back at the center and the wheels are straight. The mirrored vegetation comes from the border that the simulation node adds before the shift.}
     \label{fig:sitl_test}
 \end{figure}
