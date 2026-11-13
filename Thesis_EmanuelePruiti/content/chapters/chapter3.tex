@@ -21,15 +21,16 @@ application-specific geometric rules. Mendez et al. convert vineyard
 images to grayscale, apply Gaussian filtering and Otsu thresholding,
 select the largest blob, and use column pixel counts to estimate the row
 center \cite[Section~3.4]{mendez2023vineyards}. Such methods can be
-effective in the conditions for which their parameters were selected,
-but changes in illumination, weeds, and crop appearance can require
-retuning \cite{bai2023vision}.
+effective in the conditions for which their parameters were selected.
+However, fixed thresholds are sensitive to changes in illumination, and
+the complexity of the field and the variety of crops make it difficult
+to segment the image from low-level features alone \cite{bai2023vision}.
 
 Semantic segmentation assigns a class to each pixel, but the label
 definition determines what the geometric stage can recover. De Silva
 et al.\ train U-Net to predict narrow crop-row masks in sugar-beet
 images. Their labels represent row structure rather than individual plant
-pixels or traversable soil~\cite[Sections~3.3 and~4.1]{silva2023rowdetection}.
+pixels or traversable soil~\cite[Sections~3.3 and~4, Figure~5]{silva2023rowdetection}.
 Navone et al.\ predict a binary vegetation mask from RGB images
 using a MobileNetV3 backbone and an LR-ASPP head, then combine that
 output with depth for reference extraction
@@ -54,7 +55,7 @@ The choice of architecture affects both segmentation accuracy and inference spee
 \subsection{Transfer learning and pretraining}
 \label{subsec:transfer_learning}
 
-Transfer learning initializes network weights from models pretrained on large visual corpora such as ImageNet. The pretrained backbone is a generic feature extractor, while the task-specific segmentation head is adapted to produce class scores matching the target dataset. In agricultural vision, pretraining reduces training time and mitigates overfitting when domain-specific annotated datasets are limited in size. For instance, Li et al.~\cite[Section~2.2.2]{li2022multiroi} demonstrate that transferring weights learned on corn fields to other crops (such as tomatoes, cucumbers, and wheat) preserves segmentation accuracy with small training sets. Navone et al.\ initialize their segmentation model with ImageNet weights and train it on synthetic AgriSeg images supplemented by 100 real crop images~\cite[Section~4.1, Table~1]{navone2025gpsfree}.
+Transfer learning initializes network weights from models pretrained on large visual corpora such as ImageNet. The pretrained backbone is a generic feature extractor, while the task-specific segmentation head is adapted to produce class scores matching the target dataset. Reusing the layers of a pretrained network speeds up training considerably and requires significantly less training data~\cite[Chapter~11]{geron2026handson}. Long et al.\ obtain their segmentation networks by fine-tuning classifiers pretrained on ILSVRC~\cite[Section~4]{long2015fcn}. For instance, Li et al.\ train their network on maize and transfer it with small training sets to tomatoes, cucumbers, and wheat, where it reaches an MIoU of 94.01\%, 93.14\%, and 89.10\%~\cite[Abstract, Section~2.2.2]{li2022multiroi}. Navone et al.\ initialize their segmentation model with ImageNet weights and train it on synthetic AgriSeg images supplemented by 100 real crop images~\cite[Section~4.1, Table~1]{navone2025gpsfree}.
 
 The extent of pretraining differs across implementations. Some setups retain pretrained segmentation heads and replace only the final classification layer, whereas others initialize only the backbone and train the segmentation head from scratch.
 
@@ -69,9 +70,9 @@ Manual pixel-level annotation requires annotators to label every pixel in traini
 \subsection{SAM and foundation models for segmentation}
 \label{subsec:sam_annotation}
 
-Foundation models for segmentation have established model-assisted annotation as an effective alternative to purely manual labeling. The Segment Anything project built its dataset with a model-in-the-loop data engine in three stages (assisted-manual, semi-automatic, and fully automatic), obtaining more than one billion masks on 11 million images~\cite{kirillov2023sam}. While early foundation models required spatial prompts such as bounding boxes or foreground/background clicks for every target instance, Segment Anything Model~3 (SAM~3) introduces open-vocabulary concept segmentation driven directly by textual descriptions and visual exemplars~\cite{carion2026sam3}.
+Foundation models for segmentation have been used to assist annotation. The Segment Anything project built its dataset with a model-in-the-loop data engine in three stages (assisted-manual, semi-automatic, and fully automatic), obtaining more than one billion masks on 11 million images~\cite{kirillov2023sam}. While early foundation models required spatial prompts such as bounding boxes or foreground/background clicks for every target instance, Segment Anything Model~3 (SAM~3) introduces open-vocabulary concept segmentation driven directly by textual descriptions and visual exemplars~\cite{carion2026sam3}.
 
-In precision agriculture, model-assisted annotation with foundation models has been explored primarily for satellite-based field boundary delineation and canopy phenotyping. \textcolor{red}{However, its systematic application to agricultural ground navigation remains largely unexplored.} In this thesis, SAM~3 is employed offline as a zero-shot concept annotator, and its masks are used without manual correction. On lettuce, networks trained on SAM~3 labels with different class sets (path, plants, plastic mulch) are compared against manual ground truth. Binary path labels generated for the complete lettuce, tomato, and cucumber collection train the network deployed on the robot. This offline annotation pipeline decouples the heavy computational burden of foundation models from the real-time inference requirements of the onboard robot controller.
+In this thesis, SAM~3 is employed offline as a zero-shot concept annotator, and its masks are used without manual correction. On lettuce, networks trained on SAM~3 labels with different class sets (path, plants, plastic mulch) are compared against manual ground truth. Binary path labels generated for the complete lettuce, tomato, and cucumber collection train the network deployed on the robot. This offline annotation pipeline decouples the heavy computational burden of foundation models from the real-time inference requirements of the onboard robot controller.
 
 \section{Extraction of the navigation reference}
 \label{sec:geometric_extraction}
@@ -87,11 +88,11 @@ Chapter~\ref{cap:geometric_reference} to which they are related.
 
 Histogram methods aggregate mask pixels by image column. Mendez et al.
 estimate the row center from the five columns with the largest pixel
-counts in a thresholded background region
+counts in the thresholded sky region
 \cite[Section~3.4.3]{mendez2023vineyards}. Navone et al. use a different
 input: a temporally combined vegetation mask refined with depth. SegMin
 smooths its column histogram and selects the minimum. SegMinD weights
-the vegetation mask by normalized inverse depth before calculating the
+the vegetation mask by the normalized inverted depth before calculating the
 histogram \cite[Section~3]{navone2025gpsfree}. In both cases the output
 is a horizontal position, not a full path line. \textit{Column
 histogram} (Section~\ref{subsec:c6_histogram_baseline}) is a simplified
@@ -181,14 +182,14 @@ of them.
         Study & Perceptual input & Geometric operation & Output & Related extractor \\
         \midrule
         Mendez et al.\ \cite{mendez2023vineyards}
-        & Thresholded background region
+        & Thresholded sky region
         & Column counts and mean of the five largest
         & Horizontal row-center position
         & Column histogram \\
         \addlinespace
         Navone et al.\ \cite{navone2025gpsfree}
         & Vegetation mask with depth
-        & Smoothed column histogram, inverse-depth weighting in SegMinD
+        & Smoothed column histogram, inverted-depth weighting in SegMinD
         & Histogram-minimum position
         & Column histogram \\
         \addlinespace
@@ -237,7 +238,7 @@ reference into linear and angular velocity commands and smooth them
 with an Exponential Moving Average
 \cite[Section~3.4]{navone2025gpsfree}. Mendez et al. use proportional
 control based on row-center displacement and the distribution of
-background pixels \cite[Section~3.5]{mendez2023vineyards}. The
+sky pixels \cite[Section~3.5]{mendez2023vineyards}. The
 controller of this thesis also filters the error with an exponential
 moving average and uses a proportional steering law
 (Section~\ref{subsubsec:control_node}).

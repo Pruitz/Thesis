@@ -12,22 +12,22 @@ To investigate the trade-off between segmentation accuracy, model complexity, an
     \item \textbf{DeepLabV3:} pairing a dilated ResNet-50 backbone with an Atrous Spatial Pyramid Pooling (ASPP) head;
     \item \textbf{MobileNetV3 with LR-ASPP:} pairing a MobileNetV3-Large backbone with a Lite Reduced ASPP head.
 \end{itemize}
-In addition, the Segment Anything Model 3 (SAM~3) is introduced as an offline foundation model for semi-automated training dataset annotation.
+In addition, the Segment Anything Model 3 (SAM~3) is introduced as an offline foundation model for automatic training dataset annotation.
 
 The remainder of this chapter is structured as follows. Section~\ref{sec:seg_formulation} establishes the mathematical formulation and encoder-decoder principles. Sections~\ref{sec:fcn_arch}, \ref{sec:deeplabv3_arch}, and \ref{sec:mobilenet_lraspp} detail the three segmentation networks, while Section~\ref{sec:sam3_theory} describes the SAM~3 annotation pipeline.
 
 \section{Problem formulation and encoder-decoder principles}
 \label{sec:seg_formulation}
 
-Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes~\cite{long2015fcn}, \cite[Chapter~12]{geron2026handson}. Deep segmentation networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$ containing the class logits for every pixel location. The predicted probability of class $c$ at pixel $(i,j)$ is obtained by applying a pixel-wise softmax over the class dimension:
+Let $I \in \mathbb{R}^{H \times W \times 3}$ denote an input color image with height $H$ and width $W$. Semantic segmentation aims to estimate a dense label map $Y \in \{1, \dots, C\}^{H \times W}$, where each pixel $(i,j)$ is assigned to one of $C$ mutually exclusive semantic classes~\cite{long2015fcn}, \cite[Chapter~12]{geron2026handson}. Deep segmentation networks approximate this mapping through a parameterized function $f_\theta(I)$ that outputs an unnormalized score tensor $Z \in \mathbb{R}^{H \times W \times C}$ containing the class logits for every pixel location. The predicted probability of class $c$ at pixel $(i,j)$ is obtained by applying a softmax over the class dimension at each pixel~\cite[Chapter~4]{geron2026handson}:
 \begin{equation}
     p_{i,j,c} = \frac{\exp(Z_{i,j,c})}{\sum_{k=1}^{C} \exp(Z_{i,j,k})}.
     \label{eq:softmax}
 \end{equation}
 
-During supervised training, network parameters $\theta$ are optimized by minimizing a loss function $\mathcal{L}(Y^*, p)$ that quantifies the discrepancy between the predicted probability map $p$ and the ground-truth annotations $Y^* \in \{0,1\}^{H \times W \times C}$, represented in one-hot form~\cite{long2015fcn}. Through backpropagation, the gradients of this loss with respect to $\theta$ guide stochastic optimization algorithms (such as SGD or AdamW) to iteratively update the network weights. Because semantic segmentation operates densely across the spatial grid, the overall loss is evaluated by aggregating individual prediction errors over all pixel locations $(i,j)$~\cite{long2015fcn}, \cite[Chapter~12]{geron2026handson}.
+During supervised training, network parameters $\theta$ are optimized by minimizing a loss function $\mathcal{L}(Y^*, p)$ that quantifies the discrepancy between the predicted probability map $p$ and the ground-truth annotations $Y^* \in \{0,1\}^{H \times W \times C}$, represented in one-hot form. Through backpropagation, the gradients of this loss with respect to $\theta$ guide stochastic optimization algorithms (such as SGD or AdamW) to iteratively update the network weights. Because semantic segmentation operates densely across the spatial grid, Long et al.\ sum the loss of the individual pixels over the spatial dimensions of the output~\cite{long2015fcn}.
 
-A widely used training objective for semantic segmentation is the pixel-wise categorical cross-entropy loss, averaged across all pixels:
+G{\'e}ron gives the cross-entropy cost averaged over the training instances~\cite[Chapter~4]{geron2026handson}. With each pixel taken as one instance, the loss of an image is:
 \begin{equation}
     \mathcal{L}_{\text{CE}}(Y^*, p) = -\frac{1}{HW} \sum_{i=1}^{H} \sum_{j=1}^{W} \sum_{c=1}^{C} Y^*_{i,j,c} \log(p_{i,j,c}).
     \label{eq:ce_loss}
@@ -65,7 +65,7 @@ Because a convolution is applied at every spatial position, the convolutionalize
 
 The classification networks adapted by Long et al.\ (AlexNet, VGG-16, and GoogLeNet~\cite{long2015fcn}) apply an overall stride of $S = 32$, so the final score map is 32 times smaller than the input image~\cite[Chapter~12]{geron2026handson}. Bilinear interpolation works reasonably well only for upsampling factors up to $4\times$ or $8\times$~\cite[Chapter~12]{geron2026handson}; a single $32\times$ interpolation step therefore cannot restore boundary detail.
 
-For in-network upsampling, Long et al.~\cite{long2015fcn} adopted transposed convolutions (also referred to as fractionally strided convolutions or deconvolutions, available in PyTorch as \texttt{nn.ConvTranspose2d}). A transposed convolution with stride $s$ can be interpreted as expanding the input feature map by inserting $s-1$ rows and columns of zeros between adjacent elements, followed by a standard convolution with filter weights $w \in \mathbb{R}^{K \times K}$~\cite[Chapter~12]{geron2026handson}. Algebraically, the operation reverses the forward and backward passes of a convolution~\cite{long2015fcn}. In the original FCN, the intermediate $2\times$ upsampling layers are initialized to bilinear interpolation and then learned, whereas the final upsampling layer is kept fixed to bilinear interpolation~\cite{long2015fcn}.
+For in-network upsampling, Long et al.~\cite{long2015fcn} adopted transposed convolutions (also referred to as fractionally strided convolutions or deconvolutions, available in PyTorch as \texttt{nn.ConvTranspose2d}~\cite[Chapter~12]{geron2026handson}). A transposed convolution can be interpreted as stretching the input feature map by inserting rows and columns of zeros, followed by a regular convolution. Its stride sets how much the input is stretched~\cite[Chapter~12]{geron2026handson}. Algebraically, the operation reverses the forward and backward passes of a convolution~\cite{long2015fcn}. In the original FCN, the intermediate $2\times$ upsampling layers are initialized to bilinear interpolation and then learned, whereas the final upsampling layer is kept fixed to bilinear interpolation~\cite{long2015fcn}.
 
 Upsampling directly from stride 32 in a single step (FCN-32s) yields coarse segmentation boundaries. To refine them, Long et al. introduced skip connections that fuse high-level semantic features from deep layers with fine-grained appearance information from shallower layers~\cite{long2015fcn}:
 \begin{itemize}
@@ -91,18 +91,9 @@ DeepLabV3, developed by Chen et al.~\cite{chen2017deeplab}, addresses the resolu
 \subsection{Atrous convolution formulation}
 \label{subsec:atrous_conv}
 
-Chen et al.~\cite{chen2017deeplab} define atrous convolution in one dimension as $y[i] = \sum_{k} x[i + r \cdot k]\, w[k]$ (Eq.~1 in~\cite{chen2017deeplab}), where the atrous rate $r$ is the stride with which the input signal is sampled. Equivalently, the input is convolved with an upsampled filter obtained by inserting $r - 1$ zeros between two consecutive filter values along each spatial dimension~\cite{chen2017deeplab}. Applied along both spatial dimensions to a 2D feature map $x[i,j]$ with a $K \times K$ filter $w[p,q]$, where $p, q \in \{-M, \dots, M\}$ and $M = \frac{K-1}{2}$ for odd $K$, the operation becomes:
-\begin{equation}
-    y[i, j] = \sum_{p=-M}^{M} \sum_{q=-M}^{M} x[i + r \cdot p, \; j + r \cdot q] \cdot w[p, q].
-    \label{eq:atrous_conv}
-\end{equation}
+Chen et al.~\cite{chen2017deeplab} define atrous convolution for two-dimensional signals as $y[i] = \sum_{k} x[i + r \cdot k]\, w[k]$ (Eq.~1 in~\cite{chen2017deeplab}), where $i$ is a location on the output $y$, $w$ is the filter, and the atrous rate $r$ is the stride with which the input signal is sampled. Equivalently, the input is convolved with an upsampled filter obtained by inserting $r - 1$ zeros between two consecutive filter values along each spatial dimension~\cite{chen2017deeplab}. Standard convolution is the special case $r = 1$~\cite{chen2017deeplab}.
 
-Standard convolution is the special case $r = 1$~\cite{chen2017deeplab}. Because $r - 1$ zeros are inserted in each of the $K - 1$ gaps between filter values, the effective filter size $K'$ is:
-\begin{equation}
-    K' = K + (K - 1)(r - 1).
-    \label{eq:effective_kernel}
-\end{equation}
-G{\'e}ron gives the one-dimensional case: the filter $[1, 2, 3]$ dilated with rate 4 becomes $[1, 0, 0, 0, 2, 0, 0, 0, 3]$, of length $3 + 2 \times 3 = 9$~\cite[Chapter~12]{geron2026handson}. Likewise, a $3 \times 3$ filter with rate $r = 6$ covers a $13 \times 13$ region ($3 + 2 \times 5 = 13$) with 9 learnable parameters. Atrous convolution therefore enlarges the receptive field without extra parameters~\cite[Chapter~12]{geron2026handson} and without reducing the spatial resolution of the feature maps~\cite{chen2017deeplab}.
+G{\'e}ron gives the one-dimensional case: the filter $[1, 2, 3]$ dilated with rate 4 becomes $[1, 0, 0, 0, 2, 0, 0, 0, 3]$, of length $3 + 2 \times 3 = 9$~\cite[Chapter~12]{geron2026handson}. Likewise, a $3 \times 3$ filter with rate $r = 6$ has 5 zeros in each of its two gaps along each dimension, so it covers a $13 \times 13$ region ($3 + 2 \times 5 = 13$) with 9 learnable parameters. Atrous convolution therefore enlarges the receptive field without extra parameters~\cite[Chapter~12]{geron2026handson} and without reducing the spatial resolution of the feature maps~\cite{chen2017deeplab}.
 
 \subsection{Atrous Spatial Pyramid Pooling (ASPP)}
 \label{subsec:aspp_module}
@@ -115,6 +106,7 @@ The ASPP module operates in parallel on the high-level feature map extracted by 
     \item Three $3 \times 3$ atrous convolutions with 256 filters each, using dilation rates $r \in \{6, 12, 18\}$ for an output stride of 16 (or $r \in \{12, 24, 36\}$ for stride 8).
     \item One Image-Level Pooling branch: to incorporate global image context, this branch computes global average pooling across the spatial dimensions of the input tensor, processes the resulting $1 \times 1 \times C_{\text{in}}$ vector with a $1 \times 1$ convolution (256 filters) and batch normalization, and upsamples the output bilinearly to the original ASPP spatial resolution.
 \end{enumerate}
+These branches and rates are those of Chen et al.~\cite[Section~3.3]{chen2017deeplab}.
 
 \textbf{Implementation note:} The TorchVision \texttt{deeplabv3\_resnet50} implementation~\cite{torchvision_deeplabv3} employs a dilated ResNet-50 backbone with output stride 8, achieved by removing downsampling in \texttt{layer3} and \texttt{layer4} and introducing atrous convolutions. The ASPP module correspondingly uses dilation rates $r \in \{12, 24, 36\}$ for the three parallel atrous branches.
 
@@ -175,7 +167,7 @@ For $3 \times 3$ filters ($D_K = 3$), the ratio is $\frac{1}{64} + \frac{1}{9} \
 \subsection{Inverted residual blocks with linear bottlenecks}
 \label{subsec:inverted_residuals}
 
-In classical ResNet-50 bottleneck blocks, the input channels are first compressed via a $1 \times 1$ convolution, processed with a $3 \times 3$ convolution at reduced dimensionality, and expanded back to the original high channel count (wide $\to$ narrow $\to$ wide). This structure reduces computational cost while maintaining representational capacity.
+In the bottleneck blocks of ResNet-50, a $1 \times 1$ convolution first reduces the number of channels, a $3 \times 3$ convolution works at the reduced dimension, and a second $1 \times 1$ convolution restores the original number of channels (wide $\to$ narrow $\to$ wide). He et al.\ adopted this design to limit the training time of the deeper networks~\cite{he2016deep}.
 
 MobileNetV3 adopts the inverted residual block with linear bottleneck introduced by MobileNetV2, which reverses this design (narrow $\to$ wide $\to$ narrow)~\cite{howard2019mobilenetv3}:
 \begin{enumerate}
@@ -183,7 +175,7 @@ MobileNetV3 adopts the inverted residual block with linear bottleneck introduced
     \item \textbf{Depthwise layer:} A $3 \times 3$ or $5 \times 5$ depthwise convolution performs spatial filtering in the expanded channel space.
     \item \textbf{Linear bottleneck:} A $1 \times 1$ projection layer compresses the channels back to $C_{\text{out}}$. No non-linear activation follows this projection: the narrow input and output of the block remain linear, and the non-linearities act only in the expanded space~\cite{howard2019mobilenetv3}.
 \end{enumerate}
-When the input and output have the same number of channels and the stride is 1, a residual shortcut connection adds the input directly to the block output, as illustrated in Figure~\ref{fig:mobilenetv3_lraspp}a.
+When the input and output have the same number of channels, a residual shortcut connection adds the input directly to the block output~\cite{howard2019mobilenetv3}, as illustrated in Figure~\ref{fig:mobilenetv3_lraspp}a. The TorchVision implementation also requires a stride of 1~\cite{torchvision_mobilenetv3}.
 
 \subsection{Squeeze-and-Excitation (SE) channel attention}
 \label{subsec:se_attention}
