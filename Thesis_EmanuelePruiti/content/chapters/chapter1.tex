@@ -15,15 +15,26 @@ Inquadrare l'attivit\`a svolta nell'ambito della tesi di laurea magistrale:
 
 Global population growth and rising food demand exert increasing pressure on agricultural productivity, while the sector faces persistent labor shortages and rising operating costs~\cite{bai2023vision,silva2023rowdetection}. Addressing these demands requires higher automation in field operations such as weeding, spraying, and crop monitoring. Row-based crops are among the most studied applications of agricultural robots and account for about 75\% of the planted cropland in the United States~\cite{navone2025gpsfree}. Autonomous ground vehicles designed for these settings must navigate along inter-row corridors reliably without damaging crops or compacting productive soil beds.
 
-Outdoor agricultural navigation historically relied on Global Navigation Satellite Systems (GNSS) augmented by Real-Time Kinematic (RTK) corrections. However, satellite positioning presents well-documented limitations in field environments: thick crop canopies cause multi-path reflections and severe signal attenuation, while greenhouse installations obstruct satellite reception entirely~\cite{bai2023vision,navone2025gpsfree}. Furthermore, RTK base station infrastructure adds cost. Alternative exteroceptive sensors such as 3D LiDAR provide direct spatial measurements, but their high unit cost hinders economic scalability across commercial robotic fleets, and their point clouds lack the color and textural information required to distinguish crops from weeds~\cite{bai2023vision,navone2025gpsfree}. Monocular RGB cameras offer a cost-effective alternative that captures detailed chromatic and texture cues directly from the scene.
+Outdoor agricultural navigation historically relied on Global Navigation Satellite Systems (GNSS) augmented by Real-Time Kinematic (RTK) corrections. However, satellite positioning has limitations in the field: thick crop canopies cause multi-path reflections and severe signal attenuation, while greenhouse installations obstruct satellite reception entirely~\cite{bai2023vision,navone2025gpsfree}. Furthermore, RTK base station infrastructure adds cost~\cite{navone2025gpsfree}. Alternative exteroceptive sensors such as 3D LiDAR provide direct spatial measurements, but their high unit cost makes them expensive to install on every robot of a fleet, and their point clouds lack the color and textural information required to distinguish crops from weeds~\cite{bai2023vision,navone2025gpsfree}. Monocular RGB cameras offer a cost-effective alternative that captures detailed chromatic and texture cues directly from the scene.
 
 Early vision-based guidance pipelines extracted navigation lines through handcrafted image processing techniques. These approaches compute color vegetation indices to isolate plant matter from soil, apply intensity thresholding such as Otsu's method, and detect corridor edges using line-fitting algorithms or Hough transforms~\cite{bai2023vision,mendez2023vineyards}. Although computationally lightweight, these calibrated pipelines degrade when ambient field conditions shift. Variable sunlight angles, cast shadows from foliage, soil moisture gradients, specular reflections on wet leaves, and weed infestations frequently disrupt fixed thresholding rules and generate false boundary estimates.
 
-Deep learning architectures, particularly convolutional neural networks for semantic segmentation, overcome these hand-tuning limitations. By learning hierarchical visual representations directly from image datasets, segmentation networks achieve higher tolerance to illumination shifts, ground irregularities, and weed clutter than handcrafted color models.
+Deep learning architectures, particularly convolutional neural networks for semantic segmentation, overcome these hand-tuning limitations. By learning hierarchical visual representations directly from image datasets, segmentation networks achieve higher tolerance to illumination shifts, ground irregularities, and weed clutter than handcrafted color models~\cite{silva2023rowdetection}.
 
-However, deep neural networks introduce a practical operational bottleneck: supervised training requires extensive pixel-level ground truth. Manually labeling agricultural scenes is labor-intensive and must cover multiple crop types, growth stages, and ambient conditions. In addition, running neural networks on compact onboard computers requires balancing segmentation accuracy against processing speed and power consumption, as steering commands must be updated fast enough to guide the vehicle in real time.
+However, deep neural networks introduce a practical problem: supervised training requires extensive pixel-level ground truth. Manually labeling agricultural scenes is labor-intensive and must cover multiple crop types, growth stages, and ambient conditions. In addition, running neural networks on compact onboard computers requires balancing segmentation accuracy against processing speed and power consumption, as steering commands must be updated fast enough to guide the vehicle in real time.
 
 This thesis addresses these challenges through a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and deterministic geometric reference extraction for local robot guidance.
+
+\section{Problem and approach}
+\label{sec:problem_approach}
+
+The robot must drive along the path between two crop rows using only the color images of one camera. The guidance is local. The robot keeps its position relative to the rows visible in the image, and it does not build or use a map of the field. The depth stream of the camera is not used, and the three-dimensional structure of the field is not reconstructed.
+
+Figure~\ref{fig:complete_pipeline} in Chapter~\ref{cap:platform} shows the steps that run on the robot for each camera frame. The first step is segmentation. An LR-ASPP network with a MobileNetV3 backbone takes the camera image, resized to $224\times224$ pixels, and predicts a binary mask of the path between the rows. The masks used to train it were generated by SAM~3 without manual correction. SAM~3 runs only offline, to label the training images, and not on the robot.
+
+The second step is the path extractor, which reduces the mask to a straight centerline of the corridor in image coordinates. The predicted mask can contain holes and false path regions, so the extractor also returns a status, \texttt{ok}, \texttt{degraded} or \texttt{lost}. Chapter~\ref{cap:geometric_reference} compares five extractors with the same input and output, and any of them can run on the robot.
+
+The third step is the controller. It computes the lateral error of the centerline from the image center at a fixed image row, filters it, and converts it into an angular velocity command at constant linear speed. If no valid centerline is found for more than 0.5~s, the robot stops.
 
 \section{Objectives of the thesis}
 \label{sec:objectives}
@@ -33,7 +44,7 @@ The main objectives of this work are:
 \item Evaluate whether segmentation networks trained on SAM~3 labels, used without manual correction, approach a network trained on manual masks, using manually annotated lettuce images as ground truth.
 \item Select a segmentation architecture balancing accuracy and inference speed for robotic deployment, through offline evaluation of FCN, DeepLabV3, and LR-ASPP on manually annotated lettuce images.
 \item Evaluate the effect of output label configurations (four-class, three-class, and binary path) on path segmentation accuracy.
-\item Implement an edge-based geometric extractor that converts segmentation masks into local image-space navigation references, and compare it with three baseline algorithms.
+\item Develop extractors that convert segmentation masks into local image-space navigation references: a geometric one that fits the two corridor edges (Strip-IRLS) and a first version of an edge regression network (EdgeNet). Compare them with three baseline algorithms.
 \item Integrate the selected perception and geometric components on a robot platform for field validation.
 \end{itemize}
 
@@ -42,15 +53,13 @@ The main objectives of this work are:
 
 The thesis is organized as follows:
 
-\textbf{Chapter~\ref{cap:background}} introduces the agricultural navigation problem, the role of vision-based local guidance, and the segmentation-to-control pipeline structure.
-
 \textbf{Chapter~\ref{cap:stato_arte}} reviews vision-based methods for agricultural row navigation, covering classical and learning-based segmentation approaches, geometric extraction techniques, and experimental validation in related work.
 
 \textbf{Chapter~\ref{cap:architectures}} details the mathematical formulations and designs of the deep learning architectures evaluated in this work, focusing on FCN, DeepLabV3, MobileNetV3 with the LR-ASPP head, and SAM~3.
 
 \textbf{Chapter~\ref{cap:segmentation}} describes dataset preparation with manual annotation and automatic SAM~3 labeling, empirical comparisons among the three architectures on lettuce, and evaluations of supervision strategies across label configurations.
 
-\textbf{Chapter~\ref{cap:geometric_reference}} presents the two extractors developed in this work, which convert corridor masks into navigation references: Strip-IRLS, based on horizontal-strip interval selection and independent edge fitting, and EdgeNet, a network that regresses the corridor edges, which is a first experiment. Three baseline algorithms are described for comparison.
+\textbf{Chapter~\ref{cap:geometric_reference}} presents the two extractors developed in this work, which convert corridor masks into navigation references: Strip-IRLS, based on horizontal-strip interval selection and independent edge fitting, and EdgeNet, a network that regresses the corridor edges, still at an early stage. Three baseline algorithms are described for comparison.
 
 \textbf{Chapter~\ref{cap:platform}} describes the robot hardware, camera configuration, software integration using ROS, and the deployment of the trained segmentation model.
 
