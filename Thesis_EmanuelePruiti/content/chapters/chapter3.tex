@@ -9,13 +9,13 @@ This chapter describes the three segmentation networks compared in Chapter~\ref{
 \section{Principles of segmentation networks}
 \label{sec:seg_formulation}
 
-For each pixel, a segmentation network outputs one score for each class. These scores are called logits, and the softmax function converts them into the estimated probabilities of the classes. The predicted class of the pixel is the one with the highest probability. During training, a loss function compares the output of the network with the desired output and returns a measure of the error. The gradient of this error with respect to each parameter is computed by backpropagation, and a gradient descent step updates the parameters to reduce the error~\cite[Chapter~9]{geron2026handson}.
+For each pixel, a segmentation network outputs one score for each class. These scores are called logits, and the softmax function converts them into the estimated probabilities of the classes. The predicted class of the pixel is the one with the highest probability. During training, a loss function compares the output of the network with the desired output and returns a measure of the error. Backpropagation computes the gradient of this error with respect to each parameter and then performs a gradient descent step, which updates the parameters to reduce the error~\cite[Chapters~4 and~9]{geron2026handson}.
 
 A convolutional neural network (CNN) for image classification is built mainly from convolutional layers. In a convolutional layer, each neuron is connected only to a small region of the input. The layer has several filters and outputs one channel for each filter. All the neurons of a channel use the same filter, so the filter recognizes a pattern, such as a line, in any position of the image. The filters are learned during training. The first layers detect small low-level features, such as lines, and the following layers combine them into larger higher-level features. As the image goes through the network, its resolution decreases, but the number of channels grows, so the network loses spatial detail and gains higher-level features. At the end of the network, a few fully connected layers estimate the class of the whole image, as one probability for each class~\cite[Chapter~12]{geron2026handson}.
 
 A segmentation network does not output one class for the whole image, but one class for each pixel of the image. A simple approach starts from a classification network and keeps its first part, which reduces the resolution. In place of the fully connected layers, it has convolutional layers, which compute the class scores at the reduced resolution. Upsampling then increases the resolution until it is the same as that of the input image. The outputs of lower layers, which have a higher resolution, can also be added during the upsampling to recover part of the spatial detail lost in the first part~\cite[Chapter~12]{geron2026handson}. The output therefore contains one logit for each class and each pixel.
 
-In the TorchVision v0.20.1 implementations of FCN, DeepLabV3, and LR-ASPP used in this thesis (Sections~\ref{sec:fcn_arch}--\ref{sec:mobilenet_lraspp}), the first part is a \textit{backbone}, a classification network without its final layers, which extracts the features. A \textit{segmentation head} made of convolutional layers computes the logits from them, and the logits are resized to the input resolution with bilinear interpolation~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}.
+In the TorchVision v0.21.0 implementations of FCN, DeepLabV3, and LR-ASPP used in this thesis (Sections~\ref{sec:fcn_arch}--\ref{sec:mobilenet_lraspp}), the first part is a \textit{backbone}, a classification network without its final layers, which extracts the features. A \textit{segmentation head} made of convolutional layers computes the logits from them, and the logits are resized to the input resolution with bilinear interpolation~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}.
 
 \section{Fully Convolutional Network (FCN)}
 \label{sec:fcn_arch}
@@ -23,15 +23,15 @@ In the TorchVision v0.20.1 implementations of FCN, DeepLabV3, and LR-ASPP used i
 \subsection{Original architecture}
 \label{subsec:fcn_original}
 
-Long et al.\ view the fully connected layers of a classification network as convolutions whose kernels cover their entire input region. The resulting network accepts inputs of any size and outputs a map of class scores~\cite[Section~3.1]{long2015fcn}. With the VGG-16 classifier, this map is 32 times smaller than the input image (stride 32), which limits the detail of the upsampled output~\cite[Section~4.2]{long2015fcn}. Long et al.\ therefore combine the final prediction layer with lower layers of finer stride (Figure~\ref{fig:fcn_architecture}):
+Long et al.\ view the fully connected layers of a classification network as convolutions whose kernels cover their entire input region. The resulting network accepts inputs of any size and outputs a map of class scores~\cite[Section~3.1]{long2015fcn}. With the VGG-16 classifier, this map is 32 times smaller than the input image (stride 32), which limits the detail of the upsampled output~\cite[Sections~4.1 and~4.2]{long2015fcn}. Long et al.\ therefore combine the final prediction layer with lower layers of finer stride (Figure~\ref{fig:fcn_architecture}):
 \begin{itemize}
     \item \textbf{FCN-32s} upsamples the stride-32 predictions to the image resolution in one step.
     \item \textbf{FCN-16s} adds a $1\times1$ convolution on the stride-16 layer \texttt{pool4} to produce additional class predictions. It sums them with the stride-32 predictions upsampled by 2, and upsamples the result to the image.
     \item \textbf{FCN-8s} repeats the same step with the stride-8 layer \texttt{pool3}.
 \end{itemize}
-The upsampling layers are transposed convolutions, also called deconvolutions. The $2\times$ upsampling layers are initialized to bilinear interpolation and then learned~\cite[Sections~3.3 and~4.2]{long2015fcn}.
+The upsampling layers are backwards strided convolutions, also called deconvolutions. The $2\times$ upsampling layers are initialized to bilinear interpolation and then learned~\cite[Sections~3.3 and~4.2]{long2015fcn}.
 
-\begin{figure}[htbp]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=0.98\linewidth]{images/architectures/fcn_architecture.png}
   \caption{Skip architecture of the original FCN. The stride-32 predictions are combined with predictions from \texttt{pool4} (FCN-16s) and \texttt{pool3} (FCN-8s). Adapted from Long et~al.~\cite{long2015fcn}.}
@@ -41,9 +41,9 @@ The upsampling layers are transposed convolutions, also called deconvolutions. T
 \subsection{TorchVision implementation}
 \label{subsec:fcn_torchvision}
 
-The \texttt{fcn\_resnet50} model of TorchVision does not use the skip architecture. Its backbone is ResNet-50~\cite{he2016deep}, whose residual blocks add the input of the block to the output of its layers through a shortcut connection. In the bottleneck blocks of ResNet-50, a $1\times1$ convolution reduces the number of channels, a $3\times3$ convolution works on the reduced channels, and a second $1\times1$ convolution restores them~\cite[Sections~3.2 and~4.1]{he2016deep}. ResNet-50 has four stages, \texttt{layer1} to \texttt{layer4} in TorchVision. An atrous (dilated) convolution inserts zeros between the values of its filter, so it covers a larger area of the input with the same number of parameters~\cite[Chapter~12]{geron2026handson}. TorchVision removes the size reduction of \texttt{layer3} and \texttt{layer4} and uses atrous convolutions in them~\cite{torchvision_fcn}. The last feature maps are therefore 8 times smaller than the input instead of 32. This ratio is called the \textit{output stride}~\cite[Section~3.1]{chen2017deeplab}.
+The \texttt{fcn\_resnet50} model of TorchVision does not use the skip architecture. Its backbone is ResNet-50~\cite{he2016deep}, whose residual blocks add the input of the block to the output of its layers through a shortcut connection. In the bottleneck blocks of ResNet-50, a $1\times1$ convolution reduces the number of channels, a $3\times3$ convolution works on the reduced channels, and a second $1\times1$ convolution restores them~\cite[Sections~3.2 and~4.1]{he2016deep}. ResNet-50 has four stages of residual blocks~\cite[Table~1]{he2016deep}, \texttt{layer1} to \texttt{layer4} in TorchVision~\cite{torchvision_fcn}. An atrous (dilated) convolution applies its filter to input values that are spaced apart, which is equivalent to inserting zeros between the values of the filter. It therefore covers a larger area of the input with the same number of parameters~\cite[Chapter~12]{geron2026handson}, \cite[Section~3.1]{chen2017deeplab}. TorchVision removes the size reduction of \texttt{layer3} and \texttt{layer4} and uses atrous convolutions in them~\cite{torchvision_fcn}. The last feature maps are therefore 8 times smaller than the input in height and width, instead of 32. This ratio is called the \textit{output stride}~\cite[Section~3.1]{chen2017deeplab}.
 
-The segmentation head, \texttt{FCNHead}, takes the 2048 channels of \texttt{layer4}. It applies a $3\times3$ convolution to 512 channels, batch normalization, ReLU, dropout with probability 0.1, and a $1\times1$ convolution that gives the logits. A second \texttt{FCNHead}, the auxiliary classifier, takes the 1024 channels of \texttt{layer3}. Its output enters only the training loss (Section~\ref{subsec:c4_training_config})~\cite{torchvision_fcn}.
+The head, \texttt{FCNHead}, computes the logits with a $3\times3$ and a $1\times1$ convolution. A second \texttt{FCNHead} on \texttt{layer3}, the auxiliary classifier, is used only in the loss, not in the prediction (Section~\ref{subsec:c4_training_config})~\cite{torchvision_fcn}.
 
 \section{DeepLabV3}
 \label{sec:deeplabv3_arch}
@@ -59,7 +59,7 @@ DeepLabV3 applies atrous convolution in the last blocks of a ResNet and adds an 
 \end{itemize}
 The outputs of the five branches are concatenated and pass through a $1\times1$ convolution with 256 filters, followed by the final $1\times1$ convolution that gives the logits~\cite[Section~3.3]{chen2017deeplab}. Figure~\ref{fig:deeplabv3_aspp} shows the module. Block1 to Block4 in the figure are the four ResNet stages (\texttt{layer1} to \texttt{layer4} in TorchVision).
 
-\begin{figure}[htbp]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=0.92\linewidth]{images/architectures/deeplabv3_aspp.png}
   \caption{DeepLabV3 with the ASPP module at output stride 16, with rates 6, 12, and 18. The TorchVision model used in this thesis works at output stride 8, with rates 12, 24, and 36. Adapted from Chen et~al.~\cite{chen2017deeplab}.}
@@ -69,7 +69,7 @@ The outputs of the five branches are concatenated and pass through a $1\times1$ 
 \subsection{TorchVision implementation}
 \label{subsec:deeplabv3_torchvision}
 
-The \texttt{deeplabv3\_resnet50} model of TorchVision uses the same backbone as \texttt{fcn\_resnet50}, the ResNet-50 with output stride 8 (Section~\ref{subsec:fcn_torchvision}). Its ASPP rates are 12, 24, and 36, the rates of Chen et al.\ for output stride 8. The $1\times1$ projection of the concatenated branches is followed by batch normalization, ReLU, and dropout with probability 0.5. A $3\times3$ convolution with 256 channels, batch normalization, and ReLU follow, and a $1\times1$ convolution gives the logits. Like FCN, the model has an auxiliary \texttt{FCNHead} on \texttt{layer3}, whose output enters only the training loss~\cite{torchvision_deeplabv3}.
+The \texttt{deeplabv3\_resnet50} model of TorchVision uses the same backbone as \texttt{fcn\_resnet50}, with output stride 8 (Section~\ref{subsec:fcn_torchvision}). Its ASPP rates are 12, 24, and 36, the rates of Chen et al.\ for output stride 8. After ASPP, TorchVision adds a $3\times3$ convolution, which is not in the head of Chen et al. A $1\times1$ convolution then computes the logits. Like FCN, the model has an auxiliary \texttt{FCNHead} on \texttt{layer3}, used only in the loss, not in the prediction~\cite{torchvision_deeplabv3}.
 
 \section{MobileNetV3 and LR-ASPP}
 \label{sec:mobilenet_lraspp}
@@ -82,12 +82,12 @@ Howard et al.\ designed MobileNetV3 for mobile phone CPUs, with a network archit
 The blocks of MobileNetV3 combine layers introduced by earlier networks~\cite[Section~3]{howard2019mobilenetv3}:
 \begin{itemize}
     \item \textbf{Depthwise separable convolution.} A light depthwise convolution applies a single spatial filter to each input channel, and a heavier $1\times1$ pointwise convolution combines the channels to generate new features~\cite[Section~3]{howard2019mobilenetv3}, \cite[Chapter~12]{geron2026handson}.
-    \item \textbf{Inverted residual with linear bottleneck.} A $1\times1$ convolution expands the channels, a depthwise convolution works in the expanded space, and a $1\times1$ projection reduces the channels again. The input and output of the block are narrow and have no nonlinearity. The residual connection is used only when the input and output have the same number of channels. This is the opposite of the ResNet bottleneck of Section~\ref{subsec:fcn_torchvision}, which first reduces and then restores the channels.
+    \item \textbf{Inverted residual with linear bottleneck.} A $1\times1$ convolution expands the channels, a depthwise convolution works in the expanded space, and a $1\times1$ projection reduces the channels again. The input and output of the block are narrow and have no nonlinearity. The residual connection is used only when the input and output have the same number of channels~\cite[Section~3]{howard2019mobilenetv3}. This is the opposite of the ResNet bottleneck of Section~\ref{subsec:fcn_torchvision}, which first reduces and then restores the channels.
     \item \textbf{Squeeze-and-excitation (SE).} In some of the blocks, an SE module is placed after the depthwise convolution, so it acts on the expanded representation~\cite[Section~3 and Table~1]{howard2019mobilenetv3}. An SE module applies global average pooling to obtain one value per channel, compresses these values in a small layer with ReLU, and computes with a second layer one weight between 0 and 1 per channel. The channels are then multiplied by these weights~\cite[Chapter~12]{geron2026handson}. In MobileNetV3, the small layer has 1/4 of the channels of the expansion layer~\cite[Section~5.3]{howard2019mobilenetv3}.
 \end{itemize}
 Figure~\ref{fig:mobilenetv3_block} shows the resulting block. MobileNetV3 also replaces the sigmoid and the swish nonlinearity with piecewise-linear \textit{hard} versions built on ReLU6. Howard et al.\ found no discernible difference in accuracy, and the hard versions are cheaper to compute on mobile devices. The hard swish is used only in the second half of the network~\cite[Section~5.2]{howard2019mobilenetv3}.
 
-\begin{figure}[htbp]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=0.75\linewidth]{images/architectures/mobilenetv3_block.png}
   \caption{MobileNetV3 block: $1\times1$ expansion, depthwise convolution, squeeze-and-excitation, and $1\times1$ projection, with the residual connection. NL denotes the nonlinearity, ReLU or hard swish depending on the layer. Adapted from Howard et~al.~\cite{howard2019mobilenetv3}.}
@@ -99,16 +99,12 @@ Figure~\ref{fig:mobilenetv3_block} shows the resulting block. MobileNetV3 also r
 
 LR-ASPP derives from R-ASPP, a reduced version of ASPP (Section~\ref{subsec:aspp_module}) that keeps only two branches, a $1\times1$ convolution and global average pooling. In LR-ASPP, the pooling branch works like an SE module and contains only one $1\times1$ convolution. Atrous convolution in the last block of MobileNetV3 gives denser features, and a skip connection from low-level features adds detail~\cite[Section~6.4]{howard2019mobilenetv3}. Figure~\ref{fig:lraspp_head} shows the head.
 
-In the TorchVision model \texttt{lraspp\_mobilenet\_v3\_large}, the last stage of the backbone uses atrous convolution, so its last layer, with 960 channels, has output stride 16 instead of 32. The low-level features are the 40 channels of the backbone at output stride 8. The head works as follows~\cite{torchvision_lraspp,torchvision_mobilenetv3}:
-\begin{enumerate}
-    \item A $1\times1$ convolution with batch normalization and ReLU reduces the 960 channels to 128.
-    \item A second branch applies global average pooling to the 960 channels, a $1\times1$ convolution to 128 channels, and a sigmoid. It gives one weight per channel.
-    \item The output of the first branch is multiplied channel by channel by these weights and upsampled with bilinear interpolation to the size of the low-level features.
-    \item Two $1\times1$ convolutions compute logits from this result and from the low-level features, and the two logit maps are summed.
-\end{enumerate}
-Unlike Figure~\ref{fig:lraspp_head}, which uses a $49\times49$ pooling kernel, TorchVision pools over the whole feature map.
+\subsection{TorchVision implementation}
+\label{subsec:lraspp_torchvision}
 
-\begin{figure}[htbp]
+In the \texttt{lraspp\_mobilenet\_v3\_large} model of TorchVision, the last stage of the backbone uses atrous convolution, so the high-level features have output stride 16 instead of 32. The low-level features are taken at output stride 8. The high-level features pass through a $1\times1$ convolution and are weighted channel by channel by the pooling branch. The result is upsampled to the size of the low-level features. A $1\times1$ convolution computes logits from each of the two feature maps, and the two logit maps are summed~\cite{torchvision_lraspp,torchvision_mobilenetv3}. Unlike Figure~\ref{fig:lraspp_head}, which uses a $49\times49$ pooling kernel, TorchVision pools over the whole feature map.
+
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=0.98\linewidth]{images/architectures/lraspp_head.png}
   \caption{LR-ASPP head on the MobileNetV3 backbone, with 19 output classes. Adapted from Howard et~al.~\cite{howard2019mobilenetv3}.}
@@ -122,9 +118,9 @@ SAM~3 (Section~\ref{sec:dataset_annotation}) consists of a detector for images a
 
 The detector follows the DETR paradigm, in which a set of learned object queries proposes the objects. PE encodes the image and the text prompt. A fusion encoder conditions the image embeddings on the prompt tokens through cross-attention. In the decoder, the object queries cross-attend to the conditioned image embeddings, and each query predicts whether its object corresponds to the prompt, together with a box and a mask. A learned global token, the presence token, predicts only whether the concept is present in the image. Each query then only has to locate its object, and its final score is the product of its own score and the presence score~\cite[Section~3]{carion2026sam3}.
 
-SAM~3 has about 850 million parameters, of which about 450 million are in the vision encoder and 300 million in the text encoder~\cite[Appendix~C.1]{carion2026sam3}. Its reported time of 30~ms for one image refers to an NVIDIA H200 data-center GPU~\cite[Section~1]{carion2026sam3}. SAM~3 was therefore run offline (Section~\ref{subsec:c4_sam_annotation}). The robot runs an LR-ASPP network trained on its labels (Section~\ref{subsec:c4_deployed_network}).
+SAM~3 has about 850 million parameters, of which about 450 million are in the vision encoder and 300 million in the text encoder~\cite[Appendix~C.1]{carion2026sam3}. Its reported time of 30~ms for one image refers to an NVIDIA H200 GPU~\cite[Section~1]{carion2026sam3}. SAM~3 was therefore run offline (Section~\ref{subsec:c4_sam_annotation}). The robot runs an LR-ASPP network trained on its labels (Section~\ref{subsec:c4_deployed_network}).
 
-\begin{figure}[htbp]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=0.98\linewidth]{images/architectures/sam3_architecture.png}
   \caption{SAM~3 architecture. The detector segments the instances of the prompted concept in each image, and the tracker propagates the masks between video frames. Only the detector is used in this thesis. Adapted from Carion et~al.~\cite{carion2026sam3}.}
@@ -136,7 +132,7 @@ SAM~3 has about 850 million parameters, of which about 450 million are in the vi
 
 Table~\ref{tab:architecture_characteristics} summarizes the four models of this chapter.
 
-\begin{table}[htbp]
+\begin{table}[!htb]
     \centering
     \small
     \caption{Models described in this chapter.}
@@ -149,7 +145,7 @@ Table~\ref{tab:architecture_characteristics} summarizes the four models of this 
         \addlinespace
         DeepLabV3 & ResNet-50, output stride 8 & ASPP with rates 12, 24, 36 and image pooling & Compared in Chapter~\ref{cap:dataset_training} \\
         \addlinespace
-        LR-ASPP & MobileNetV3-Large, output stride 16 & Pooling gate on stride-16 features, logits summed with stride-8 features & Compared in Chapter~\ref{cap:dataset_training}, network on the robot \\
+        LR-ASPP & MobileNetV3-Large, output stride 16 & Pooling gate on stride-16 features, logits summed with the logits of stride-8 features & Compared in Chapter~\ref{cap:dataset_training}, network on the robot \\
         \addlinespace
         SAM~3 & Perception Encoder (image and text) & DETR-like detector with presence token & Offline labeling of training images \\
         \bottomrule
