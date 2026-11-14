@@ -1,0 +1,199 @@
+\chapter{State of the Art}
+\label{cap:stato_arte}
+
+This chapter reviews the works related to the parts of this thesis: the
+segmentation network, the annotation of the images used to train it, the
+extraction of the navigation reference from the mask, and the controller
+that steers the robot with this reference. Each extraction method is linked to
+the extractor of Chapter~\ref{cap:geometric_reference} that is based on
+it or compared with it.
+
+\section{Segmentation for row navigation}
+\label{sec:learning_based_segmentation}
+
+Classical pipelines combine image filtering, thresholding, and
+application-specific geometric rules. Mendez et al. convert vineyard
+images to grayscale and apply Gaussian filtering and Otsu thresholding.
+They keep the largest white blob, which is the sky above the row, and
+find the row center from it (Section~\ref{subsec:histogram_methods})
+\cite[Section~3.4]{mendez2023vineyards}. Such methods can be
+effective in the conditions for which their parameters were selected.
+However, fixed thresholds are sensitive to changes in illumination, and
+the complexity of the field and the variety of crops make it difficult
+to segment the image from low-level features alone \cite{bai2023vision}.
+
+Semantic segmentation assigns a class to each pixel, and the choice of
+the classes decides what the geometric stage can recover. De Silva et
+al.\ train U-Net to predict crop-row masks in sugar-beet images. In
+their labels each crop row is a single white line 6~pixels wide, not a
+set of individual plants~\cite[Sections~3.3 and~4, Figure~5]{silva2023rowdetection}.
+Navone et al.\ predict a binary vegetation mask from RGB images with a
+MobileNetV3 backbone and an LR-ASPP head, and then combine this mask with
+depth to extract the reference \cite{navone2023ecmr,navone2025gpsfree}.
+Li et al.\ segment the inter-row path instead of the
+plants~\cite{li2022multiroi}.
+
+\section{Segmentation architectures}
+\label{sec:segmentation_architectures}
+
+Fully Convolutional Networks (FCN) convert the fully connected layers of
+a classification network into convolutions, so the network outputs a
+map of class scores at a much lower resolution than the input image. A
+deconvolution layer then upsamples this map
+to one prediction per pixel~\cite[Sections~3.1 and~4.1]{long2015fcn}. DeepLabV3 uses atrous convolutions and
+atrous spatial pyramid pooling to capture multi-scale context without
+decreasing the feature resolution~\cite{chen2017deeplab}. For embedded
+applications with limited computing resources, Howard et
+al.~\cite{howard2019mobilenetv3} introduced MobileNetV3, whose blocks are
+built on depthwise convolutions, together with the Lite Reduced Atrous
+Spatial Pyramid Pooling (LR-ASPP) segmentation head, which uses a large
+pooling kernel and only one $1\times1$ convolution in its pooling branch.
+Chapter~\ref{cap:architectures} describes the three networks.
+
+Transfer learning reuses most of the layers of a network trained on a
+similar task and replaces the top ones. It speeds up training
+considerably and requires significantly less training data. The reused
+layers can first be frozen and then fine-tuned, that is, trained further
+on the new task with a reduced learning
+rate~\cite[Chapter~11]{geron2026handson}. Long et al.\ obtain their
+segmentation networks by fine-tuning classifiers pretrained on
+ILSVRC~\cite[Section~4]{long2015fcn}. In agriculture, Li et al.\ train
+their network on 2000 maize images and use the resulting weights as the
+pretrained weights for separate datasets of 1000 tomato, cucumber, and
+wheat images~\cite[Abstract, Sections~2.1.1 and~2.2.2]{li2022multiroi}.
+Navone et al.\ initialize their segmentation model with ImageNet weights
+and train it on synthetic AgriSeg images and 100 real crop
+images~\cite[Section~4.1, Table~1]{navone2025gpsfree}. In this thesis,
+the three networks start from the pretrained segmentation weights of
+TorchVision and are fine-tuned in two stages
+(Section~\ref{subsec:c4_training_config}).
+
+\section{Annotation of the training images}
+\label{sec:dataset_annotation}
+
+Manual pixel-level annotation is slow and tedious, and a dataset that
+covers several crops, growth stages, and lighting conditions needs many
+annotated images. The first two Segment Anything models, SAM and SAM~2,
+segment a single object for each prompt, given as points, boxes, or
+masks, so the object to segment has to be indicated in each image, for
+example with a click. SAM~3
+segments all the instances of a concept, given as a short noun phrase,
+as image exemplars, or as both~\cite[Section~1]{carion2026sam3}. In this thesis, SAM~3 labels the
+training images offline from text prompts, and its masks are used
+without manual correction (Sections~\ref{sec:sam3_theory}
+and~\ref{subsec:c4_sam_annotation}).
+
+\section{Extraction of the navigation reference}
+\label{sec:geometric_extraction}
+
+The geometric stage reduces a mask to a quantity the controller can use.
+In the methods reviewed below, this is an image column, one or more
+straight lines, or a curve. Chapter~\ref{cap:geometric_reference} describes five extractors:
+\textit{Strip-IRLS} and \textit{EdgeNet}, developed in this work, and
+three baselines, \textit{Center points}, \textit{Column histogram}, and
+\textit{RANSAC edges}. Each subsection below describes one family of
+methods and the extractors related to it.
+
+\subsection{Column histograms}
+\label{subsec:histogram_methods}
+
+Histogram methods aggregate mask pixels by image column. Mendez et al.
+estimate the row center from the five columns with the largest pixel
+counts in the thresholded sky region
+\cite[Section~3.4.3]{mendez2023vineyards}. In SegMin, Navone et al.\ sum
+along the columns a vegetation mask combined over recent frames and
+refined with depth, and take the column with the least
+vegetation~\cite[Section~3]{navone2025gpsfree}. \textit{Column
+histogram} (Section~\ref{subsec:c5_histogram_baseline}) is a simplified
+version of SegMin.
+
+\subsection{Horizontal strips and interval midpoints}
+\label{subsec:strip_methods}
+
+Li et al. combine a Faster-U-net inter-row-path mask with an adaptive
+multi-ROI procedure. Horizontal regions supply the midpoints of the
+path, which are used as control points for a multisegment cubic
+B-spline~\cite[Section~2.2.3]{li2022multiroi}.
+
+\textit{Center points} (Section~\ref{subsec:c5_center_baseline}) follows
+this scheme and fits one straight line to the interval midpoints.
+\textit{Strip-IRLS} uses the same horizontal strips but fits the two
+edges of the corridor separately.
+
+\subsection{RANSAC line fitting}
+\label{subsec:ransac_methods}
+
+RANSAC is among the line fitting algorithms used to extract navigation
+lines in agricultural vision~\cite{bai2023vision}. Wu et al.\ extract
+crop-row anchor points from the segmentation masks, group them with
+DBSCAN clustering, and fit navigation lines with
+RANSAC~\cite{sensors2025deeplabv3}. \textit{RANSAC edges} (Section~\ref{subsec:c5_ransac_baseline}) applies
+RANSAC to the row extremes of the path corridor instead of to points of
+the crop rows.
+
+\subsection{Robust line fitting with IRLS}
+\label{subsec:irls_methods}
+
+Kneip et al. detect crop--ground transitions in the scanlines of a
+stereo elevation map, then fit a linear crop-edge model using a Huber
+M-estimator and iteratively reweighted least
+squares~\cite[Sections~5--7]{kneip2020cropedge}.
+
+\textit{Strip-IRLS} (Section~\ref{sec:c5_fitting}) also fits lines by
+iteratively reweighted least squares, but in image space, on the two
+edges of the path corridor, and with a weight function different from
+the Huber function of Kneip et al.
+
+\section{Control and evaluation}
+\label{sec:system_integration}
+
+Navigation systems convert the extracted reference into motion commands.
+Navone et al.\ and Mendez et al.\ both compute the angular velocity from
+the horizontal offset of the row center from the image center. Navone et
+al.\ also reduce the linear velocity as the offset grows and smooth both
+commands with an exponential moving
+average~\cite[Section~3.4]{navone2025gpsfree}. Mendez et al.\ keep the
+linear velocity constant, use a proportional gain, and switch to a
+second mode based on the ratio of sky pixels on the two sides of the row
+center~\cite[Section~3.5]{mendez2023vineyards}. The
+controller of this thesis also filters the error with an exponential
+moving average and uses a proportional steering law
+(Section~\ref{subsubsec:control_node}).
+
+Mendez et al. report closed-loop vineyard trials and measure the
+centering error from the distances to the two sides of the row, given by
+a LiDAR that is not used for navigation
+\cite[Sections~3.6 and~4]{mendez2023vineyards}. Navone et al.\ compare
+the trajectory with the central path of the row in simulation. In crop
+fields, they measure the lateral displacement with a LiDAR and the
+heading with an attitude and heading reference
+system~\cite[Sections~4.3--4.4]{navone2025gpsfree}.
+In the field tests of this thesis, the position of the robot is measured
+with a total station (Chapter~\ref{cap:experiments}).
+
+\section{Positioning of this thesis}
+\label{sec:thesis_positioning}
+
+This thesis builds a row-following system without GNSS, with one RGB
+camera and the onboard computer of the robot. Its main choices are the
+following:
+
+\begin{enumerate}
+    \item \textbf{Automatic labels.} SAM~3 generated, from text prompts, the
+    masks used to train the segmentation network that runs on the robot.
+    The masks were used without manual correction
+    (Section~\ref{subsec:c4_sam_annotation}).
+
+    \item \textbf{Path segmentation.} The network segments the path between
+    the rows and not the plants.
+
+    \item \textbf{Two path extractors.} \textit{Strip-IRLS} fits the two edges of the corridor separately instead of
+    using the midpoints of the path intervals
+    (Section~\ref{sec:c5_stripirls}). \textit{EdgeNet}, still at an
+    early stage, is a small network that regresses the two edges directly
+    from the mask (Section~\ref{sec:c5_network}). Both are compared with
+    three baselines adapted from the methods of
+    Section~\ref{sec:geometric_extraction}: \textit{Center points},
+    \textit{Column histogram}, and \textit{RANSAC edges}
+    (Section~\ref{sec:c5_baseline_algorithms}).
+\end{enumerate}

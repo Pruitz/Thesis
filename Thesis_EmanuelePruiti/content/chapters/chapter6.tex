@@ -1,325 +1,426 @@
-\chapter{Extraction of the Local Navigation Reference}
-\label{cap:geometric_reference}
+\chapter{Robot Platform and Integration}
+\label{cap:platform}
 
-This chapter describes five path extractors, two of which were developed in this work. The first, \textbf{Strip-IRLS}, is the main one. It extracts the path intervals in horizontal strips of the predicted mask. Going upward from the bottom of the image, it links in each strip the interval that continues the corridor found below, and it keeps the chain that gives the most edge samples. It then fits the left and right edges of the corridor separately with iteratively reweighted least squares. \textbf{EdgeNet}, still at an early stage, is a small network that takes the same mask and regresses the two corridor edges directly. The other three are geometric baselines: \textbf{Center points}, which fits one line to the midpoints of the intervals, \textbf{Column histogram}, which takes the column with the most path pixels, and \textbf{RANSAC edges}, which fits the two edges with RANSAC on the row extremes of the corridor. All five extractors take the same input mask and return the same outputs, a straight centerline, a confidence and a status, \texttt{ok}, \texttt{degraded} or \texttt{lost}, so the controller node can run any of them. The controller does not use the centerline of a \texttt{lost} result (Chapter~\ref{cap:platform}). The extractor is chosen at start-up with a ROS parameter. All five were tested on the robot. Section~\ref{sec:c6_input} defines the input mask and the line models, Sections~\ref{sec:c6_stripirls} to~\ref{sec:c6_baseline_algorithms} describe the extractors, and Section~\ref{sec:c6_tradeoffs_and_limitations} compares their structure and lists the limitations of \textbf{Strip-IRLS}.
+This chapter describes the robot used in the field tests, the software that runs on it, and the deployment of the segmentation network.
 
-\section{Input mask and line models}
-\label{sec:c6_input}
+\section{Robot hardware and sensors}
+\label{sec:hardware}
 
-All five extractors take the mask $M$ predicted by the deployed binary network (Chapter~\ref{cap:segmentation}), of height $H$ and width $W$, with $x$ increasing to the right and $y$ downward. On the robot, the $640\times480$ camera image is resized to $224\times224$ pixels before the segmentation network, so $H=W=224$ (Chapter~\ref{cap:platform}). Path pixels have value 1 and all other pixels have value 0. Lines are written as functions of $y$, which avoids infinite slopes for vertical lines. All distances are in pixels of the input mask.
+\subsection{Robot platform}
+\label{subsec:robot_platform}
 
-\textit{Strip-IRLS}, \textit{EdgeNet} and \textit{RANSAC edges} model the two corridor edges as separate straight lines, each with its own slope and intercept,
-\begin{equation}
-    x_L(y)=m_Ly+q_L, \qquad x_R(y)=m_Ry+q_R,
-    \label{eq:c6_edges}
-\end{equation}
-and take the centerline as their mean,
-\begin{equation}
-    x_C(y)=\frac{x_L(y)+x_R(y)}{2}=m_Cy+q_C,
-    \qquad m_C=\frac{m_L+m_R}{2},\quad q_C=\frac{q_L+q_R}{2}.
-    \label{eq:c6_line}
-\end{equation}
-The edges need not be parallel, so the modeled width can decrease toward the top of the image because of perspective. The slopes and intercepts are not constrained, so the lines can follow the corridor for any position and heading of the robot inside the row. \textit{Strip-IRLS} then rejects the edges that do not converge upward (Section~\ref{sec:c6_output}). \textit{Center points} fits the centerline $x_C(y)$ directly to the midpoints of the corridor in each strip, without the edges. \textit{Column histogram} returns a vertical centerline, with $m_C=0$.
+The experimental platform is Demetra, a mobile robot prototype developed by the Roboto student team of the Politecnico di Torino. It has four-wheel steering (4WS) and four-wheel drive (4WD).
 
-\section{Strip-IRLS}
-\label{sec:c6_stripirls}
+Each wheel has a DJI RoboMaster M3508 brushless motor with a DJI RoboMaster C620 speed controller, and its own CubeMars AK70-10 actuator for steering. A DJI RoboMaster Development Board Type C (STM32F407) controls the speed controllers and the steering actuators. It receives the linear velocity and the steering angle from the onboard computer and sends back the measured platform speed and steering angle. The wheelbase is $L = 40$~cm, the track width is $T = 34$~cm, the wheel diameter is 19~cm ($r_w = 9.5$~cm) and the chassis is 15~cm above the ground.
 
-\textit{Strip-IRLS} works in five stages:
-\begin{itemize}
-    \item Select a lower region of interest and clean the path mask (Section~\ref{sec:c6_roi}).
-    \item Extract the path intervals in horizontal strips (Section~\ref{sec:c6_candidates}).
-    \item Associate intervals upward from each candidate seed and keep the best chain (Section~\ref{sec:c6_selection}).
-    \item Fit the two edges separately (Section~\ref{sec:c6_fitting}).
-    \item Validate the edge geometry, assign a status from a confidence score, and return the centerline (Section~\ref{sec:c6_output}).
-\end{itemize}
-
-\subsection{Region of interest and mask cleaning}
-\label{sec:c6_roi}
-
-Like the three baselines of Section~\ref{sec:c6_baseline_algorithms}, \textit{Strip-IRLS} uses only the lower part of the mask, the region of interest (ROI). The upper rows, where the path is not visible or cannot be distinguished, are excluded (Figure~\ref{fig:c6_roi}). The ROI starts at row $\lfloor\rho H\rfloor$ and ends at the bottom of the image. The ratio $\rho$ must be chosen based on the position of the camera and on the path, which together set the highest row where the path appears in the image. The ROI should contain the path and as few other rows as possible (Section~\ref{sec:c6_parameter_setting}). On the robot, $\rho=0.30$, chosen on the development data (Section~\ref{subsubsec:c8_parameters}), gives row 67. When needed, \textit{Strip-IRLS} extends the ROI slightly upward, so that it is filled exactly by strips of equal height (Section~\ref{sec:c6_candidates}). On the robot, the ROI is extended from row 67 to row 64.
-
-The path pixels inside the ROI are cleaned before the intervals are extracted. An opening with a $5\times5$ elliptical kernel removes thin protrusions and small isolated regions, then a closing with a $9\times9$ rectangular kernel fills small holes and gaps. The three baselines apply the same opening and closing. Finally, the connected components with fewer than 500 pixels are removed. In Figure~\ref{fig:c6_roi}, the dark gray regions inside the ROI are the pixels removed by the cleaning. Only the remaining path pixels, the cleaned mask $\widetilde M$, are passed to the interval extraction.
-
-\begin{figure}[htbp]
+\begin{figure}[!t]
   \centering
-  \includegraphics[width=0.5\linewidth]{images/geometric/roi.png}
-  \caption{Example of the ROI and of the mask cleaning of Strip-IRLS on an example mask, with the parameters used on the robot. The rows above row 64 are excluded, and the dark gray regions inside the ROI are removed by the cleaning.}
-  \label{fig:c6_roi}
+  \includegraphics[width=0.85\linewidth]{images/platform/demetra_side.png}
+  \caption{Side view of Demetra, with the wheel diameter, the wheelbase $L$, the camera height $h_{\mathrm{cam}}$ and the adjustable tilt $\theta$ of the camera.}
+  \label{fig:robot_camera_setup}
 \end{figure}
 
-\subsection{Horizontal strips and intervals}
-\label{sec:c6_candidates}
-
-The ROI is divided into $N$ strips of equal height, indexed from the bottom. $N$ is a parameter of the extractor, set to 16 on the robot. The strip height is $h=\lceil\,(H-\lfloor\rho H\rfloor)/N\,\rceil$, which is the smallest height for which $N$ strips cover the rows from $\lfloor\rho H\rfloor$ to the bottom of the image. When the number of these rows is not a multiple of $N$, the $N$ strips cover a few more rows, so the ROI is extended upward and starts at $y_0=H-Nh$. On the robot, the 157 rows from 67 to 223 are not a multiple of 16, so $h=10$~px and the ROI starts at row 64. The extension depends only on $H$, $\rho$ and $N$, so the ROI is the same for every frame. Strip $s$ covers the image rows from $H-(s+1)h$ to $H-sh-1$, and its center is at row $H-(s+0.5)h$. On the robot, strip 0 covers rows 214 to 223.
-
-In each strip, a column is active if it contains at least one path pixel of $\widetilde M$. Runs of active columns separated by at most 30 inactive columns are merged into one interval $[\ell_i,r_i]$ of width $d_i=r_i-\ell_i+1$, so that small holes and shadows inside the corridor do not split it.
-
-An endpoint within 2~px of the image border is flagged as clipped. There the corridor leaves the image, so the endpoint is the image border and not the edge of the corridor. Two kinds of intervals are discarded: those narrower than 8~px, and those clipped on both sides when path pixels cover less than 70\% of the strip.
-
-\begin{figure}[htbp]
+Steering is described by a kinematic bicycle model with opposite-phase steering (Figure~\ref{fig:c6_kinematics}), where the equivalent front and rear steering angles are $\delta_f=\delta$ and $\delta_r=-\delta$. With pure rolling, the turning radius of the mid-axle point $M$ is
+\begin{equation}
+    R = \frac{L}{2 \tan\delta}.
+    \label{eq:turning_radius_4ws}
+\end{equation}
+\begin{figure}[!t]
   \centering
-  \includegraphics[width=0.55\linewidth]{images/geometric/strips_projection.png}
-  \caption{Strips and intervals on the mask of Figure~\ref{fig:c6_roi}, after the cleaning of Section~\ref{sec:c6_roi}, with the parameters used on the robot ($N=16$, $h=10$~px, ROI from row 64). The blue lines are the strip boundaries, and the orange boxes are the intervals found in each strip.}
-  \label{fig:geometric_strips_projection}
+  \includegraphics[width=0.65\linewidth]{images/platform/demetra_top.png}
+  \caption{Top view of the opposite-phase 4WS kinematics of Demetra, with the equivalent bicycle in orange, the ICR and the turning radius $R$ of the mid-axle point $M$ (Equation~\eqref{eq:turning_radius_4ws}).}
+  \label{fig:c6_kinematics}
 \end{figure}
 
-\subsection{Bottom-up association and chain selection}
-\label{sec:c6_selection}
+\subsection{Camera configuration}
+\label{subsec:camera}
 
-The association decides which intervals belong to the corridor. The endpoints of these intervals are the samples of the two edge fits (Section~\ref{sec:c6_fitting}). It works in two steps: one or more chains of intervals are grown upward from the bottom of the ROI, then one chain is selected.
+The camera is an Intel RealSense D435, mounted on the front of the robot frame on a mount with adjustable tilt (Figure~\ref{fig:robot_camera_setup}). The color stream is used at $640 \times 480$ pixels and 30 frames per second. The camera is tilted downward by a few degrees, so that the image shows mainly the path, which covers about the lower 70\% of the image, as the region of interest of the extractors. The tilt is adjusted to the field.
 
-\textbf{Growing the chains.} A chain starts from a seed, an interval of the bottom six strips, where the corridor is closest to the robot. On the robot, these six strips cover 60 image rows. From the seed, the chain is grown upward, one strip at a time. In each strip, each interval is compared with the last accepted interval $[\ell_p,r_p]$, of width $d_p$, through the boundary displacement $\delta_i=\max(|\ell_i-\ell_p|,|r_i-r_p|)$, which is the larger shift of its two endpoints. An interval is a candidate only if this shift is within the jump limit $\Delta_{\max}$. The limit is 28~px, or half the width of the last accepted interval when this is wider than 56~px. Among the candidates, the accepted interval is the one with the lowest cost $J_i$, which adds to the shift a penalty on the change of width:
-\begin{equation}
-    \Delta_{\max}=\max(28,\,0.5\,d_p),\qquad J_i=\delta_i+0.4\,|d_i-d_p|.
-    \label{eq:c6_cost4}
-\end{equation}
-The accepted interval becomes the reference for the next strip. The choice is greedy: an accepted interval is never revised later. A strip without candidates is skipped, and the reference does not change. The chain ends at the top of the ROI or at the fourth consecutive skipped strip, so on the robot it can cross a gap of up to 30 rows. No information is carried from one frame to the next.
+\subsection{Computing platform}
+\label{subsec:computing}
 
-The seeds are tried from strip 0 upward, and a chain is grown from each seed that does not already belong to an earlier chain. A chain grown from an interval of an earlier chain would start from the same reference and accept the same intervals, so it would only repeat the upper part of that chain. When the first chain contains all the intervals of the bottom six strips, there is only one chain. Other chains are grown when some of these intervals are not in the first chain, for example the intervals of a blob or of an adjacent corridor next to the path.
+The onboard computer is an NVIDIA Jetson AGX Orin Developer Kit (64~GB), with a 12-core ARM Cortex-A78AE CPU and an NVIDIA Ampere GPU with 2048 CUDA cores. It runs Ubuntu 22.04 with L4T R36.4.4. The software runs in a Docker container with access to the GPU and to the USB devices. Inside the container, ROS~2 Humble runs the camera driver, the controller node, and the serial driver.
 
-\textbf{Selecting a chain.} The complete chains are compared. The selected chain is the one that gives the most samples to the edge fits. The samples are the endpoints not clipped at the image border. An interval inside the image gives two samples, an interval clipped on one side gives one, and an interval clipped on both sides gives none. A chain along the image border therefore has fewer samples than a chain of the same length inside the corridor. Among chains with the same number of samples, the one with the lowest sum of the costs $J_i$ is selected. If the bottom six strips contain no interval, or the selected chain has fewer than three intervals, the result is \texttt{lost}.
+\section{Software architecture}
+\label{sec:software}
 
-Figure~\ref{fig:c6_chain} shows the association on the mask of Figure~\ref{fig:geometric_strips_projection}. The blob at the bottom left has more than 500 pixels, so the cleaning does not remove it, and it gives one interval in each of strips 0 to 4. Strip 0 contains two intervals, and the one on the left, in the blob, is tried first as a seed. Its chain accepts the blob intervals up to strip 4. The only interval of strip 5 belongs to the corridor, and it is shifted by 113~px from the interval accepted in strip 4, well beyond the jump limit of 28~px. The same happens in the next strips, so the chain finds no other candidate and ends at strip 4. The corridor interval of strip 0 is not in this chain, so a second chain is grown from it. This chain accepts one interval in each strip up to strip 13. Strips 14 and 15 contain no interval, and the chain ends at the top of the ROI. In the bottom six strips, no interval is left outside the two chains, so no other seed is available and no other chain is grown (Figure~\ref{fig:c6_chain}a). The corridor chain has 28 samples and the blob chain has 10, so the corridor chain is selected, although its total cost is higher, 122 against 26.8 (Figure~\ref{fig:c6_chain}b). The mask also contains a second region separate from the corridor, at the top left, in strips 9 to 12. Its intervals are above the bottom six strips, so they are not seeds. In each of these strips, the corridor chain compares them with its last accepted interval: they are shifted by 96 to 136~px, well beyond the jump limit of 28--29~px, and they are rejected. They are not in any chain, and their endpoints are not used in the edge fits.
+\subsection{ROS integration}
+\label{subsec:ros}
+
+The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph of the robot. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the path extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes debug topics under \texttt{/debug}, which are used during configuration and are omitted from the figure. When the debug video is enabled, it also publishes three debug images (segmentation, region of interest and path), shown in Figure~\ref{fig:debug_video}. The debug video makes the node skip camera frames (Section~\ref{subsec:timing}), so it should be disabled when the robot operates. The text log on \texttt{/debug/text} is always active. It carries important information on each frame and its cost is small, so the node still processes every camera frame.
+
+The image subscription keeps only the last frame, so frames that arrive during the processing are not queued and the controller always processes the most recent image seen by the robot.
 
 \begin{figure}[H]
-  \centering
-  \includegraphics[width=0.95\linewidth]{images/geometric/chain_two_panels.png}
-  \caption{Chains built from the intervals of Figure~\ref{fig:geometric_strips_projection}. (a)~The two chains grown from the seeds of strip 0, in purple from the blob and in orange from the corridor, with their number of intervals, samples and total cost. The dots are the samples, the endpoints that are not clipped. The dashed red boxes are intervals that are not in any chain. (b)~The selected chain, the one with more samples. The yellow dots are its samples, used in the edge fits. The regions in light red are not in the selected chain and are not used in the fits.}
-  \label{fig:c6_chain}
+    \centering
+    \begin{tikzpicture}[
+        font=\small,
+        rosnode/.style={draw, ellipse, inner sep=3pt},
+        rostopic/.style={draw, rectangle, inner sep=5pt},
+        arr/.style={-latex, thick},
+        node distance=6mm,
+    ]
+        \node[rosnode] (cam) {\texttt{/camera/camera}};
+        \node[rostopic, right=of cam] (img) {\texttt{/camera/camera/color/image\_raw/compressed}};
+        \node[rosnode, below=10mm of cam] (ctrl) {\texttt{/controller\_node}};
+        \node[rostopic, right=of ctrl] (cmd) {\texttt{/cmd\_vel}};
+        \node[rosnode, right=of cmd] (drv) {\texttt{/demetra\_node}};
+        \draw[arr] (cam) -- (img);
+        \draw[arr] (img.south) |- ($(img.south)!0.5!(img.south |- ctrl.north)$) -| (ctrl.north);
+        \draw[arr] (ctrl) -- (cmd);
+        \draw[arr] (cmd) -- (drv);
+    \end{tikzpicture}
+    \caption{ROS~2 node graph on the robot, as shown by \texttt{rqt\_graph}. Ellipses are nodes and rectangles are topics.}
+    \label{fig:ros2_architecture}
 \end{figure}
-
-\subsection{Separate fitting of the corridor edges}
-\label{sec:c6_fitting}
-
-The two edges are fitted separately. The left edge uses the left endpoints $\ell_i$ of the accepted intervals, and the right edge uses the right endpoints $r_i$. Clipped endpoints are not used, so an interval clipped on one side gives a sample only to the other edge, and the two edges can have samples in different strips. The row of a sample is the center of its strip. In the equations below, a sample of one edge is the point $(y_i,x_i)$, where $y_i$ is its row and $x_i$ is the endpoint, $\ell$ for the left edge and $r$ for the right edge. In these equations $i$ indexes the samples of one edge, not the intervals. Each edge needs at least two samples. If one edge has fewer, the result is \texttt{lost}, because the centerline is never estimated from a single edge. The edges are first fitted inside a crossing check, described at the end of this section, and then once more on the intervals that remain.
-
-Each edge is fitted with iteratively reweighted least squares. The first fit uses uniform weights, and ten reweighting iterations follow. At each iteration, the distance of each sample from the current line gives its new weight, and the line is fitted again. A sample far from the line gets a low weight. How fast the weight decreases is set by the residual scale $\sigma$, a parameter of the extractor. A sample at distance $\sigma$ from the line gets weight 0.5. On the robot, $\sigma=18$~px (Section~\ref{sec:c6_parameter_setting}). At iteration $t$, the residuals and the new weights are
-\begin{equation}
-    e_i^{(t)}=x_i-\bigl(m^{(t)}y_i+q^{(t)}\bigr),\qquad
-    w_i^{(t+1)}=\frac{1}{1+(e_i^{(t)}/\sigma)^2},
-    \label{eq:c6_reweight}
-\end{equation}
-and the line is fitted again by weighted least squares, with each weight applied to the residual before it is squared:
-\begin{equation}
-    (m,q)=\mathop{\arg\min}_{m,q}
-        \sum_i \left[w_i\bigl(x_i-(my_i+q)\bigr)\right]^2.
-    \label{eq:c6_objective}
-\end{equation}
-Each squared residual is therefore weighted by $w_i^2$. The weights are not accumulated across iterations, since they are computed again from the current line only. The reweighting reduces the effect of isolated outliers, but not of many samples from outside the corridor, because they lie on a consistent line and the fit follows them. Figure~\ref{fig:robust_edge_fitting} shows the reweighting on the samples of the selected chain of Figure~\ref{fig:c6_chain}b.
-
-The two edges of a corridor converge upward in the image, but in the rows where the chain has samples they are as far apart as the corridor is wide. Every accepted interval is at least $d_{\min}=8$~px wide, the minimum interval width of Section~\ref{sec:c6_candidates}. If the fitted edges come closer than $d_{\min}$ in these rows, the intervals above the row where this happens do not follow the corridor. They can come, for example, from a region attached to the corridor, and they bend the fits. The edges are therefore checked before the final fit. With $\Delta m=m_R-m_L$ and $\Delta q=q_R-q_L$, the modeled width is
-\begin{equation}
-    D(y)=x_R(y)-x_L(y)=\Delta m\,y+\Delta q,
-    \label{eq:c6_width}
-\end{equation}
-the signed horizontal distance between the two fitted lines at row $y$. It is negative where the lines have crossed. $D(y)$ is not the width of an interval, and it is defined at every row, also in the rows where the chain has no interval. The lines are fitted on the left and right endpoints. At the row of an interval $[\ell,r]$ not clipped on either side, a good fit therefore gives $D$ close to $r-\ell=d-1$, not to the interval width $d$. When $\Delta m\neq0$, $D(y)$ equals $d_{\min}$ at one value of $y$ only,
-\begin{equation}
-    y_\times=\frac{d_{\min}-\Delta q}{\Delta m}.
-    \label{eq:c6_crossing}
-\end{equation}
-In general $y_\times$ is not an integer row. The edges converge upward when $\Delta m>0$, in the code when $\Delta m>10^{-6}$, and then $D(y)<d_{\min}$ above $y_\times$. If the edges converge upward and $y_\times$ is below the highest sample, the intervals whose strip center is above $y_\times$ are discarded, together with their samples on both edges, and both edges are fitted again. This crossing check is made at most three times. Each pass fits the edges, checks them, and makes at most one discard. After a discard in the third pass, the edges fitted on the remaining intervals are not checked again here. The check stops earlier in three cases:
-\begin{itemize}
-    \item The check finds no crossing to treat: the edges do not converge upward, or $y_\times$ is not below the highest sample.
-    \item The discard would leave fewer than three intervals. The intervals are then kept, and the check stops with the crossing still present.
-    \item An edge has fewer than two samples, and the result is \texttt{lost}. The previous rule counts only the intervals, so this can also happen after a discard, when the remaining intervals are clipped on that side.
-\end{itemize}
-If the result is not \texttt{lost}, the final fit uses the remaining intervals. A crossing in the rows where the chain has samples can therefore still be present in three cases: when too few intervals would remain, after a discard in the third pass, or when the edges do not converge upward, which the check does not treat. These crossings are found by the width check of Section~\ref{sec:c6_output}.
 
 \begin{figure}[H]
-  \centering
-  \includegraphics[width=0.8\linewidth]{images/geometric/edge_fitting.png}
-  \caption{Reweighted fit of the two edges of Strip-IRLS on the samples of the selected chain of Figure~\ref{fig:c6_chain}b, at the start and after iterations 1, 3 and 10. The points are the samples of the chain, colored by their weight, the blue and green lines are the fits of the left and right edge, and the red line is the centerline, their mean. The three upper samples of the right edge, on the region attached to the corridor, pull the first fit toward the vertical. Their weights fall to 0.21, 0.10 and 0.09 only after several iterations, and after the tenth the line follows the edge.}
-  \label{fig:robust_edge_fitting}
+    \centering
+    \includegraphics[width=\linewidth]{images/platform/debug_video.png}
+    \caption{Frame of the debug video recorded during a field run with Strip-IRLS. From left to right: segmentation (the segmentation before the morphological cleaning), region of interest (the cleaned segmentation, on which the path extractor operates) and path (the extracted path drawn on the camera image).}
+    \label{fig:debug_video}
 \end{figure}
 
-\subsection{Validation, confidence, and output}
-\label{sec:c6_output}
+\subsection{Control interface}
+\label{subsec:control_interface}
 
-After the final fit, the width check tests the final edges. It uses the modeled width $D(y)$ of Eq.~\eqref{eq:c6_width} and $y_\times$ of Eq.~\eqref{eq:c6_crossing}, both computed on the final edges, and the highest sample used in the final fit. When the edges converge upward, the valid range starts at the highest sample, or at $y_\times$ when $y_\times$ lies below the highest sample, and it ends at the bottom row of the image, row $H-1$. In these rows $D(y)\geq d_{\min}$. If the check passes, the valid range is used by the tracking score $T$ of the confidence. The check fails in three cases:
-\begin{itemize}
-    \item The edges do not converge upward, $\Delta m\leq10^{-6}$ in the code. The robot moves between parallel rows, so because of perspective the edges of the corridor converge upward. Parallel edges or edges that converge downward indicate a wrong fit.
-    \item The edges converge upward and $y_\times$ lies more than $0.05H$, the crossing tolerance, below the highest sample. On the robot the tolerance is 11.2~px, a little more than the strip height of 10~px. The edges are then closer than $d_{\min}$ in rows where the chain has samples, which indicates a chain that joins different regions or a wrong fit.
-    \item The distance from the top of the valid range to the bottom row of the image is less than 10\% of the ROI height $H-y_0$. On the robot the ROI has 160 rows, so the limit is 16~px. The corridor is then seen in too few rows.
-\end{itemize}
-The first two cases find the crossings that the crossing check of Section~\ref{sec:c6_fitting} can leave in the final edges. A crossing at most $0.05H$ below the highest sample is accepted, and the valid range then starts at $y_\times$.
-
-The confidence $C$ combines four scores between 0 and 1. They use the seed and the accepted intervals of the selected chain that were not discarded by the crossing check of Section~\ref{sec:c6_fitting}. Below they are called the intervals of the chain.
-\begin{itemize}
-    \item \textbf{Tracking $T$.} The number of intervals of the chain whose strip center lies in the valid range, divided by the number of strips whose center lies in the valid range. $T$ is 1 when every strip of the valid range has an interval of the chain, and it is lower when the chain skips strips. Intervals above the valid range are not counted, so that both counts refer to the same strips and $T\leq1$. For example, when $y_\times$ lies below the highest sample within the tolerance, the valid range starts at $y_\times$ and the interval of the highest sample is not counted. Take a chain from strip 0 to strip 13 that skips two strips below strip 11. The crossing check discards the intervals of strips 12 and 13, and the valid range starts at the center of strip 11. The valid range then has 12 strips and 10 intervals, so $T=10/12\approx0.83$. The two skipped strips lower $T$, while the two discarded intervals do not.
-    \item \textbf{Fit $F$.} How close the samples are to the fitted edge lines. With $\bar e$ the mean horizontal distance of the samples of both edges from their lines, $F=\operatorname{clip}(1-\bar e/\sigma,0,1)$. $F$ is 1 when the samples lie on the lines and falls to 0 when $\bar e$ reaches $\sigma=18$~px. It is low when the edges of the mask are irregular or when some samples come from outside the corridor. The distances are not weighted, so a sample with a low weight in the fit still counts fully in $\bar e$.
-    \item \textbf{Width regularity $A$.} With straight edges, the width of the corridor changes by the same amount from one strip to the next, so its second differences, the changes between consecutive changes of width, are zero. $A$ uses the widths $r_i-\ell_i$ of the intervals of the chain that are not clipped on either side, from the bottom up, since the width of a clipped interval is not the corridor width. The error $E_D$ is the 90th percentile of the absolute second differences divided by the median width, and $A=\operatorname{clip}(1-E_D/0.30,0,1)$. $A$ is 1 when the width changes by the same amount at every step and 0 when $E_D$ reaches 0.30. With fewer than three unclipped intervals there is no second difference, so $A$ is 0. For example, the widths 120, 114, 108, 102 and 96~px change by $-6$~px at every step, so $E_D=0$ and $A=1$. If a region attached to the corridor widens the third interval to 140~px, the changes are $-6$, $+26$, $-38$ and $-6$~px and the absolute second differences are 32, 64 and 32~px. Their 90th percentile is 57.6~px and the median width is 114~px, so $E_D=0.51$ and $A=0$. A skipped strip or an excluded clipped interval also gives a nonzero second difference when the width changes along the corridor, but a small one. Without the 108~px interval of the first example, the absolute second differences are 6 and 6~px and the median width is 108~px, so $E_D\approx0.06$ and $A\approx0.81$.
-    \item \textbf{Gaps $G$.} The longest hole in the chain. With $g_{\max}$ the longest run of strips skipped between two intervals of the chain, $G=\operatorname{clip}(1-g_{\max}/3,0,1)$. $G$ is 1 when the chain skips no strip and 0 when it skips three strips in a row, the longest gap the chain can cross. Every strip of the valid range without an interval of the chain lowers $T$, also below the seed. $G$ depends only on the longest run of skipped strips between two intervals of the chain, so one long gap lowers $G$ more than several short ones.
-\end{itemize}
-The confidence is their weighted sum:
+The serial driver node (\texttt{/demetra\_node}) converts each command $(v, \omega)$ into the steering angle
 \begin{equation}
-    C=0.3125\,T+0.3125\,F+0.25\,A+0.125\,G.
-    \label{eq:c6_confidence4}
+    \delta = \arctan\left(\frac{L\, \omega}{2\, v}\right),
+    \label{eq:4ws_steering_angle}
 \end{equation}
-The result is \texttt{lost} if the width check fails, if $\bar e>2\sigma$, or if $C<0.38$. Otherwise it is \texttt{degraded} for $C<0.60$ and \texttt{ok} for $C\geq0.60$.
+limited to $\pm 30^\circ$. Before the conversion, the node limits $v$ to $\pm 1.5$~m/s and $\omega$ to $\pm 6.0$~rad/s. Every 10~ms it sends the last $v$ and $\delta$ to the microcontroller. If no command arrives for 500~ms, it sets the speed to zero.
 
-For a \texttt{lost} result, no centerline model is returned. Otherwise, the centerline model $x_C(y)$ is returned. The controller reads the lateral error from the model at the reference row $y_{\mathrm{ref}}=156$ (Section~\ref{subsubsec:control_node}).
+The microcontroller receives $v$ and $\delta$ from the driver and actuates them with the steering actuators and the traction motors of the four wheels.
 
-\subsection{Setting the parameters}
-\label{sec:c6_parameter_setting}
+\subsection{Controller node}
+\label{subsubsec:control_node}
 
-Table~\ref{tab:c6_defaults} lists the parameters of \textit{Strip-IRLS} on the robot. Distances and areas are in pixels of the $224\times224$ mask, so the values depend on the camera mounting and on the resizing of Section~\ref{sec:c6_input}. The ROI start and the merging gap were chosen on the development data, and the strips of 10 rows and the ten reweighting iterations were checked on the same data (Section~\ref{subsec:geometric_accuracy}). The other values were set by hand during the development, on the synthetic development masks. The main parameters are listed below.
+For each frame, the controller node decodes the image, resizes it to $224\times224$ pixels and normalizes it with the ImageNet mean and standard deviation. The segmentation network turns the image into the label mask, and the path extractor (Chapter~\ref{cap:geometric_reference}) turns the mask into a centerline.
+
+The lateral error $e$ is the horizontal offset, in pixels, of the centerline from the image center at row $y_{\mathrm{ref}} = 156$ of the $W \times H = 224\times224$ input. It is positive when the centerline is on the right. The error then passes through a filter that depends on the status returned by the path extractor (Section~\ref{sec:c5_output}), a deadband and the steering law, which gives the angular velocity command.
+
+\paragraph{Error filter.}
+The error is smoothed with an exponential moving average (EMA). At each frame $k$, the filtered error is a weighted average of the previous filtered error $\hat{e}_{k-1}$ and of the new measurement $e_k$:
+\begin{equation}
+    \hat{e}_k = (1 - \alpha)\, \hat{e}_{k-1} + \alpha \, e_k.
+    \label{eq:filter_ema_update}
+\end{equation}
+The smoothing factor $\alpha$ is the weight of the new value. With $\alpha = 0.20$ the filter keeps 80\% of the previous value at each frame. If the measured error jumps to a new value and then stays constant, the filter covers about half of the step after three frames and 95.6\% of it after 14 frames, which at 30 frames per second take 0.1~s and 0.47~s.
+
+In practice the measured error changes at every frame, because of the noise of the segmentation and of the path extractor and because the robot moves. Replacing $\hat{e}_{k-1}$ with Equation~\eqref{eq:filter_ema_update} written for the previous frame, and repeating this for the older frames, gives
+\begin{equation}
+    \hat{e}_k = \alpha\, e_k + \alpha (1-\alpha)\, e_{k-1} + \alpha (1-\alpha)^2\, e_{k-2} + \dots
+    \label{eq:ema_weights}
+\end{equation}
+Each measurement enters the filtered error with weight $\alpha$, and its weight is multiplied by $1-\alpha$ at every following frame. With $\alpha = 0.20$ the newest measurement weighs $0.20$, the previous one $0.20 \cdot 0.8 = 0.16$ and the one before $0.20 \cdot 0.8^2 = 0.128$. The weights of the last $n$ measurements add up to $1 - 0.8^{n}$, so more than 95\% of the filtered value depends on the last 14 measurements. Within them, the most recent measurements count the most, while the oldest weigh almost nothing, for example $0.20 \cdot 0.8^{13} \approx 0.011$ for the fourteenth. A change that lasts one frame therefore enters the filtered error only with weight 0.20, while a change that lasts several frames enters all the recent measurements and is followed with a short delay. Figure~\ref{fig:ema_field_example} shows an example from a field run. In the 1.5~s shown, the mean difference between two consecutive frames is 10.8~px for the measured error and 4.2~px for the filtered error.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=0.85\linewidth, height=0.38\linewidth,
+            xmin=0, xmax=1.5, ymin=-20, ymax=52,
+            clip=true,
+            xlabel={Time (s)},
+            ylabel={Lateral error (px)},
+            grid=both, grid style={gray!20},
+            legend pos=north east, legend style={font=\scriptsize}, legend cell align=left,
+            tick label style={font=\scriptsize}, label style={font=\footnotesize},
+        ]
+            \addplot[gray, thin, mark=*, mark size=0.9pt] coordinates {(0.042,24.8) (0.123,49.2) (0.202,2.4) (0.281,24.7) (0.366,12.0) (0.442,-7.2) (0.520,-10.5) (0.597,-10.4) (0.674,12.2) (0.752,-7.6) (0.831,-12.1) (0.911,-13.6) (0.990,-9.9) (1.068,-9.6) (1.145,-11.0) (1.223,-8.0) (1.301,-2.7) (1.378,-3.9) (1.463,-6.0)};
+            \addlegendentry{Measured error $e_k$}
+            \addplot[blue!70!black, line width=1.1pt] coordinates {(0.042,15.6) (0.123,29.4) (0.202,18.2) (0.281,20.8) (0.366,17.2) (0.442,6.6) (0.520,-0.2) (0.597,-4.3) (0.674,2.3) (0.752,-1.7) (0.831,-5.9) (0.911,-9.1) (0.990,-9.4) (1.068,-9.5) (1.145,-10.1) (1.223,-9.2) (1.301,-6.6) (1.378,-5.5) (1.463,-5.7)};
+            \addlegendentry{Filtered error $\hat{e}_k$}
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Measured lateral error $e_k$ and filtered error $\hat{e}_k$ during 1.5~s of a field run with Strip-IRLS. The filtered error was computed from the recorded measurements with Equation~\eqref{eq:filter_ema_update} and the smoothing factor of Equation~\eqref{eq:alpha_dt} for the recorded time between frames.}
+    \label{fig:ema_field_example}
+\end{figure}
+
+\paragraph{Smoothing independent of the frame rate.}
+If the node runs slower, the same three frames last longer and the filter reacts later. With the debug video enabled, for example, the node processes 17 to 24 frames per second (Section~\ref{subsec:timing}). The smoothing factors are therefore defined as reference values $\alpha_{\mathrm{ref}}$ for 30 frames per second. At each frame, the node measures the time $\Delta t$ since the previous frame, limited to the interval from $1/120$ to $0.25$~s, and converts each reference factor into
+\begin{equation}
+    \alpha = 1 - (1 - \alpha_{\mathrm{ref}})^{30\,\Delta t}.
+    \label{eq:alpha_dt}
+\end{equation}
+With $\Delta t = 1/30$~s, $\alpha = \alpha_{\mathrm{ref}}$. At 15 frames per second, for example, $\alpha_{\mathrm{ref}} = 0.20$ gives $\alpha = 1 - 0.8^{2} = 0.36$, so the filter keeps 64\% of the previous value at each frame, as in two frames at 30 frames per second. The filter therefore follows the same response in time, only with fewer updates (Table~\ref{tab:ema_frame_rate}). Figure~\ref{fig:ema_frame_rate} shows the two responses.
 
 \begin{table}[H]
     \centering
     \small
-    \caption{Parameters of Strip-IRLS used on the robot. Distances and areas are in pixels of the $224\times224$ mask.}
-    \label{tab:c6_defaults}
-    \begin{tabularx}{\textwidth}{@{}X l@{}}
+    \caption{Fraction of a step of the input covered by the filter of Equation~\eqref{eq:filter_ema_update} with $\alpha_{\mathrm{ref}} = 0.20$, at 30 and 15 frames per second. A dash marks a time with no frame at 15 frames per second.}
+    \label{tab:ema_frame_rate}
+    \begin{tabular}{@{}lcccccccc@{}}
         \toprule
-        Parameter & Value \\
+        Time (s) & 0.033 & 0.067 & 0.100 & 0.133 & 0.167 & 0.200 & 0.233 & 0.467 \\
         \midrule
-        \multicolumn{2}{@{}l}{\textit{Arguments of the extractor}} \\
-        Path class & 1 \\
-        ROI start ratio $\rho$ & 0.30 \\
-        Number of strips $N$ & 16 \\
-        Minimum component area & 500 \\
-        Minimum interval width $d_{\min}$ & 8 \\
-        Merging gap & 30 \\
-        Image-border margin & 2 \\
-        Minimum jump limit & 28 \\
-        Residual scale $\sigma$ & 18 \\
-        Reweighting iterations & 10 \\
-        Seed window & 6 strips \\
-        Consecutive skipped strips allowed & 3 \\
-        Crossing tolerance & $0.05H$ \\
-        Minimum valid-range length & $0.10\,(H-y_0)$ \\
-        Lost / ok thresholds on $C$ & 0.38 / 0.60 \\
-        \midrule
-        \multicolumn{2}{@{}l}{\textit{Constants in the code}} \\
-        Opening / closing kernels & $5\times5$ elliptical / $9\times9$ rectangular \\
-        Connectivity of the components & 8 \\
-        Occupancy for intervals clipped on both sides & 0.70 \\
-        Jump-limit factor on $d_p$ & 0.5 \\
-        Width-change cost coefficient & 0.4 \\
-        Minimum intervals in the chain & 3 \\
-        Minimum samples per edge & 2 \\
-        Crossing-check passes & 3 \\
-        Convergence threshold on $\Delta m$ & $10^{-6}$ \\
-        Residual rejection factor & 2 ($2\sigma=36$) \\
-        Percentile of the second differences & 90 \\
-        Width-regularity scale & 0.30 \\
-        Weights of $T$, $F$, $A$, $G$ in $C$ & 0.3125, 0.3125, 0.25, 0.125 \\
+        30 fps, $\alpha = 0.20$ & 20.0\% & 36.0\% & 48.8\% & 59.0\% & 67.2\% & 73.8\% & 79.0\% & 95.6\% \\
+        15 fps, $\alpha = 0.36$ & -- & 36.0\% & -- & 59.0\% & -- & 73.8\% & -- & 95.6\% \\
         \bottomrule
-    \end{tabularx}
+    \end{tabular}
 \end{table}
-\begin{itemize}
-    \item \textbf{ROI start $\rho$.} A smaller $\rho$ adds rows above the path, whose regions can enter the chain. A larger $\rho$ leaves fewer rows of the corridor for the fits.
-    \item \textbf{Number of strips $N$.} Each strip gives at most one sample per edge. Thinner strips give more samples and a finer resolution along the edges, but a thin strip is emptied or split more easily by a hole in the mask. Thicker strips are less affected by holes, but they give fewer samples and a lower resolution. The seed window and the allowed skipped strips are counted in strips, so they have to be changed with $N$ to cover the same rows.
-    \item \textbf{Merging gap.} It should be larger than the holes inside the corridor and smaller than the crop row between two adjacent corridors. If it is too large, a blob or an adjacent corridor is merged into the interval.
-    \item \textbf{Minimum component area and minimum interval width $d_{\min}$.} They should be below the area of the parts of the corridor separated from the rest and below the narrowest width of the corridor. Smaller values keep blobs and noise that can enter a chain. $d_{\min}$ is also the threshold of the crossing check and of the width check, so a larger $d_{\min}$ shortens the valid range.
-    \item \textbf{Jump limit $\Delta_{\max}$.} It should be above the shift of the corridor edges, also across three skipped strips, and below the shift to the regions next to the corridor. If it is too small, the chain stops on inclined edges. If it is too large, the regions next to the corridor become candidates.
-    \item \textbf{Residual scale $\sigma$.} Samples much closer to the line than $\sigma$ keep almost all their weight, and samples much farther lose most of it. $\sigma$ should therefore be larger than the distance of the correct samples, which comes from the irregular edges of the mask, and smaller than the distance of the outliers. A smaller $\sigma$ lowers $F$, so more results are \texttt{degraded} or \texttt{lost}. A larger $\sigma$ keeps the outliers in the fit and raises the threshold $2\sigma$.
-    \item \textbf{Status thresholds.} Higher thresholds give more \texttt{lost} and \texttt{degraded} results, which the controller filters differently (Section~\ref{subsubsec:control_node}).
-\end{itemize}
-The values are set for the camera, its mounting and the fields of this work. With another camera, mounting or crop, they may need to be adjusted to get the best results. This is one of the reasons for \textit{EdgeNet} (Section~\ref{sec:c6_network}).
-
-\section{EdgeNet, an edge regression network}
-\label{sec:c6_network}
-
-\textit{EdgeNet} is a first test of replacing the geometric steps of \textit{Strip-IRLS} with a learned model. It takes the segmentation mask and not the image, and it regresses the two corridor edges. It has no geometric parameters to set by hand for each scenario.
-
-The network is a small CNN of about 0.8 million parameters, shown in Figure~\ref{fig:c6_edgenet}. Its input is the $224\times224$ mask, and it has five outputs: the $x$ positions of the left and right edges at rows 156 and 223, and the validity $p_{\mathrm{valid}}$, the estimate of the network that the mask contains a corridor.
 
 \begin{figure}[H]
     \centering
-    \input{images/architectures/edgenet_tikz}%
-    \caption{Architecture of \textit{EdgeNet}. Each box is a feature map, colored by the layer that produces it and labeled with channels $\times$ height $\times$ width. The two maps of a block have the same size and share one label. The mask is averaged over $2\times2$ blocks, and two channels with the $x$ and $y$ coordinates of each pixel, scaled to $[-1,1]$ as in CoordConv~\cite{liu2018coordconv}, are added, so the convolutions also see where each pixel is. Each of the four blocks halves the size with a stride-2 convolution and then applies a second convolution. The $96\times7\times7$ map is flattened and passed to two fully connected layers, the first followed by ReLU. A sigmoid turns the last output into $p_{\mathrm{valid}}$.}
-    \label{fig:c6_edgenet}
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=0.85\linewidth, height=0.45\linewidth,
+            xmin=0, xmax=0.5, ymin=0, ymax=1.05,
+            xtick={0,0.1,0.2,0.3,0.4,0.5},
+            xlabel={Time after the step (s)},
+            ylabel={Fraction of the step},
+            grid=both, grid style={gray!20},
+            legend pos=south east, legend style={font=\scriptsize}, legend cell align=left,
+            tick label style={font=\scriptsize}, label style={font=\footnotesize},
+        ]
+            \addplot[gray, dashed, domain=0:0.5, samples=60, forget plot] {1-0.8^(30*x)};
+            \addplot[green!50!black, only marks, mark=triangle*, mark size=3.4pt, domain=1:7, samples=7, forget plot] ({x/15}, {1-0.64^x});
+            \addplot[blue!70!black, only marks, mark=*, mark size=1.6pt, domain=1:15, samples=15, forget plot] ({x/30}, {1-0.8^x});
+            \addlegendimage{blue!70!black, only marks, mark=*, mark size=1.6pt}
+            \addlegendentry{30 fps, $\alpha = 0.20$}
+            \addlegendimage{green!50!black, only marks, mark=triangle*, mark size=3.4pt}
+            \addlegendentry{15 fps, $\alpha = 0.36$}
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Response of the filter of Equation~\eqref{eq:filter_ema_update} to a step of the input, with $\alpha_{\mathrm{ref}} = 0.20$. At 15 frames per second, the factor converted with Equation~\eqref{eq:alpha_dt} gives the same response in time as at 30 frames per second (dashed line).}
+    \label{fig:ema_frame_rate}
 \end{figure}
 
-The four positions are given normalized as $(x-112)/112$, so the columns 0 and 223 correspond to $-1$ and about 1. Each edge line passes through its two predicted points, and the centerline is the mean of the two lines, as in Eq.~\eqref{eq:c6_line}.
 
-The confidence is $C=p_{\mathrm{valid}}\cdot\mathrm{IoU}$. The IoU compares the region between the two edge lines with the path pixels of the mask, not cleaned as in \textit{Strip-IRLS}, in the rows from 64 to 223, the ROI of \textit{Strip-IRLS}, which contains the row read by the controller:
+\paragraph{Parameters per status and jumps.}
+When the status is \texttt{ok} or \texttt{degraded}, the filter updates the error with a reference smoothing factor $\alpha_{\mathrm{ref}}$ and a jump threshold $J$ that depend on the status:
 \begin{equation}
-    \mathrm{IoU}=\frac{N_{\mathrm{in}}}{N_{\mathrm{in}}+N_{\mathrm{out}}+N_{\mathrm{bg}}},
-    \label{eq:c6_edgenet_iou}
+    (\alpha_{\mathrm{ref}}, J) =
+    \begin{cases}
+        (0.20, \; 40\text{ px}) & \text{if the status is \texttt{ok}}, \\
+        (0.18, \; 38\text{ px}) & \text{if the status is \texttt{degraded}}.
+    \end{cases}
+    \label{eq:filter_regimes}
 \end{equation}
-where $N_{\mathrm{in}}$ is the number of path pixels between the lines, $N_{\mathrm{out}}$ the number of path pixels outside them, and $N_{\mathrm{bg}}$ the number of pixels between the lines that are not path. The IoU is 1 when the region between the lines covers exactly the path. Above the crossing of the lines the region between them is empty. The status is \texttt{lost} if $p_{\mathrm{valid}}<0.5$, if the distance between the two predicted edges at row 223 is below 8~px, or if $C<0.38$. Otherwise it is \texttt{degraded} for $C<0.60$ and \texttt{ok} for $C\geq0.60$.
+In our case the values for the two statuses are close to each other and worked well. The filter keeps them separate, so that the values for \texttt{degraded} can be changed if the segmentation is worse. When the status is \texttt{lost}, the error is not updated and the robot stops after a short hold, described at the end of this section.
 
-The network is trained only on synthetic masks. Its input has the same format as on the robot, and the labels are computed from the corridor model of the generator and not from an extractor, so they are exact, need no manual annotation and do not contain the errors of an algorithm. No segmentation network is used to produce the training masks. The errors of the segmentation are drawn by the generator, with shapes and probabilities chosen in its code. The masks are therefore realistic only as far as these disturbances resemble the errors of the real segmentation. The generated masks look like the predicted ones, with irregular edges, holes, blobs, adjacent corridors and the end of the row.
+The jump is the distance $\Delta_k = |e_k - \hat{e}_{k-1}|$ between the new measurement and the previous filtered error. The filtered error is
+\begin{equation}
+    \hat{e}_k =
+    \begin{cases}
+        (1 - \alpha)\, \hat{e}_{k-1} + \alpha \, e_k & \text{if } \Delta_k \le J, \\
+        e_k & \text{if } \Delta_k > J,\ \Delta_{k-1} > J \text{ and } |e_k - e_{k-1}| \le J_c, \\
+        \hat{e}_{k-1} & \text{otherwise}.
+    \end{cases}
+    \label{eq:filter_jump}
+\end{equation}
+A measurement within the threshold is smoothed with Equation~\eqref{eq:filter_ema_update}. A jump on an isolated frame is ignored, so a segmentation error on a single frame does not reach the command. A jump present in two consecutive frames is taken directly only if the two measurements agree, that is, if they differ by at most the tolerance $J_c$. Otherwise both frames are ignored. Taking the measurement directly lets the filter follow a sudden real change of the centerline position, for example when an obstacle under a wheel suddenly rotates the robot, without waiting for the slower response of Equation~\eqref{eq:filter_ema_update}.
 
-The labels are the positions of the edge lines of the corridor model at rows 156 and 223, normalized as the outputs. The edge line of a wide or offset corridor can pass outside the image, and limiting it to the image would move the centerline. The labels are therefore clipped only to $[-2,2]$, from $-112$ to 336~px. In the training set, 36.8\% of the valid masks have at least one label outside $[-1,1]$, and 8.2\% have one clipped. The validity label is 1 when the corridor drawn before the disturbances has at least 800 pixels and at least one of its two edge lines is visible, more than 2~px from the image border, in at least 15 of the rows from 64 to 223. It is 0 for the other masks and for the masks without a corridor, so a corridor partly erased by the disturbances is still valid. About 14\% of the 300\,000 training masks have no valid corridor.
+We chose $J_c$ in offline tests, by applying the filter to recorded errors of Strip-IRLS. When two consecutive jumps agreed on the new position of the centerline, their measurements differed by at most 18~px, while in the other cases they differed by more than 50~px. $J_c = 25$~px accepts the first case with some margin and rejects the second.
 
-The loss is the sum of three terms: a smooth L1 loss on the four edge positions, twice the same loss on the centerline at row 156, which is the value used by the controller, and 0.2 times the binary cross-entropy of the validity. The first two terms are computed only on masks with a valid corridor.
+\paragraph{Steering law.}
+The steering law uses the command error
+\begin{equation}
+    e_{\mathrm{cmd}} =
+    \begin{cases}
+        0 & \text{if } |\hat{e}_k| < 4\text{ px}, \\
+        \hat{e}_k & \text{otherwise}.
+    \end{cases}
+    \label{eq:deadband}
+\end{equation}
+This deadband avoids small oscillations of the steering around the center of the row. It acts only on the command, so the filter keeps its internal value $\hat{e}_k$. The angular velocity target is
+\begin{equation}
+    \omega^{*} = \operatorname{sat}_{\omega_{\max}}\!\left( - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2} \right),
+    \label{eq:control_law_omega}
+\end{equation}
+with $K_{p} = 1.2$, where $\operatorname{sat}_{\omega_{\max}}$ limits the value to $\pm\omega_{\max} = \pm 0.58$~rad/s. Dividing by the half-width $W/2 = 112$~px gives the error as a fraction of the image, from 0 at the center to $\pm 1$ at the edges, so $K_p$ does not depend on the input resolution. The confidence $C \in [0, 1]$ of the path extractor reduces the gain when the result is less reliable. The effective proportional gain is $K_p (0.6 + 0.4\, C)$, which equals $K_p$ with $C = 1$ and $0.75\, K_p$ with $C = 0.38$, the lowest value before \texttt{lost}. The minus sign makes the robot turn towards the centerline.
 
-Figure~\ref{fig:c6_edgenet_examples} shows three validation masks with their labels and three masks of the field tests with the lines estimated by the network. The network is evaluated on the synthetic test masks in Section~\ref{subsec:geometric_accuracy} and in the field in Section~\ref{sec:field_validation}.
+The limit $\omega_{\max}$ is chosen from $v$ so that it matches the steering limit of $30^\circ$ (Equation~\eqref{eq:4ws_steering_angle}): a larger $\omega$ would not turn the wheels further. The command therefore saturates for errors above
+\begin{equation}
+    e_{\mathrm{sat}} = \frac{\omega_{\max}\, (W/2)}{K_p\, (0.6 + 0.4\, C)},
+    \label{eq:error_saturation}
+\end{equation}
+which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_p$ sets how strongly the robot reacts to the error (Figure~\ref{fig:steering_law}b). A larger $K_p$ gives a larger command for the same error and reaches $30^\circ$ at a smaller error. A smaller $K_p$ gives a smoother response and reaches the limit later.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{images/edgenet/edgenet_examples.pdf}
-    \caption{Masks and edge lines of \textit{EdgeNet}. (a)--(c)~Synthetic validation masks with the edge lines of their labels. (d)--(f)~Masks of the field tests (Section~\ref{sec:field_validation}, \textit{EdgeNet} Run~1), with the edge lines estimated by \textit{EdgeNet}. The dots are the positions at rows 156 and 223. The darker rows above row 64 are not used for the IoU.}
-    \label{fig:c6_edgenet_examples}
+    \pgfplotsset{
+        steermain/.style={
+            width=0.85\linewidth, height=0.42\linewidth,
+            xmin=-80, xmax=80, ymin=-0.7, ymax=0.7,
+            xtick={-80,-60,-40,-20,0,20,40,60,80}, ytick={-0.58,-0.3,0,0.3,0.58},
+            ytick pos=left,
+            yticklabels={$-0.58$,$-0.3$,$0$,$0.3$,$0.58$},
+            xlabel={$e_{\mathrm{cmd}}$ (px)},
+            ylabel={$\omega^{*}$ (rad/s)},
+            grid=both, grid style={gray!20},
+            tick label style={font=\scriptsize}, label style={font=\footnotesize}, title style={font=\footnotesize},
+            legend style={font=\scriptsize, draw=none, fill=white, fill opacity=0.8, text opacity=1, at={(0.97,0.97)}, anchor=north east},
+            legend cell align=left,
+            every axis plot/.append style={line width=0.9pt, mark=none},
+            samples=400,
+        },
+        steerright/.style={
+            width=0.85\linewidth, height=0.42\linewidth,
+            xmin=-80, xmax=80, ymin=-0.7, ymax=0.7,
+            axis x line=none, axis y line*=right,
+            ytick={-0.5774,-0.3640,-0.1763,0,0.1763,0.3640,0.5774},
+            yticklabels={$-30$,$-20$,$-10$,$0$,$10$,$20$,$30$},
+            ylabel={Steering angle $\delta = \arctan(\omega)$ ($^\circ$)},
+            tick label style={font=\scriptsize}, label style={font=\footnotesize}, title style={font=\footnotesize},
+        },
+    }
+    \begin{tikzpicture}
+        \begin{axis}[steermain, title={(a) $K_p = 1.2$, different confidences}]
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {0.58};
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {-0.58};
+            \addplot[forget plot, black, domain=-4:4, samples=2] {0};
+            \addplot[blue!70!black, domain=4:80] {max(-0.58, -1.2*(0.6+0.4*1)*x/112)};
+            \addlegendentry{$C=1$}
+            \addplot[forget plot, blue!70!black, domain=-80:-4] {min(0.58, -1.2*(0.6+0.4*1)*x/112)};
+            \addplot[orange!90!black, dash pattern=on 4pt off 2pt, domain=4:80] {max(-0.58, -1.2*(0.6+0.4*0.60)*x/112)};
+            \addlegendentry{$C=0.60$}
+            \addplot[forget plot, orange!90!black, dash pattern=on 4pt off 2pt, domain=-80:-4] {min(0.58, -1.2*(0.6+0.4*0.60)*x/112)};
+            \addplot[green!50!black, dash pattern=on 1pt off 2pt, domain=4:80] {max(-0.58, -1.2*(0.6+0.4*0.38)*x/112)};
+            \addlegendentry{$C=0.38$}
+            \addplot[forget plot, green!50!black, dash pattern=on 1pt off 2pt, domain=-80:-4] {min(0.58, -1.2*(0.6+0.4*0.38)*x/112)};
+        \end{axis}
+        \begin{axis}[steerright, title={\phantom{(a)}}]
+            \addplot[draw=none, forget plot] coordinates {(0,0)};
+        \end{axis}
+    \end{tikzpicture}
+
+    \vspace{6pt}
+    \begin{tikzpicture}
+        \begin{axis}[steermain, title={(b) $C = 1$, different gains}]
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {0.58};
+            \addplot[gray, dashed, forget plot, domain=-80:80, samples=2] {-0.58};
+            \addplot[forget plot, black, domain=-4:4, samples=2] {0};
+            \addplot[red!70!black, dash pattern=on 4pt off 2pt, domain=4:80] {max(-0.58, -1.8*x/112)};
+            \addlegendentry{$K_p=1.8$}
+            \addplot[forget plot, red!70!black, dash pattern=on 4pt off 2pt, domain=-80:-4] {min(0.58, -1.8*x/112)};
+            \addplot[blue!70!black, domain=4:80] {max(-0.58, -1.2*x/112)};
+            \addlegendentry{$K_p=1.2$}
+            \addplot[forget plot, blue!70!black, domain=-80:-4] {min(0.58, -1.2*x/112)};
+            \addplot[violet!80!black, dash pattern=on 1pt off 2pt, domain=4:80] {max(-0.58, -0.9*x/112)};
+            \addlegendentry{$K_p=0.9$}
+            \addplot[forget plot, violet!80!black, dash pattern=on 1pt off 2pt, domain=-80:-4] {min(0.58, -0.9*x/112)};
+        \end{axis}
+        \begin{axis}[steerright, title={\phantom{(b)}}]
+            \addplot[draw=none, forget plot] coordinates {(0,0)};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Angular velocity target $\omega^{*}$ of Equation~\eqref{eq:control_law_omega} as a function of the command error $e_{\mathrm{cmd}}$. (a) Effect of the confidence, with the gain used on the robot, $K_p = 1.2$. The curves are for $C = 1$, $C = 0.60$ (threshold between \texttt{ok} and \texttt{degraded}) and $C = 0.38$ (threshold below which the status is \texttt{lost}). (b) Effect of the gain, with $C = 1$. The command saturates at 36~px with $K_p = 1.8$, at 54~px with $K_p = 1.2$ and at 72~px with $K_p = 0.9$. In both plots the command is zero inside the deadband ($|e_{\mathrm{cmd}}| < 4$~px) and is limited to $\pm 0.58$~rad/s. The right axis gives the corresponding steering angle $\delta$ at $v = 0.20$~m/s, where Equation~\eqref{eq:4ws_steering_angle} becomes $\delta = \arctan(\omega)$, so 0.58~rad/s corresponds to $30^\circ$.}
+    \label{fig:steering_law}
 \end{figure}
 
-\section{Baseline extractors}
-\label{sec:c6_baseline_algorithms}
+A second EMA smooths the angular velocity sent to the robot, $\omega_k = (1 - \alpha_w)\,\omega_{k-1} + \alpha_w\,\omega^{*}$, with $\alpha_w = 0.30$ at 30 frames per second (converted with Equation~\eqref{eq:alpha_dt}, so this filter is also independent of the frame rate). The linear velocity $v$ is constant.
 
-\textit{Strip-IRLS} and \textit{EdgeNet} are compared with the three geometric baselines of this section.
 
-\subsection{Center points}
-\label{subsec:c6_center_baseline}
 
-\textit{Center points} uses the same mask cleaning, ROI and interval extraction as \textit{Strip-IRLS}, but with $N=24$ strips. Each interval is reduced to its midpoint $c=(\ell+r)/2$ and its width $d=r-\ell+1$. The seed is the interval of the bottom six strips with the most path pixels. Intervals are associated upward with the cost
+The values of $K_p$ and $\omega_{\max}$ above hold for $v = 0.20$~m/s. The steering angle of Equation~\eqref{eq:4ws_steering_angle} depends on the ratio $\omega / v$, so at a higher speed the same $\omega$ turns the wheels less. If only $v$ is increased, the robot steers less for the same error and can no longer reach the maximum steering angle of $30^\circ$. At $v = 0.50$~m/s, for example, $\omega_{\max} = 0.58$~rad/s gives at most $13^\circ$.
+
+This can be a desired behavior. The same steering angle gives the same turning radius $R$ at any speed (Equation~\eqref{eq:turning_radius_4ws}), so the lateral acceleration $v^2/R$ grows with the square of the speed, and steering less at a higher speed keeps it lower.
+
+If instead the same steering angle is wanted for each error, $\omega_{\max}$ and $K_p$ can be multiplied by the same factor as $v$:
 \begin{equation}
-    J_i = |c_i - c_p| + 0.4\, |d_i - d_p|,
-    \label{eq:c6_center_cost}
+    \omega_{\max} = \frac{2\, v \tan 30^\circ}{L} \approx 2.89\, v, \qquad K_p = 1.2\, \frac{v}{0.20~\text{m/s}}.
+    \label{eq:speed_scaling}
 \end{equation}
-where $c_p$ and $d_p$ are the midpoint and width of the last accepted interval, under the jump limit $|c_i - c_p| \le \max(28, 0.5\, d_p)$. The stopping rule and the minimum of three intervals are those of \textit{Strip-IRLS}.
+In this way $\omega_{\max}$ still corresponds to $30^\circ$ and each error gives the same steering angle as at 0.20~m/s. At $v = 0.30$~m/s, for example, $\omega_{\max} = 0.87$~rad/s and $K_p = 1.8$.
 
-One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c6_reweight}, starting from weights proportional to the pixel count of each interval. Clipped intervals are not excluded. The confidence combines tracking, fit, width regularity and gap scores similar to those of \textit{Strip-IRLS} (Section~\ref{sec:c6_output}), with weights 0.30, 0.35, 0.25 and 0.10. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the confidence is below 0.38, and \texttt{degraded} if it is below 0.60. Section~\ref{sec:c6_tradeoffs_and_limitations} discusses the effect of forming the midpoints before the fit.
+\paragraph{Missing centerline and stop.}
+When the status is \texttt{lost} or no centerline is available, the node keeps the last filtered error for up to $t_{\mathrm{hold}} = 0.5$~s. After this time it publishes a zero velocity command. After a stop, the error filter restarts from the first new measurement and the filter of the angular velocity from zero. Table~\ref{tab:controller_parameters} lists the parameters used on the robot.
 
-\subsection{Column histogram}
-\label{subsec:c6_histogram_baseline}
-
-\textit{Column histogram} is a simplified version of SegMin (Section~\ref{subsec:histogram_methods}). It uses the path mask of a single frame instead of a plant mask accumulated over frames and refined with depth, it does not smooth the profile, and it takes the maximum instead of the minimum~\cite{navone2025gpsfree}. It cleans the ROI from row 67 as \textit{Strip-IRLS}, removes the components with fewer than 500 pixels and counts the path pixels of each column. The target column $x_{\text{target}}$ is the column with the most path pixels, or the center of the widest group of adjacent columns with the maximum count. If two groups have the same width, the result is \texttt{lost}. The confidence is the maximum count divided by the ROI height, with the thresholds 0.38 and 0.60. The output is the vertical line $x=x_{\text{target}}$, a lateral position without heading.
-
-\subsection{RANSAC edges}
-\label{subsec:c6_ransac_baseline}
-
-The works of Section~\ref{subsec:ransac_methods} fit RANSAC lines to points of the crop rows. \textit{RANSAC edges} fits them to the edges of the segmented corridor. It cleans the ROI from row 67 as \textit{Strip-IRLS} and keeps one large connected component that starts low in the image. The leftmost and rightmost pixels of each row of the component are the edge points, except in rows where they are less than 10~px apart and at the image border.
-
-Each edge is fitted with RANSAC~\cite{fischler1981ransac}: in 100 trials, two random points define a line, and the points within 18~px of it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines. The result is \texttt{lost} if an edge has fewer than 10 points or spans fewer than 20 rows, as at the end of a row, if the component has fewer than 1000 pixels in the ROI, or if the mean fraction of inliers is below 0.30. Otherwise a score combines the fraction of inliers, their residual, the vertical extent of the component and the regularity of its width, with the thresholds 0.38 and 0.60.
-
-\section{Structural differences and limitations}
-\label{sec:c6_tradeoffs_and_limitations}
-
-Table~\ref{tab:c6_algorithm_tradeoffs} summarizes how the five extractors differ in their code. It does not describe measured performance, which is reported in Chapter~\ref{cap:experiments}.
-
-\begin{table}[htbp]
+\begin{table}[!htb]
     \centering
-    \footnotesize
-    \setlength{\tabcolsep}{4pt}
-    \renewcommand{\arraystretch}{1.3}
-    \renewcommand{\tabularxcolumn}[1]{m{#1}}
-    \caption{Structural comparison of the five extractors. Row extremes are the leftmost and rightmost pixels of the selected component in each ROI row. LS is a least-squares refit on the inliers.}
-    \label{tab:c6_algorithm_tradeoffs}
-    \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}m{3.6cm}*{5}{>{\centering\arraybackslash}X}@{}}
+    \small
+    \caption{Parameters of the error filter and of the steering law used on Demetra.}
+    \label{tab:controller_parameters}
+    \begin{tabularx}{\textwidth}{@{}X l l@{}}
         \toprule
-        Characteristic & Strip-IRLS & EdgeNet & Center points & Column histogram & RANSAC edges \\
+        Parameter & Symbol & Value \\
         \midrule
-        Output & Line & Line & Line & Vertical line & Line \\
-        Heading estimate & Yes & Yes & Yes & No & Yes \\
-        First row used & 64 & 0 (network), 64 (IoU) & 56 & 67 & 67 \\
-        Mask cleaning & Open, close, $\geq$500 px & None & Open, close, $\geq$500 px & Open, close, $\geq$500 px & Open, close, one component $\geq$500 px \\
-        Edges fitted separately & Yes & Regressed & No & N/A & Yes \\
-        Edge points & Chain endpoints & N/A & N/A & N/A & Row extremes \\
-        Clipped endpoints excluded & Yes & N/A & No & N/A & Yes \\
-        Bottom-up seed and jump limit & Yes & No & Yes & No & No \\
-        Line estimator & IRLS & CNN regression & IRLS & N/A & RANSAC, LS \\
+        Input resolution ($W \times H$) & -- & $224 \times 224$ px \\
+        Reference row & $y_{\mathrm{ref}}$ & 156 px \\
+        Reference frame rate of the smoothing factors & -- & 30 fps \\
+        Smoothing factor, status \texttt{ok} & $\alpha_{\mathrm{ok}}$ & 0.20 \\
+        Smoothing factor, status \texttt{degraded} & $\alpha_{\mathrm{deg}}$ & 0.18 \\
+        Jump threshold, status \texttt{ok} & $J_{\mathrm{ok}}$ & 40 px \\
+        Jump threshold, status \texttt{degraded} & $J_{\mathrm{deg}}$ & 38 px \\
+        Frames that confirm a jump & -- & 2 \\
+        Coherence tolerance of two jumps & $J_c$ & 25 px \\
+        Deadband & -- & $\pm 4$ px \\
+        Proportional gain & $K_{p}$ & 1.2 \\
+        Maximum angular velocity & $\omega_{\max}$ & 0.58 rad/s \\
+        Smoothing factor of the angular velocity & $\alpha_w$ & 0.30 \\
+        Linear velocity & $v$ & 0.20 m/s \\
+        Hold time & $t_{\mathrm{hold}}$ & 0.5 s \\
         \bottomrule
     \end{tabularx}
 \end{table}
 
-The main structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c6_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. On the synthetic masks with a widening on one side of the corridor, \textit{Center points} has 11.5\% gross errors and \textit{Strip-IRLS} 3.1\% (Section~\ref{subsubsec:geometric_comparison}).
+\section{Complete pipeline}
+\label{sec:complete_pipeline}
 
-\textit{Strip-IRLS} has three structural limitations:
-\begin{itemize}
-    \item \textbf{Seed dependence.} The seeds are searched only in the bottom six strips. If these contain no interval, the result is \texttt{lost} even if the upper part of the corridor is segmented. If a hole wider than the merging gap and taller than these strips splits the bottom of the corridor, the chain follows only one part (Section~\ref{subsubsec:geometric_comparison}). At a fork above these strips, the chain takes the branch with the lowest cost and never revises it.
-    \item \textbf{Number of parameters.} \textit{Strip-IRLS} has 16 arguments and 13 constants (Table~\ref{tab:c6_defaults}), most of them in pixels of the mask, and several act together. They were set for the camera, its mounting and the fields of this work, and in a new scenario they may need to be adjusted to get the best results (Section~\ref{sec:c6_parameter_setting}).
-    \item \textbf{Missing plants on one side.} The predicted path, and therefore the interval, can widen on that side. Within the jump limit it is accepted, and its endpoint on that side is a wrong sample that only the reweighting can reduce. Beyond the limit the strip is skipped. If the interval reaches the image border, its endpoint on that side gives no sample.
-\end{itemize}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{images/pipeline/pipeline.pdf}
+    \caption{Complete pipeline on the robot.}
+    \label{fig:complete_pipeline}
+\end{figure}
+
+Figure~\ref{fig:complete_pipeline} summarizes the steps that run on the robot for each camera frame. The controller node resizes the color image to $224\times224$ pixels, and the segmentation network turns it into the path mask (Chapter~\ref{cap:segmentation}). The path extractor turns the mask into the centerline (Chapter~\ref{cap:geometric_reference}). The controller computes the lateral error $e$ at row $y_{\mathrm{ref}}=156$, filters it and gives the command $(v,\omega)$ (Section~\ref{subsubsec:control_node}). The serial driver converts the command into the speed and the steering angle sent to the microcontroller (Section~\ref{subsec:control_interface}).
+
+\section{Deployment and testing}
+\label{sec:deployment}
+
+\subsection{Timing and latency}
+\label{subsec:timing}
+
+The inference times in Table~\ref{tab:c4_architecture_results} were measured on the training GPU at the original image resolution, so they do not describe the onboard model. The times in this section were measured on the Jetson AGX Orin in the MAXN power mode, with the clock frequencies fixed at their maximum by \texttt{jetson\_clocks}, so that the runs are comparable. For each path extractor, the controller node processed the same recording of a row, played at its original speed, once with the debug video disabled and once with it enabled. For each run, 100 callbacks were measured. Table~\ref{tab:jetson_extractors} lists the mean and standard deviation of the time of the path extractor and of the whole callback.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Time of the path extractor and of the whole callback on the Jetson AGX Orin (mean $\pm$ standard deviation, ms). The inference takes about 5.8~ms, and the other steps of the callback (decoding, resizing, filter, command and log) about 4.7~ms without the debug video.}
+    \label{tab:jetson_extractors}
+    \begin{tabular}{@{}l c c c@{}}
+        \toprule
+        Extractor & Path extractor & Callback, debug off & Callback, debug on \\
+        \midrule
+        Strip-IRLS & $11.07 \pm 0.21$ & $21.62 \pm 0.24$ & $53.73 \pm 0.69$ \\
+        EdgeNet & $4.68 \pm 0.18$ & $14.72 \pm 0.22$ & $47.64 \pm 0.71$ \\
+        RANSAC edges & $15.52 \pm 0.24$ & $26.24 \pm 0.28$ & $57.75 \pm 0.77$ \\
+        Center points & $7.27 \pm 0.27$ & $17.97 \pm 0.30$ & $47.40 \pm 0.72$ \\
+        Column histogram & $0.91 \pm 0.04$ & $11.30 \pm 0.14$ & $41.45 \pm 0.31$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Without the debug video, the callback takes from 11.3~ms with Column histogram to 26.2~ms with RANSAC edges, less than the 33.3~ms frame period of the camera. The node therefore processes every camera frame, and at $v=0.20$~m/s the robot moves about 0.67~cm between two processed frames. The debug video adds 29 to 33~ms, and every callback becomes longer than the frame period. The node then processes 17 to 24 frames per second and skips the others, so the robot moves 0.8 to 1.2~cm between two processed frames. The smoothing factors are corrected for the time between frames (Equation~\eqref{eq:alpha_dt}), so the response of the filters in time does not change. The difference between the two cases is small, so the field tests of Chapter~\ref{cap:experiments} were run with the debug video enabled, to record the debug images. In normal operation it should still be disabled, so that every frame is used.
+
+\subsection{Processor-in-the-Loop test}
+\label{subsec:sitl}
+
+Before the field tests, the complete pipeline was tested in the laboratory with the robot raised, so that the wheels could steer without moving the robot. The purpose of the test was to check that the whole chain, from the image to the steering of the wheels, gives steering commands coherent with the position of the row in the image. A simulation node replaces the camera. It publishes a recorded frame of a row on the camera topic at 30 frames per second, and the controller node runs on these frames without changes. Both the simulation node and the controller node ran on the Jetson AGX Orin of the robot, and the driver sent the commands to the real steering actuators. The simulation node keeps the lateral offset $d$ and the heading $\psi$ of a simulated robot with respect to the row. The offset $d$ is positive when the robot is to the right of the center of the row, and $\psi$ is positive when the robot points to the left. At each step of $\Delta t = 1/30$~s, the node converts the velocity command into the steering angle $\delta$ with Equation~\eqref{eq:4ws_steering_angle}, limited to $\pm 30^\circ$, and updates the pose with the kinematic model of the robot:
+\begin{equation}
+    \psi_k = \psi_{k-1} + \frac{2\, v \tan\delta}{L}\, \Delta t, \qquad
+    d_k = d_{k-1} - v \sin\psi_k\, \Delta t.
+    \label{eq:sitl_pose}
+\end{equation}
+It then shifts the frame horizontally by
+\begin{equation}
+    s = -\frac{f}{D}\, d + f\, \psi
+    \label{eq:sitl_shift}
+\end{equation}
+pixels, positive to the right, where $f = 465$~px is the nominal focal length of the camera and $D = 1.25$~m is the assumed distance of the image row where the error is measured. A lateral offset therefore moves the row in the image by $f/D \approx 372$~px per meter, and a rotation by 465~px per radian. During the test, a lateral offset was added from the keyboard. The simulated pose was computed from the velocity command, assuming that the wheels follow the commanded steering angle, and the wheels visibly reached the commanded angle. Figure~\ref{fig:sitl_test} shows three frames of the test.
+
+The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate physical path tracking, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
+
+\begin{figure}[H]
+    \centering
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_a.jpg}}%
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_b.jpg}}%
+    \makebox[0.333\linewidth]{\includegraphics[width=0.27\linewidth]{images/platform/sitl_sim_c.jpg}}\\[4pt]
+    \includegraphics[width=\linewidth]{images/platform/sitl_robot_steer.png}
+    \caption{Processor-in-the-Loop test. Top: frame of the simulation node shifted with Equation~\eqref{eq:sitl_shift}, with the edges (blue and green), the centerline (red) and the lateral error at $y_{\mathrm{ref}}$ (magenta) extracted offline by the network and Strip-IRLS. Bottom: the raised robot during the test, at similar lateral errors. (a) and (b) Lateral error to the left and to the right: the wheels steer toward the center of the row. (c) Error below 1~px: the simulated robot is back at the center and the wheels are straight. The mirrored vegetation comes from the border that the simulation node adds before the shift.}
+    \label{fig:sitl_test}
+\end{figure}
