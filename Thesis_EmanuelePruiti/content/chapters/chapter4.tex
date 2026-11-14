@@ -111,7 +111,7 @@ initialized.
 \label{subsec:c4_training_config}
 
 \subsubsection{Loss function and class weighting}
-To keep the classes with many pixels from dominating the training, the models use a weighted cross-entropy loss $\mathcal{L}_{\text{WCE}}$, in which each pixel is multiplied by the weight $w_c$ of its ground-truth class $c$. The weights are computed on the training split only. With $N_c$ the number of pixels of class $c$ in all the training masks and $C$ the number of classes (four in this comparison),
+The loss is the cross entropy, which penalizes the model when it estimates a low probability for the target class~\cite[Chapter~4]{geron2026handson}. Each pixel is treated as one instance, as in Long et al., whose loss is a sum of per-pixel terms over the output~\cite[Sections~3 and~4]{long2015fcn}. To keep the classes with many pixels from dominating the training, the models use a weighted cross-entropy loss $\mathcal{L}_{\text{WCE}}$, in which each pixel is multiplied by the weight $w_c$ of its ground-truth class $c$. The weights are computed on the training split only. With $N_c$ the number of pixels of class $c$ in all the training masks and $C$ the number of classes (four in this comparison),
 \begin{equation}
     \text{inv}_c = \frac{\sum_{j=0}^{C-1} N_j}{C \cdot N_c}, \qquad w_c = \frac{\text{inv}_c}{\frac{1}{C}\sum_{j=0}^{C-1} \text{inv}_j}.
     \label{eq:class_weights_norm}
