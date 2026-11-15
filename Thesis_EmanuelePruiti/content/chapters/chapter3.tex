@@ -17,7 +17,7 @@ The first layers detect small low-level features, such as lines, and the followi
 
 A segmentation network does not output one class for the whole image, but one class for each pixel of the image. A simple approach starts from a classification network and keeps its first part, which reduces the resolution. In place of the fully connected layers, it has convolutional layers, which compute the class scores at the reduced resolution. Upsampling then increases the resolution until it is the same as that of the input image. The outputs of lower layers, which have a higher resolution, can also be added during the upsampling to recover part of the spatial detail lost in the first part~\cite[Chapter~12]{geron2026handson}. The output therefore contains one logit for each class and each pixel.
 
-In the TorchVision v0.21.0 implementations of FCN, DeepLabV3, and LR-ASPP used in this thesis (Sections~\ref{sec:fcn_arch}--\ref{sec:mobilenet_lraspp}), the first part is a \textit{backbone}, a classification network without its final layers, which extracts the features. A \textit{segmentation head} made of convolutional layers computes the logits from them at 1/8 of the input resolution, and the logits are resized to the input resolution with bilinear interpolation~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}. For example, with $K$ classes and the $224\times224$ input image used on the robot (Section~\ref{subsubsec:control_node}), the logits are a $K\times28\times28$ map, which is resized to $K\times224\times224$.
+The TorchVision v0.21.0 implementations of FCN, DeepLabV3, and LR-ASPP used in this thesis (Sections~\ref{sec:fcn_arch}--\ref{sec:mobilenet_lraspp}) consist of two parts. The \textit{backbone}, a classification network without its final layers, extracts the features. The \textit{segmentation head}, made of convolutional layers, computes the logits from them at 1/8 of the input resolution. The logits are then resized to the input resolution with bilinear interpolation~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}. For example, with $K$ classes and the $224\times224$ input image used on the robot (Section~\ref{subsubsec:control_node}), the logits are a $K\times28\times28$ map, which is resized to $K\times224\times224$.
 
 \section{Fully Convolutional Network (FCN)}
 \label{sec:fcn_arch}
@@ -35,7 +35,7 @@ With VGG-16, this map is 32 times smaller than the input image (stride 32), whic
     \item \textbf{FCN-16s} adds a $1\times1$ convolution on the stride-16 layer \texttt{pool4} to produce additional class predictions. It sums them with the stride-32 predictions upsampled by 2, and upsamples the result to the image.
     \item \textbf{FCN-8s} repeats the same step with the stride-8 layer \texttt{pool3}.
 \end{itemize}
-The upsampling layers are backwards strided convolutions, also called deconvolutions. The $2\times$ upsampling layers are initialized to bilinear interpolation and then learned~\cite[Sections~3.3 and~4.2]{long2015fcn}.
+The upsampling layers are backwards strided convolutions, also called deconvolutions, whose filters can be learned~\cite[Section~3.3]{long2015fcn}.
 
 \begin{figure}[!htb]
   \centering
