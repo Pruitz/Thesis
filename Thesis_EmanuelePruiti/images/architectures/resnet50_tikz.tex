@@ -1,0 +1,33 @@
+% Architettura di ResNet-50 come backbone di fcn_resnet50 e deeplabv3_resnet50.
+% Numeri: He et al. 2016, Table 1 (colonna 50-layer) e TorchVision v0.21.0
+% (resnet.py: Bottleneck, [3, 4, 6, 3], expansion 4; fcn.py/deeplabv3.py:
+% replace_stride_with_dilation=[False, True, True], return_layers fino a layer4).
+\begin{tikzpicture}[
+    font=\scriptsize,
+    node distance=0.22cm,
+    blk/.style={draw=black!60, rounded corners=1pt, align=center, minimum height=1.25cm, minimum width=1.55cm, inner sep=2pt},
+    stem/.style={blk, fill=black!8},
+    res/.style={blk, fill=orange!25},
+    atr/.style={blk, fill=orange!55},
+    cut/.style={blk, draw=black!40, dashed, text=black!50},
+    arr/.style={-{Stealth[length=3pt]}, black!70},
+    os/.style={font=\scriptsize, black!75, align=center},
+  ]
+  \node[stem] (c1) {conv1\\ $7\times7$, 64\\ stride 2};
+  \node[stem, right=of c1] (mp) {max pool\\ $3\times3$\\ stride 2};
+  \node[res,  right=of mp] (l1) {\texttt{layer1}\\ 3 blocks\\ 256 ch.};
+  \node[res,  right=of l1] (l2) {\texttt{layer2}\\ 4 blocks\\ 512 ch.};
+  \node[atr,  right=of l2] (l3) {\texttt{layer3}\\ 6 blocks\\ 1024 ch.};
+  \node[atr,  right=of l3] (l4) {\texttt{layer4}\\ 3 blocks\\ 2048 ch.};
+  \node[cut,  right=of l4] (fc) {avg pool\\ fc 1000};
+  \foreach \a/\b in {c1/mp, mp/l1, l1/l2, l2/l3, l3/l4} \draw[arr] (\a) -- (\b);
+  \draw[arr, dashed, black!40] (l4) -- (fc);
+  % output stride: He et al. (classificazione) e TorchVision (segmentazione)
+  \node[os, anchor=east] at ($(c1.south west)+(-0.1,-0.35)$) {OS, He et al.};
+  \node[os, anchor=east] at ($(c1.south west)+(-0.1,-0.75)$) {OS, TorchVision};
+  \foreach \n/\h/\t in {c1/2/2, mp/4/4, l1/4/4, l2/8/8, l3/16/\textbf{8}, l4/32/\textbf{8}} {
+    \node[os] at ($(\n.south)+(0,-0.35)$) {\h};
+    \node[os] at ($(\n.south)+(0,-0.75)$) {\t};
+  }
+  \node[os, text=black!50] at ($(fc.south)+(0,-0.55)$) {removed};
+\end{tikzpicture}%
