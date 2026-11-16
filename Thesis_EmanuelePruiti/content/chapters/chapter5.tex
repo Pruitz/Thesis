@@ -36,7 +36,7 @@ The edges need not be parallel, so the modeled width can decrease toward the top
 \subsection{Region of interest and mask cleaning}
 \label{sec:c5_roi}
 
-Like the three baselines of Section~\ref{sec:c5_baseline_algorithms}, \textit{Strip-IRLS} uses only the lower part of the mask, the region of interest (ROI). The upper rows, where the path is not visible or cannot be distinguished, are excluded (Figure~\ref{fig:c5_roi}). The ROI starts at row $\lfloor\rho H\rfloor$ and ends at the bottom of the image. The ratio $\rho$ must be chosen based on the position of the camera and on the path, which together set the highest row where the path appears in the image. The ROI should contain the path and as few other rows as possible (Section~\ref{sec:c5_parameter_setting}). On the robot, $\rho=0.30$, chosen on the development data (Section~\ref{subsubsec:c7_parameters}), gives row 67. When needed, \textit{Strip-IRLS} extends the ROI slightly upward, so that it is filled exactly by strips of equal height (Section~\ref{sec:c5_candidates}). On the robot, the ROI is extended from row 67 to row 64.
+Like the three baselines of Section~\ref{sec:c5_baseline_algorithms}, \textit{Strip-IRLS} uses only the lower part of the mask, the region of interest (ROI). The upper rows, where the path is not visible or cannot be distinguished, are excluded (Figure~\ref{fig:c5_roi}). The ROI starts at row $\lfloor\rho H\rfloor$ and ends at the bottom of the image. The ratio $\rho$ must be chosen based on the position of the camera and on the path, which together set the highest row where the path appears in the image. The ROI should contain the path and as few other rows as possible (Section~\ref{sec:c5_parameter_setting}). On the robot, $\rho=0.30$, chosen on the synthetic development masks, gives row 67. When needed, \textit{Strip-IRLS} extends the ROI slightly upward, so that it is filled exactly by strips of equal height (Section~\ref{sec:c5_candidates}). On the robot, the ROI is extended from row 67 to row 64.
 
 The path pixels inside the ROI are cleaned before the intervals are extracted. An opening with a $5\times5$ elliptical kernel removes thin protrusions and small isolated regions, then a closing with a $9\times9$ rectangular kernel fills small holes and gaps. The three baselines apply the same opening and closing. Finally, the connected components with fewer than 500 pixels are removed. In Figure~\ref{fig:c5_roi}, the dark gray regions inside the ROI are the pixels removed by the cleaning. Only the remaining path pixels, the cleaned mask $\widetilde M$, are passed to the interval extraction.
 
@@ -162,7 +162,7 @@ For a \texttt{lost} result, no centerline model is returned. Otherwise, the cent
 \subsection{Setting the parameters}
 \label{sec:c5_parameter_setting}
 
-Table~\ref{tab:c5_defaults} lists the parameters of \textit{Strip-IRLS} on the robot. Distances and areas are in pixels of the $224\times224$ mask, so the values depend on the camera mounting and on the resizing of Section~\ref{sec:c5_input}. The ROI start and the merging gap were chosen on the development data, and the strips of 10 rows and the ten reweighting iterations were checked on the same data (Section~\ref{subsec:geometric_accuracy}). The other values were set by hand during the development, on the synthetic development masks. The main parameters are listed below.
+Table~\ref{tab:c5_defaults} lists the parameters of \textit{Strip-IRLS} on the robot. Distances and areas are in pixels of the $224\times224$ mask, so the values depend on the camera mounting and on the resizing of Section~\ref{sec:c5_input}. The parameters were set by hand on the synthetic development masks of seed 0 (Section~\ref{subsec:geometric_accuracy}). The annotated frames were not used to choose them. The main parameters are listed below.
 
 \begin{table}[H]
     \centering
@@ -216,6 +216,27 @@ Table~\ref{tab:c5_defaults} lists the parameters of \textit{Strip-IRLS} on the r
     \item \textbf{Residual scale $\sigma$.} Samples much closer to the line than $\sigma$ keep almost all their weight, and samples much farther lose most of it. $\sigma$ should therefore be larger than the distance of the correct samples, which comes from the irregular edges of the mask, and smaller than the distance of the outliers. A smaller $\sigma$ lowers $F$, so more results are \texttt{degraded} or \texttt{lost}. A larger $\sigma$ keeps the outliers in the fit and raises the threshold $2\sigma$.
     \item \textbf{Status thresholds.} Higher thresholds give more \texttt{lost} and \texttt{degraded} results, which the controller filters differently (Section~\ref{subsubsec:control_node}).
 \end{itemize}
+The scenarios are listed in Table~\ref{tab:c7_scenarios}, and the gross errors are defined in Section~\ref{subsec:geometric_accuracy}. Moving the ROI start from $\rho=0.50$ to $\rho=0.30$, with a merging gap of 30~px, lowered the gross errors on the base scenarios of the development masks from 5.8\% to 0.3\% and on \texttt{hole\_bottom\_tall} from 100\% to 1.0\%. Table~\ref{tab:c5_gap} shows the effect of the merging gap with $\rho=0.30$. A larger gap joins more holes inside the corridor but also more rows between adjacent corridors. An earlier version, with strips of 9 rows, used a gap of 40~px. With the final strips of 10 rows, a gap of 30~px gives the fewest gross errors on the base scenarios (0.3\%) and on the adjacent corridors and the curve (1.3\%).
+
+\begin{table}[t]
+    \centering
+    \footnotesize
+    \caption{Effect of the merging gap of Strip-IRLS ($\rho=0.30$) on the synthetic development masks: gross error rate (\%) on the masks of seed 0. Gross errors are errors above 15~px at $y_{\mathrm{ref}}=156$ on the non-\texttt{lost} frames (Section~\ref{subsec:geometric_accuracy}).}
+    \label{tab:c5_gap}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}rcccc@{}}
+        \toprule
+        Gap (px) & Base scenarios & Adjacent and curve & \texttt{hole\_bottom\_tall} & \texttt{adjacent+offset} \\
+        \midrule
+        20 & 0.4 & 2.5 & 4.0 & 3.0 \\
+        30 & 0.3 & 1.3 & 1.0 & 3.1 \\
+        40 & 0.4 & 5.1 & 0.0 & 15.0 \\
+        50 & 0.5 & 10.8 & 0.0 & 40.9 \\
+        60 & 0.7 & 18.8 & 0.0 & 74.2 \\
+        \bottomrule
+    \end{tabular}}
+\end{table}
+
 The values are set for the camera, its mounting and the fields of this work. With another camera, mounting or crop, they may need to be adjusted to get the best results. This is one of the reasons for \textit{EdgeNet} (Section~\ref{sec:c5_network}).
 
 \section{EdgeNet, an edge regression network}
@@ -247,7 +268,7 @@ The labels are the positions of the edge lines of the corridor model at rows 156
 
 The loss is the sum of three terms: a smooth L1 loss on the four edge positions, twice the same loss on the centerline at row 156, which is the value used by the controller, and 0.2 times the binary cross-entropy of the validity. The first two terms are computed only on masks with a valid corridor.
 
-Figure~\ref{fig:c5_edgenet_examples} shows three validation masks with their labels and three masks of the field tests with the lines estimated by the network. The network is evaluated on the synthetic test masks in Section~\ref{subsec:geometric_accuracy} and in the field in Section~\ref{sec:field_validation}.
+Figure~\ref{fig:c5_edgenet_examples} shows three validation masks with their labels and three masks of the field tests with the lines estimated by the network. The network is evaluated offline in Section~\ref{sec:offline_evaluation} and in the field in Section~\ref{sec:field_validation}.
 
 \begin{figure}[H]
     \centering

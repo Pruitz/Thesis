@@ -1,0 +1,52 @@
+% Teste di fcn_resnet50, deeplabv3_resnet50 e lraspp_mobilenet_v3_large (TorchVision v0.21.0),
+% ingresso 224x224, K classi. FCNHead: fcn.py:36-46. DeepLabHead e ASPP: deeplabv3.py:48-113.
+% ASPPPooling: deeplabv3.py:69-82 (avgpool, conv 1x1, BN, ReLU, interpolate).
+% LRASPPHead: lraspp.py:54-79. Upsampling finale: _utils.py:28 (FCN, DeepLabV3), lraspp.py:46 (LR-ASPP).
+\begin{tikzpicture}[font=\scriptsize,
+  b/.style={draw=black!60, rounded corners=1pt, align=center, inner sep=2pt, minimum height=0.95cm},
+  w/.style={b, minimum width=3.9cm},
+  m/.style={b, minimum width=2.35cm},
+  s/.style={draw=black!60, rounded corners=1pt, align=center, inner sep=1pt, minimum width=0.84cm, minimum height=0.95cm, font=\tiny, fill=orange!30},
+  op/.style={circle, draw=black!70, inner sep=1pt, font=\small},
+  a/.style={-{Stealth[length=3pt]}, black!70},
+  t/.style={font=\small\bfseries, align=center}]
+  % ---------------- FCN
+  \node[t] at (1.2,0.45) {FCN\\[-1pt]\texttt{\footnotesize FCNHead}};
+  \node[w, fill=black!8]   (f0) at (1.2,-0.8) {output of \texttt{layer4}\\$2048\times28\times28$};
+  \node[w, fill=orange!30] (f1) at (1.2,-2.2) {conv $3\times3$, 512 filters\\BN, ReLU, dropout\\$512\times28\times28$};
+  \node[w, fill=blue!20]   (f2) at (1.2,-3.6) {conv $1\times1$, $K$ filters\\logits $K\times28\times28$};
+  \node[w, fill=blue!35]   (f3) at (1.2,-5.0) {bilinear $\times8$\\$K\times224\times224$};
+  \draw[a] (f0)--(f1); \draw[a] (f1)--(f2); \draw[a] (f2)--(f3);
+  % ---------------- DeepLabV3
+  \node[t] at (7.4,0.45) {DeepLabV3\\[-1pt]\texttt{\footnotesize DeepLabHead}};
+  \node[w, fill=black!8, minimum width=4.6cm] (d0) at (7.4,-0.8) {output of \texttt{layer4}\\$2048\times28\times28$};
+  \foreach \i/\x/\lab in {1/5.56/{$1\times1$}, 2/6.48/{$3\times3$\\rate 12}, 3/7.4/{$3\times3$\\rate 24}, 4/8.32/{$3\times3$\\rate 36}} {
+    \node[s] (r\i) at (\x,-2.2) {\lab};
+  }
+  \node[s, fill=blue!12, minimum width=1.12cm] (r5) at (9.4,-2.2) {avg. pool,\\conv $1\times1$,\\upsample};
+  \foreach \i in {1,...,5} \draw[a] (d0.south -| r\i.north) -- (r\i.north);
+  \node[align=right, anchor=east, font=\scriptsize, text=black!85] at (5.08,-2.2) {ASPP:\\5 branches,\\256 filters\\each,\\BN, ReLU};
+  \node[b, fill=orange!45, minimum width=4.6cm] (d2) at (7.4,-3.7) {concatenation $1280\times28\times28$\\conv $1\times1$, 256 filters, BN, ReLU, dropout};
+  \foreach \i in {1,...,5} \draw[a] (r\i.south) -- (r\i.south |- d2.north);
+  \node[b, fill=orange!30, minimum width=4.6cm] (d3) at (7.4,-5.0) {conv $3\times3$, 256 filters, BN, ReLU\\$256\times28\times28$};
+  \node[b, fill=blue!20, minimum width=4.6cm]   (d4) at (7.4,-6.3) {conv $1\times1$, $K$ filters\\logits $K\times28\times28$};
+  \node[b, fill=blue!35, minimum width=4.6cm]   (d5) at (7.4,-7.6) {bilinear $\times8$\\$K\times224\times224$};
+  \draw[a] (d2)--(d3); \draw[a] (d3)--(d4); \draw[a] (d4)--(d5);
+  % ---------------- LR-ASPP
+  \node[t] at (13.7,0.45) {LR-ASPP\\[-1pt]\texttt{\footnotesize LRASPPHead}};
+  \node[b, fill=black!8, minimum width=4.7cm] (l0) at (12.75,-0.8) {high-level features\\$960\times14\times14$};
+  \node[m, fill=orange!30, minimum width=2.5cm] (l1) at (11.35,-2.2) {conv $1\times1$, 128\\BN, ReLU\\$128\times14\times14$};
+  \node[m, fill=blue!12, minimum width=2.5cm]   (l2) at (14.15,-2.2) {global avg. pooling\\conv $1\times1$, 128\\sigmoid: $128\times1\times1$};
+  \node[op] (lm) at (12.75,-3.4) {$\times$};
+  \node[m, fill=white, minimum width=3.0cm] (l3) at (12.75,-4.5) {bilinear $\times2$\\$128\times28\times28$};
+  \node[m, fill=blue!20, minimum width=3.0cm]   (l4) at (12.75,-5.8) {conv $1\times1$, $K$ filters\\$K\times28\times28$};
+  \node[m, fill=black!8, minimum width=2.1cm] (lo) at (15.75,-4.5) {low-level\\features\\$40\times28\times28$};
+  \node[m, fill=blue!20, minimum width=2.1cm] (l5) at (15.75,-5.8) {conv $1\times1$\\$K$ filters\\$K\times28\times28$};
+  \node[op] (ls) at (12.75,-6.95) {$+$};
+  \node[anchor=east, font=\scriptsize] at (12.45,-6.95) {logits $K\times28\times28$};
+  \node[m, fill=blue!35, minimum width=3.0cm] (l6) at (12.75,-7.95) {bilinear $\times8$, $K\times224\times224$};
+  \draw[a] (l0.south -| l1.north) -- (l1.north); \draw[a] (l0.south -| l2.north) -- (l2.north);
+  \draw[a] (l1) -- (lm); \draw[a] (l2) -- (lm); \draw[a] (lm) -- (l3); \draw[a] (l3) -- (l4); \draw[a] (l4) -- (ls);
+  \draw[a] (lo) -- (l5); \draw[a] (l5.south) |- (ls.east);
+  \draw[a] (ls) -- (l6);
+\end{tikzpicture}%

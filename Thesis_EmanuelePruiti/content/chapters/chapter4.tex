@@ -146,7 +146,7 @@ The three networks are evaluated on the 77 test images with the intersection ove
     \text{IoU}_c = \frac{\text{TP}_c}{\text{TP}_c + \text{FP}_c + \text{FN}_c},
     \label{eq:eval_iou}
 \end{equation}
-where $\text{TP}_c$, $\text{FP}_c$, and $\text{FN}_c$ are the true positive, false positive, and false negative pixels of class $c$. The mIoU is the mean over the four classes, background included. The inference time is measured on the training GPU, not on the robot (Section~\ref{subsec:timing}), one image at a time at its original resolution, and covers the forward pass and the argmax. The epoch column of Table~\ref{tab:c4_architecture_results} gives the epoch with the lowest validation loss, whose weights are evaluated.
+where $\text{TP}_c$, $\text{FP}_c$, and $\text{FN}_c$ are the true positive, false positive, and false negative pixels of class $c$. The mIoU is the mean over the four classes, background included. The inference time is measured on the training GPU, not on the robot (Section~\ref{subsec:timing}), one image at a time at its original resolution, and covers the forward pass and the argmax. For FCN and DeepLabV3, the forward pass also computes the auxiliary classifier, because TorchVision runs it in evaluation mode too~\cite{torchvision_seg_utils}. The epoch column of Table~\ref{tab:c4_architecture_results} gives the epoch with the lowest validation loss, whose weights are evaluated.
 
 FCN and DeepLabV3 reach the same mIoU (0.9253), 1.08 percentage points
 above LR-ASPP, and LR-ASPP has the lowest IoU in every class
@@ -166,9 +166,10 @@ the absolute values are not comparable across networks.
     \centering
     \small
     \caption{Architecture comparison on the 77 test images of the manual
-    lettuce dataset. Parameter counts refer to the trained
+    lettuce dataset. Parameter counts and inference times refer to the trained
     four-class models and include the auxiliary classifier of FCN and
-    DeepLabV3, which is used only during training.}
+    DeepLabV3, which is used only in the loss, not in the
+    prediction.}
     \label{tab:c4_architecture_results}
     \sisetup{group-digits=false}
     \begin{tabular}{@{}l
@@ -354,7 +355,7 @@ Each SAM~3-supervised network is compared with the manual baseline on the classe
 
 In the four-class network, the IoU of the covering material and of the background is low. Visual inspection of the SAM~3 masks showed that SAM~3 segmented the covering material poorly in general and also assigned the greenhouse plastic cover to this class, which is background in the manual masks. With an mIoU of 0.5925 in the realistic scenario, against 0.9113 for the manual baseline, the four-class SAM~3 labels do not replace manual annotation when all four classes are needed.
 
-All SAM~3-supervised networks lose much of their path accuracy on the complete test set (path IoU 0.39--0.41), while the manual model does not (0.9532). The drop comes from the five folders outside the operational scenario, whose images were taken from viewpoints the robot cannot reach. In these images the manual masks label only the path the robot should follow. Visual inspection showed that the SAM~3 path labels also cover other parts of the ground, such as adjacent paths and soil outside the corridor, especially where the path between the rows is not clearly visible. The networks learn this wider path class, and the IoU counts the additional ground pixels as false positives. The complete-test values therefore combine segmentation errors and this difference between the SAM~3 and manual labels. The two effects were not separated quantitatively.
+All SAM~3-supervised networks lose much of their path accuracy on the complete test set (path IoU 0.39--0.41), while the manual model does not (0.9532). The drop comes from the five folders outside the operational scenario, whose images were taken from viewpoints the robot cannot reach. In these images the manual masks label only the path the robot should follow. Visual inspection showed that the SAM~3 path labels also cover other parts of the ground (Figure~\ref{fig:segmentation_comparison_crops}a), such as adjacent paths and soil outside the corridor, especially where the path between the rows is not clearly visible. The networks learn this wider path class, and the IoU counts the additional ground pixels as false positives. The complete-test values therefore combine segmentation errors and this difference between the SAM~3 and manual labels. The two effects were not separated quantitatively.
 
 In the realistic scenario, the path IoU of the three SAM~3-supervised networks is between 0.8966 and 0.9013, 5.7 to 6.2 percentage points below the manual baseline (0.9587). The three SAM~3-supervised networks differ from each other by less than 0.5 percentage points, so these data do not show that removing the plant and covering material classes improves path segmentation. The geometric extraction uses only the path class (Chapter~\ref{cap:geometric_reference}), so the binary configuration was chosen for the robot. Whether its accuracy is sufficient for row following is assessed in the offline and field tests of Chapter~\ref{cap:experiments}.
 
@@ -363,7 +364,7 @@ In the realistic scenario, the path IoU of the three SAM~3-supervised networks i
 
 After the lettuce study, the binary labeling was extended to the complete image collection, with images of lettuce, tomato, and cucumber crops, labeled entirely by SAM~3 with the \texttt{central path} prompt and without manual correction. The binary LR-ASPP network trained on this collection is the one deployed on the robot and used in the following chapters (Chapters~\ref{cap:platform} and~\ref{cap:experiments}).
 
-The training data of the deployed network include the lettuce test images, so its IoU on them would not be an independent measure. A second network with the same configuration was therefore trained on the collection without these images (Table~\ref{tab:c4_results_binary_general}). Its results estimate the accuracy of the configuration, not of the exact deployed weights. On the complete test set it is clearly better than the lettuce-only binary network (0.6369 against 0.3917).
+The training data of the deployed network include the lettuce test images, so its IoU on them would not be an independent measure. A second network with the same configuration was therefore trained on the collection without these images (Table~\ref{tab:c4_results_binary_general}). Its results estimate the accuracy of the configuration, not of the exact deployed weights. On the complete test set it is clearly better than the lettuce-only binary network (0.6369 against 0.3917). Figure~\ref{fig:segmentation_comparison_crops}b shows the deployed network on tomato and cucumber images, which have no ground truth.
 
 \begin{table}[!htb]
     \centering
@@ -386,3 +387,18 @@ The training data of the deployed network include the lettuce test images, so it
     \end{tabular}
 \end{table}
 
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{\linewidth}
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/segmentation/lettuce_comparison.png}\\[2pt]
+    {\small (a) Lettuce test images}
+  \end{minipage}\\[8pt]
+  \begin{minipage}{\linewidth}
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/segmentation/crops_comparison.png}\\[2pt]
+    {\small (b) Tomato (top) and cucumber (bottom)}
+  \end{minipage}
+  \caption{Visual comparison of segmentation outputs. (a)~Four of ten test images of the manual lettuce dataset, taken at evenly spaced positions of the test split: RGB image, manual ground truth, and the predictions of the LR-ASPP network trained on the manual labels and of the three LR-ASPP networks trained only on SAM~3 lettuce labels. In the third image the SAM~3 networks mark the whole floor as path, including the strips beside the central corridor, and in the fourth, where the manual ground truth has no path, they mark the soil in front of the robot. (b)~Tomato and cucumber images, which have no ground truth: RGB image and prediction of the binary network installed on the robot, as a qualitative comparison only.}
+  \label{fig:segmentation_comparison_crops}
+\end{figure}
