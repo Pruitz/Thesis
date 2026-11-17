@@ -207,7 +207,7 @@ These results have four limits. The frames of a sequence are not independent, so
 \section{Field validation}
 \label{sec:field_validation}
 
-The five extractors were tested in closed loop on the robot on 4 November 2026. The robot ran the complete chain of Chapter~\ref{cap:platform}, from the camera to the steering commands, with the segmentation network deployed on the robot and with the debug video enabled. Its trajectory was measured with a total station that follows a prism placed at the center of the robot, in a horizontal frame where $Y$ runs approximately along the row and $X$ across it. The centerline of the row is the polyline through five points measured with the same station, with the prism placed by eye on the center of the row. The lateral distance of the robot is its perpendicular distance from this polyline, positive when the robot is on the $+X$ side of it, in both directions of travel. This reference has its own error. The points were placed by eye, and the row is not straight: the intermediate points lie up to 6.3~cm from the line through the first and the last point. The measured lateral distance therefore contains the error of the reference and that of the robot.
+The five extractors were tested in closed loop on the robot on 4 November 2026. The robot ran the complete chain of Chapter~\ref{cap:platform}, from the camera to the steering commands, with the segmentation network deployed on the robot and with the debug video enabled. Its trajectory was measured with a total station that follows a prism placed at the center of the robot. The centerline of the row is the polyline through five points measured with the same station, with the prism placed by eye on the center of the row. Since the points were placed by hand and the row is not perfectly straight, the centerline and the row edges are not accurate to the centimeter. The measured lateral distance therefore contains the error of the reference and that of the robot.
 
 \subsection{Test conditions}
 \label{subsec:test_conditions}
@@ -226,40 +226,47 @@ The tests were made in a row of tomato plants in a tunnel greenhouse. It was a d
 
 Each extractor made two kinds of runs:
 \begin{itemize}
-    \item \textbf{Short runs:} three runs toward the station, from about $Y=14$~m to $Y=3$~m. The robot was placed at the start by hand. The runs are compared from $Y=12.0$ to $Y=4.0$~m. The first part is left out, so that all runs are already under way. The last part is left out because there the robot reaches the end of the row, which is not the aim of these tests.
-    \item \textbf{Full row:} one run along the full row, away from the station. The runs are compared from $Y=14$ to about $Y=40$~m.
+    \item \textbf{Short runs:} three runs toward the station, from about 14 to 3~m from it. The robot was placed at the start by hand. The runs are compared between 12 and 4~m from the station. The first part is left out, so that all runs are already under way. The last part is left out because there the robot reaches the end of the row, which is not the aim of these tests.
+    \item \textbf{Full row:} one run along the full row, away from the station. The runs are compared from 14 to about 40~m from the station.
 \end{itemize}
 
 \subsection{Results}
 \label{subsec:navigation_results}
 
-Figure~\ref{fig:c7_field_short} shows the lateral distance along the short runs and Figure~\ref{fig:c7_field_full} along the full row. Table~\ref{tab:c7_field} summarizes it for all runs. It gives the root mean square of the lateral distance (RMSE), as in the field tests of Navone et al.~\cite[Table~4]{navone2025gpsfree}. All runs are measured from the same reference, placed by eye, so the table also gives two measures that compare the runs with each other: the difference from the other extractors and, for the short runs, the repeatability.
+Figure~\ref{fig:c7_field_short} shows the lateral distance along the short runs and Figure~\ref{fig:c7_field_full} along the full row. Table~\ref{tab:c7_field} summarizes it with four measures. The RMSE is the root mean square of the lateral distance of a run, and the Max is its largest absolute value. Both contain the error of the centerline.
 
+The difference and the repeatability compare runs with each other at the same positions along the row. At a given position the error of the centerline is the same in all runs, so it cancels. The station measures each run at different positions, about every 4~cm on the short runs and every 10~cm on the full row. Each run is therefore interpolated linearly at the same $N$ positions: 400 positions between 4.04 and 11.95~m, the stretch covered by all short runs, about one every 2~cm, on the short runs and 600 positions between 14.1 and 39.6~m, about one every 4.3~cm, on the full row. Here $d_{r,i}$ is the signed lateral distance of run $r=1,\dots,R$ of the extractor at position $i=1,\dots,N$, with $R=3$ on the short runs and $R=1$ on the full row, and $d^{(m)}_{r,i}$ is the same quantity for the $m$-th of the $M$ other extractors.
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.92\linewidth]{images/field/field_short_runs.pdf}
-  \caption{Lateral distance from the row centerline in the three short runs of each extractor, positive toward $+X$. The robot moves from left to right. The gray area, before $Y=12.0$~m, is not used in Table~\ref{tab:c7_field}.}
-  \label{fig:c7_field_short}
-\end{figure}
+At each position $i$, the mean of the runs of the extractor and the mean of the runs of the other extractors are
+\begin{equation}
+    \bar d_i^{\,\mathrm{own}}=\frac{1}{R}\sum_{r=1}^{R}d_{r,i},\qquad
+    \bar d_i^{\,\mathrm{other}}=\frac{1}{M R}\sum_{m=1}^{M}\sum_{r=1}^{R}d^{(m)}_{r,i}.
+    \label{eq:c7_means}
+\end{equation}
+Column histogram is never one of the $M$ other extractors, so that its larger deviations do not enter the difference of the other four. Hence $M=3$, and $M=4$ for Column histogram. The difference of an extractor compares the mean of its runs with the mean of the runs of the other extractors at the same position. It is the RMSE of the differences between the two means:
+\begin{equation}
+    \mathrm{Diff}=\sqrt{\frac{1}{N}\sum_{i=1}^{N}\bigl(\bar d_i^{\,\mathrm{own}}-\bar d_i^{\,\mathrm{other}}\bigr)^2}.
+    \label{eq:c7_diff}
+\end{equation}
+A small difference means that, on average, the extractor drives the robot along the same path as the other extractors.
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\linewidth]{images/field/field_full_row.pdf}
-  \caption{Runs along the full row, one per extractor. (a)~Trajectories measured by the total station, centerline through the reference points measured by hand, and edges of the row, which is about 1~m wide. The gray area is the ground covered by the robot, 45~cm wide, in the five runs. The robot moves away from the station, from left to right. (b)~Lateral distance from the centerline, positive toward $+X$.}
-  \label{fig:c7_field_full}
-\end{figure}
-
-
-Strip-IRLS, EdgeNet, RANSAC edges and Center points give almost the same trajectory. Their RMSE is 5.3 to 5.7~cm on the short runs and 8.6 to 9.4~cm on the full row, but each of them differs from the mean of the other three by only 0.7 to 1.8~cm. The lateral distance they have in common varies from $-1.5$ to $+10.4$~cm on the short runs and from $-6.5$ to $+17.9$~cm on the full row. Their RMSE therefore comes mostly from this common part, and these runs do not rank them. In both directions of travel the common part is mostly toward $+X$, so it comes mainly from the field, from the plants seen by the camera or from the reference. Each of their short runs differs from the mean of the three runs of the same extractor by 0.3 to 0.6~cm, so each of them repeats its trajectory.
-
-Column histogram has an RMSE close to the others, but it differs from them by 6.8~cm on the short runs and 4.1~cm on the full row, and its repeatability is 4.4~cm. It classified every frame between $Y=12.0$ and $Y=5.0$~m as \texttt{ok}, also when its centerline was at the image border (Figure~\ref{fig:c7_field_frames}b and~c). Where the predicted path covers most of the width of the mask, the column with the most path pixels can lie at the border, and the measured error reaches about $\pm110$~px. This gives its largest distance, 13.6~cm, at the end of Run~2.
+The repeatability is the RMSE of the differences between each run of the extractor and the mean of its runs:
+\begin{equation}
+    \mathrm{Rep}=\sqrt{\frac{1}{R\,N}\sum_{r=1}^{R}\sum_{i=1}^{N}\bigl(d_{r,i}-\bar d_i^{\,\mathrm{own}}\bigr)^2}.
+    \label{eq:c7_rep}
+\end{equation}
+It needs more than one run, so it is computed only on the short runs. A small repeatability means that the runs of the extractor follow the same path. Averaging the runs first removes the term $\mathrm{Rep}^2$ from the difference, although a mean of only three runs still keeps part of their spread. Without this average the result would contain both:
+\begin{equation}
+    \frac{1}{R\,N}\sum_{r=1}^{R}\sum_{i=1}^{N}\bigl(d_{r,i}-\bar d_i^{\,\mathrm{other}}\bigr)^2=\mathrm{Diff}^2+\mathrm{Rep}^2.
+    \label{eq:c7_split}
+\end{equation}
+Neither measure shows how close the robot was to the true center of the row, because the part of the lateral distance common to all runs cancels as well.
 
 \begin{table}[H]
     \centering
     \footnotesize
     \setlength{\tabcolsep}{4pt}
-    \caption{Lateral distance from the row centerline in the field tests (cm), on $Y=4.0$--$12.0$~m for the short runs and on $Y=14$--$39.7$~m for the full row. RMSE: root mean square of the lateral distance of a run, given for the short runs as mean and standard deviation over the three runs. Max: largest absolute lateral distance. Difference: root mean square difference from the mean of the runs of the other extractors among Strip-IRLS, EdgeNet, RANSAC edges and Center points, at the same position. Repeatability: root mean square difference of each run from the mean of the three runs of the same extractor.}
+    \caption{Lateral distance from the row centerline in the field tests (cm), between 12 and 4~m from the station for the short runs and between 14 and 39.7~m for the full row. Short runs: RMSE as mean and standard deviation of the three runs.}
     \label{tab:c7_field}
     \resizebox{\textwidth}{!}{%
     \begin{tabular}{@{}lccccccc@{}}
@@ -268,23 +275,46 @@ Column histogram has an RMSE close to the others, but it differs from them by 6.
         \cmidrule(lr){2-5}\cmidrule(lr){6-8}
         Extractor & RMSE & Max & Difference & Repeatability & RMSE & Max & Difference \\
         \midrule
-        Strip-IRLS & $5.7 \pm 0.1$ & 11.0 & 0.7 & 0.6 & 9.0 & 20.4 & 1.7 \\
+        Strip-IRLS & $5.7 \pm 0.1$ & 11.0 & 0.4 & 0.6 & 9.0 & 20.4 & 1.7 \\
         EdgeNet & $5.3 \pm 0.1$ & 10.5 & 0.9 & 0.3 & 8.6 & 16.3 & 1.7 \\
-        RANSAC edges & $5.4 \pm 0.2$ & 10.1 & 1.4 & 0.6 & 9.4 & 18.4 & 1.3 \\
-        Center points & $5.7 \pm 0.0$ & 10.8 & 0.9 & 0.4 & 9.4 & 17.5 & 1.8 \\
-        Column histogram & $5.5 \pm 0.5$ & 13.6 & 6.8 & 4.4 & 9.1 & 17.4 & 4.1 \\
+        RANSAC edges & $5.4 \pm 0.2$ & 10.1 & 1.3 & 0.6 & 9.4 & 18.4 & 1.3 \\
+        Center points & $5.7 \pm 0.0$ & 10.8 & 0.8 & 0.4 & 9.4 & 17.5 & 1.8 \\
+        Column histogram & $5.5 \pm 0.5$ & 13.6 & 5.1 & 4.3 & 9.1 & 17.4 & 4.1 \\
         \bottomrule
     \end{tabular}}
 \end{table}
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\linewidth]{images/field/field_frames.pdf}
-  \caption{Frames recorded by the controller during the short runs. In each example the left image is the camera image with the edges (blue and green) and the centerline (red) estimated by the extractor, and the right image is the region of interest, the cleaned mask on which the extractor operates (Chapter~\ref{cap:platform}), with the same lines. Column histogram estimates only a vertical centerline. The magenta segment is the lateral error. The status and the measured lateral error $e_k$ (positive to the right) are those recorded by the controller for the same frame, and $Y$ is interpolated from the positions measured by the total station. The text that the controller writes on these images was removed. (a)~Sparse plants in the middle of the short runs. (b), (c)~Column histogram with the centerline at the image border and status \texttt{ok}. (d)~Strip-IRLS near the end of the stretch, with the station and the end of the row in view.}
+  \includegraphics[width=0.92\linewidth]{images/field/field_short_runs.pdf}
+  \caption{Lateral distance from the row centerline in the three short runs of each extractor, positive to the right of the centerline as seen from the station. The robot moves from left to right. The gray area, more than 12~m from the station, is not used in Table~\ref{tab:c7_field}.}
+  \label{fig:c7_field_short}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{images/field/field_full_row.pdf}
+  \caption{Runs along the full row, one per extractor. (a)~Trajectories measured by the total station, centerline through the reference points measured by hand, and edges of the row, which is about 1~m wide. The gray area is the ground covered by the robot, 45~cm wide, in the five runs. The robot moves away from the station, from left to right. (b)~Lateral distance from the centerline, positive to the right of it as seen from the station.}
+  \label{fig:c7_field_full}
+\end{figure}
+
+Strip-IRLS, EdgeNet, RANSAC edges and Center points give almost the same trajectory. Their RMSE is 5.3 to 5.7~cm on the short runs and 8.6 to 9.4~cm on the full row, but their difference is only 0.4 to 1.8~cm and their repeatability 0.3 to 0.6~cm. The mean of their runs, the part of the lateral distance they have in common, varies from $-1.5$ to $+10.4$~cm on the short runs and from $-6.5$ to $+17.9$~cm on the full row. Their RMSE therefore comes mostly from this common part, and these runs do not rank them. In both directions of travel the common part is mostly on the same side of the centerline. An offset of the robot itself would change side with the direction of travel, so the common part comes mainly from the field, from the plants seen by the camera or from the reference.
+
+\clearpage
+
+Column histogram has an RMSE close to the others, but its difference is 5.1~cm on the short runs and 4.1~cm on the full row, and its repeatability is 4.3~cm. It classified every frame between 12 and 5~m from the station as \texttt{ok}, also when its centerline was at the image border (Figure~\ref{fig:c7_field_frames}b and~c). Where the predicted path covers most of the width of the mask, the column with the most path pixels can lie at the border, and the measured error reaches about $\pm110$~px. This gives its largest distance, 13.6~cm, at the end of Run~2.
+
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\linewidth]{images/field/field_frames.pdf}
+  \caption{Frames recorded by the controller during the short runs. In each example the left image is the camera image and the right image is the cleaned mask of the region of interest on which the extractor operates (Chapter~\ref{cap:platform}), both with the edges (blue and green) and the centerline (red) estimated by the extractor. Column histogram estimates only a vertical centerline. The magenta segment is the lateral error. The status and the measured lateral error $e_k$ (positive to the right) are those recorded by the controller for the same frame, and the distance from the station in each title is interpolated from the positions measured by the total station. The text that the controller writes on these images was removed. (a)~Sparse plants in the middle of the short runs. (b), (c)~Column histogram with the centerline at the image border and status \texttt{ok}. (d)~Strip-IRLS near the end of the stretch, with the station and the end of the row in view.}
   \label{fig:c7_field_frames}
 \end{figure}
 
-Near the end of the short runs the camera sees the end of the row, the station and the operator (Figure~\ref{fig:c7_field_frames}d). Between $Y=5.0$ and $Y=4.0$~m Strip-IRLS still classified 232 of 241 frames as \texttt{ok}. Between $Y=4.5$ and $Y=4.0$~m EdgeNet classified 46 of 84 frames as \texttt{degraded}, because the predicted path ends below the station and its IoU falls to about 0.6.
+Near the end of the short runs the camera sees the end of the row, the station and the operator (Figure~\ref{fig:c7_field_frames}d). Between 5 and 4~m from the station Strip-IRLS still classified 232 of 241 frames as \texttt{ok}. Between 4.5 and 4~m EdgeNet classified 46 of the 84 frames of its two recorded runs as \texttt{degraded}, because the predicted path ends below the station and its confidence $C$ falls below 0.60.
+
+\clearpage
 
 \section{Discussion}
 \label{sec:discussion}
@@ -303,16 +333,16 @@ Table~\ref{tab:c7_summary} collects the main results of each extractor.
         \cmidrule(lr){2-3}
         Extractor & Base & Adjacent & (\%) & (ms) & (cm) \\
         \midrule
-        Strip-IRLS & 0.7 & 4.3 & 4.3 & 11.07 & 0.7 \\
+        Strip-IRLS & 0.7 & 4.3 & 4.3 & 11.07 & 0.4 \\
         EdgeNet & 0.1 & 8.3 & 5.5 & 4.68 & 0.9 \\
-        RANSAC edges & 0.1 & 24.7 & 3.5 & 15.52 & 1.4 \\
-        Center points & 3.5 & 1.3 & 20.4 & 7.27 & 0.9 \\
-        Column histogram & 24.1 & 24.0 & 20.4 & 0.91 & 6.8 \\
+        RANSAC edges & 0.1 & 24.7 & 3.5 & 15.52 & 1.3 \\
+        Center points & 3.5 & 1.3 & 20.4 & 7.27 & 0.8 \\
+        Column histogram & 24.1 & 24.0 & 20.4 & 0.91 & 5.1 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-No extractor is best on all the tests. On the annotated frames Strip-IRLS, RANSAC edges and EdgeNet have the fewest failures, and on the synthetic masks each extractor has its own failure case (Section~\ref{subsubsec:geometric_comparison}). EdgeNet has few gross errors, but it classifies 274 of the 300 masks with adjacent corridors as \texttt{degraded} or \texttt{lost}. In the field, Strip-IRLS, EdgeNet, RANSAC edges and Center points differ from each other by 0.7 to 1.8~cm (root mean square), so the offline differences between them do not appear in that row. Column histogram has the most failures on the base synthetic scenarios and is the only extractor that differs in the field.
+No extractor is best on all the tests. On the annotated frames Strip-IRLS, RANSAC edges and EdgeNet have the fewest failures, and on the synthetic masks each extractor has its own failure case (Section~\ref{subsubsec:geometric_comparison}). EdgeNet has few gross errors, but it classifies 274 of the 300 masks with adjacent corridors as \texttt{degraded} or \texttt{lost}. In the field, Strip-IRLS, EdgeNet, RANSAC edges and Center points differ from each other by 0.4 to 1.8~cm (root mean square), so the offline differences between them do not appear in that row. Column histogram has the most failures on the base synthetic scenarios and is the only extractor that differs in the field.
 
 The controller ignores a jump of the error on a single frame (Eq.~\eqref{eq:filter_jump}), but a wrong line that persists over consecutive frames reaches the command. A \texttt{lost} frame does not reach the command: the controller keeps the last filtered error for up to 0.5~s and then stops the robot (Section~\ref{subsubsec:control_node}). For Strip-IRLS, RANSAC edges and EdgeNet such a line is usually classified as \texttt{ok}, so the status does not warn the controller. A confidence calibrated on real frames could do it.
 
