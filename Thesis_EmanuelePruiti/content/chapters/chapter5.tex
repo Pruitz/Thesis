@@ -216,23 +216,23 @@ Table~\ref{tab:c5_defaults} lists the parameters of \textit{Strip-IRLS} on the r
     \item \textbf{Residual scale $\sigma$.} Samples much closer to the line than $\sigma$ keep almost all their weight, and samples much farther lose most of it. $\sigma$ should therefore be larger than the distance of the correct samples, which comes from the irregular edges of the mask, and smaller than the distance of the outliers. A smaller $\sigma$ lowers $F$, so more results are \texttt{degraded} or \texttt{lost}. A larger $\sigma$ keeps the outliers in the fit and raises the threshold $2\sigma$.
     \item \textbf{Status thresholds.} Higher thresholds give more \texttt{lost} and \texttt{degraded} results, which the controller filters differently (Section~\ref{subsubsec:control_node}).
 \end{itemize}
-The scenarios are listed in Table~\ref{tab:c7_scenarios}, and the gross errors are defined in Section~\ref{subsec:geometric_accuracy}. Moving the ROI start from $\rho=0.50$ to $\rho=0.30$, with a merging gap of 30~px, lowered the gross errors on the base scenarios of the development masks from 5.8\% to 0.3\% and on \texttt{hole\_bottom\_tall} from 100\% to 1.0\%. Table~\ref{tab:c5_gap} shows the effect of the merging gap with $\rho=0.30$. A larger gap joins more holes inside the corridor but also more rows between adjacent corridors. An earlier version, with strips of 9 rows, used a gap of 40~px. With the final strips of 10 rows, a gap of 30~px gives the fewest gross errors on the base scenarios (0.3\%) and on the adjacent corridors and the curve (1.3\%).
+The scenarios are listed in Table~\ref{tab:c7_scenarios}, and the gross errors are defined in Section~\ref{subsubsec:geometric_comparison}. Moving the ROI start from $\rho=0.50$ to $\rho=0.30$, with a merging gap of 30~px, lowered the gross errors on the base scenarios of the development masks from 5.8\% to 0.3\% and on \texttt{hole\_bottom\_tall} from 100\% to 1.0\%. Table~\ref{tab:c5_gap} shows the effect of the merging gap with $\rho=0.30$. A larger gap joins more holes inside the corridor but also more rows between adjacent corridors. An earlier version, with strips of 9 rows, used a gap of 40~px. With the final strips of 10 rows, a gap of 30~px gives the fewest gross errors on the base scenarios (0.3\%) and on the adjacent corridors (1.7\%).
 
 \begin{table}[t]
     \centering
     \footnotesize
-    \caption{Effect of the merging gap of Strip-IRLS ($\rho=0.30$) on the synthetic development masks: gross error rate (\%) on the masks of seed 0. Gross errors are errors above 15~px at $y_{\mathrm{ref}}=156$ on the non-\texttt{lost} frames (Section~\ref{subsec:geometric_accuracy}).}
+    \caption{Effect of the merging gap of Strip-IRLS ($\rho=0.30$) on the synthetic development masks: gross error rate (\%) on the masks of seed 0. Gross errors are errors above 15~px at $y_{\mathrm{ref}}=156$ on the non-\texttt{lost} frames (Section~\ref{subsubsec:geometric_comparison}).}
     \label{tab:c5_gap}
     \resizebox{\textwidth}{!}{%
     \begin{tabular}{@{}rcccc@{}}
         \toprule
-        Gap (px) & Base scenarios & Adjacent and curve & \texttt{hole\_bottom\_tall} & \texttt{adjacent+offset} \\
+        Gap (px) & Base scenarios & Adjacent corridors & \texttt{hole\_bottom\_tall} & \texttt{adjacent+offset} \\
         \midrule
-        20 & 0.4 & 2.5 & 4.0 & 3.0 \\
-        30 & 0.3 & 1.3 & 1.0 & 3.1 \\
-        40 & 0.4 & 5.1 & 0.0 & 15.0 \\
-        50 & 0.5 & 10.8 & 0.0 & 40.9 \\
-        60 & 0.7 & 18.8 & 0.0 & 74.2 \\
+        20 & 0.4 & 3.3 & 4.0 & 3.0 \\
+        30 & 0.3 & 1.7 & 1.0 & 3.1 \\
+        40 & 0.4 & 6.8 & 0.0 & 15.0 \\
+        50 & 0.5 & 14.9 & 0.0 & 40.9 \\
+        60 & 0.7 & 26.2 & 0.0 & 74.2 \\
         \bottomrule
     \end{tabular}}
 \end{table}
@@ -285,7 +285,7 @@ Figure~\ref{fig:c5_edgenet_examples} shows three validation masks with their lab
 \subsection{Center points}
 \label{subsec:c5_center_baseline}
 
-\textit{Center points} uses the same mask cleaning, ROI and interval extraction as \textit{Strip-IRLS}, but with $N=24$ strips. Each interval is reduced to its midpoint $c=(\ell+r)/2$ and its width $d=r-\ell+1$. The seed is the interval of the bottom six strips with the most path pixels. Intervals are associated upward with the cost
+\textit{Center points} uses the same mask cleaning, ROI, strips and interval extraction as \textit{Strip-IRLS}. Each interval is reduced to its midpoint $c=(\ell+r)/2$ and its width $d=r-\ell+1$. The seed is the interval of the bottom six strips with the most path pixels. Intervals are associated upward with the cost
 \begin{equation}
     J_i = |c_i - c_p| + 0.4\, |d_i - d_p|,
     \label{eq:c5_center_cost}
@@ -325,7 +325,7 @@ Table~\ref{tab:c5_algorithm_tradeoffs} summarizes how the five extractors differ
         \midrule
         Output & Line & Line & Line & Vertical line & Line \\
         Heading estimate & Yes & Yes & Yes & No & Yes \\
-        First row used & 64 & 0 (network), 64 (IoU) & 56 & 67 & 67 \\
+        First row used & 64 & 0 (network), 64 (IoU) & 64 & 67 & 67 \\
         Mask cleaning & Open, close, $\geq$500 px & None & Open, close, $\geq$500 px & Open, close, $\geq$500 px & Open, close, one component $\geq$500 px \\
         Edges fitted separately & Yes & Regressed & No & N/A & Yes \\
         Edge points & Chain endpoints & N/A & N/A & N/A & Row extremes \\
@@ -336,7 +336,7 @@ Table~\ref{tab:c5_algorithm_tradeoffs} summarizes how the five extractors differ
     \end{tabularx}
 \end{table}
 
-The main structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c5_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. On the synthetic masks with a widening on one side of the corridor, \textit{Center points} has 11.5\% gross errors and \textit{Strip-IRLS} 3.1\% (Section~\ref{subsubsec:geometric_comparison}).
+The main structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c5_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. On the synthetic masks with a widening on one side of the corridor, \textit{Center points} has 30.9\% gross errors and \textit{Strip-IRLS} 3.1\% (Section~\ref{subsubsec:geometric_comparison}).
 
 \textit{Strip-IRLS} has three structural limitations:
 \begin{itemize}

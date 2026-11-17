@@ -6,7 +6,7 @@ This chapter evaluates the five path extractors of Chapter~\ref{cap:geometric_re
 \section{Offline evaluation}
 \label{sec:offline_evaluation}
 
-\subsection{Data sets and error measure}
+\subsection{Data sets}
 \label{subsec:geometric_accuracy}
 
 The extractors are compared with the parameters of Chapter~\ref{cap:geometric_reference} on the two sets of Table~\ref{tab:c7_datasets}. The extractors were tuned only on the synthetic masks of seed 0 (Section~\ref{sec:c5_parameter_setting}). They are tested on the synthetic masks of seed 2027 and on all the annotated frames.
@@ -20,13 +20,13 @@ The extractors are compared with the parameters of Chapter~\ref{cap:geometric_re
         \toprule
         Set & Tuning & Test & Ground truth \\
         \midrule
-        Synthetic masks & 2500 masks (seed 0) & 2500 masks (seed 2027) & Exact \\
+        Synthetic masks & 2400 masks (seed 0) & 2400 masks (seed 2027) & Exact \\
         Annotated real frames & -- & 255 frames, 14 sequences & Edges marked by hand \\
         \bottomrule
     \end{tabularx}
 \end{table}
 
-The synthetic masks have $224\times224$ pixels. Each one is a corridor in perspective, defined by its bottom center, vanishing point, bottom half-width and apex row, with irregular edges (a slow undulation of a few pixels and a fine grain of 1--2~px). The set has 25 scenarios of 100 masks each (Table~\ref{tab:c7_scenarios}). The 21 base scenarios contain a straight corridor with one disturbance, except \texttt{empty} and \texttt{full}, which have no corridor. The other 4 scenarios have adjacent corridors or a curved corridor, layouts that were not present in the test field.
+The synthetic masks have $224\times224$ pixels. Each one is a corridor in perspective, defined by its bottom center, vanishing point, bottom half-width and apex row, with irregular edges (a slow undulation of a few pixels and a fine grain of 1--2~px). The set has 24 scenarios of 100 masks each (Table~\ref{tab:c7_scenarios}, examples in Figure~\ref{fig:c7_synthetic_examples}). The 21 base scenarios contain a straight corridor with one disturbance, except \texttt{empty} and \texttt{full}, which have no corridor. The other 3 scenarios have adjacent corridors, a layout that was not present in the test field.
 
 \begin{table}[htbp]
     \centering
@@ -58,25 +58,27 @@ The synthetic masks have $224\times224$ pixels. Each one is a corridor in perspe
         \texttt{combined} & Spots and holes, robot offset and rotated \\
         \texttt{empty}, \texttt{full} & Empty mask, mask all path (expected \texttt{lost}) \\
         \midrule
-        \multicolumn{2}{@{}l}{\textit{Adjacent corridors and curve (4 scenarios)}} \\
+        \multicolumn{2}{@{}l}{\textit{Adjacent corridors (3 scenarios)}} \\
         \texttt{adjacent} & Two copies of the corridor on the left and right, with the same vanishing point, separated at the bottom by a row 40--110~px wide \\
         \texttt{adjacent+offset} & As \texttt{adjacent}, robot offset by 25--50~px at the bottom \\
         \texttt{adjacent\_narrow\_crop} & As \texttt{adjacent}, row 15--35~px wide \\
-        \texttt{curved} & Centerline bent by a quadratic term, 9--27~px at $y_{\mathrm{ref}}$ \\
         \bottomrule
     \end{tabularx}
 \end{table}
 
-The annotated frames come from 14 sequences: \texttt{pomodori2} and 13 sequences of the SAM~3 dataset (Chapter~\ref{cap:segmentation}), 7 of tomato, 2 of cucumber and 4 of lettuce. \texttt{pomodori2} is a recording of 9465 compressed images of the topic \texttt{/camera/camera/color/\allowbreak image\_raw/\allowbreak compressed}, taken in a greenhouse with tomato plants. Its masks were predicted on 100 frames evenly spaced in the recording and segmented as in the controller node (Chapter~\ref{cap:platform}). The masks of the SAM~3 sequences were predicted by the network deployed on the robot and reduced from $640\times480$ to $224\times224$ pixels with nearest-neighbor interpolation. These images belong to the training data of the network, so their masks are probably cleaner than those of images not seen in training. 348 masks without path pixels were removed, and so were four lettuce sequences in which the network predicted almost no path (7 further masks). From each of the 14 sequences, 22 evenly spaced frames were then selected (308 frames).
+\begin{figure}[tb]
+  \centering
+  \includegraphics[width=\linewidth]{images/geometric/synthetic_scenarios.pdf}
+  \caption{Synthetic test masks (seed 2027): the first mask of ten of the scenarios of Table~\ref{tab:c7_scenarios}. The yellow line is the true centerline of the corridor model.}
+  \label{fig:c7_synthetic_examples}
+\end{figure}
 
-In a browser tool written for this purpose, the author marked two points on each corridor edge in the $640\times480$ photo, along the line where the plants meet the ground, with the predicted mask shown as a semi-transparent overlay. Each edge is the line through its two points, scaled to the $224\times224$ mask as in the controller node. The true centerline is the mean of the two edge lines, as in Eq.~\eqref{eq:c5_line}.
-
-During the development, the thresholds of RANSAC edges were set by looking at the masks of \texttt{pomodori2}, not at its annotations. The annotator skipped 34 frames, mostly of tomato, where the edges could not be read. The tomato sequences of the SAM~3 dataset were recorded with a handheld camera, and in many of their frames the image is shaken or the segmentation is poor. In 19 frames one annotated edge is inclined by more than $60^\circ$ from the vertical. There the mean of the two lines in the form of Eq.~\eqref{eq:c5_edges} is not a usable centerline, and its value at $y_{\mathrm{ref}}$ can lie hundreds of pixels outside the image, so these frames are excluded. The threshold of $60^\circ$ was chosen on the frames of seven of the 14 sequences. 255 frames remain. All of them contain a corridor.
-
-The error is $|\hat x-x_{\mathrm{true}}|$ at the row used by the controller, $y_{\mathrm{ref}}=156$ (Chapter~\ref{cap:platform}), and is computed only on the frames not classified as \texttt{lost}. A gross error is an error above 15~px (13\% of the half-width of the image). For the masks without a corridor the expected status is \texttt{lost}. A failure is a frame that is \texttt{lost} or has a gross error. All five extractors are deterministic: RANSAC edges draws its samples from a generator with a fixed seed, and the others do not sample.
+The annotated set has 255 frames from 14 sequences of tomato, cucumber and lettuce, all with a corridor. Most sequences come from paths used to train the segmentation network, although the annotated frames themselves were not used in training, so the results can be slightly better than on new paths. The masks were predicted by the network deployed on the robot, and the extractors run on them as on the robot.
 
 \subsection{Results on the synthetic masks}
 \label{subsubsec:geometric_comparison}
+
+The error is $|\hat x-x_{\mathrm{true}}|$ at the row used by the controller, $y_{\mathrm{ref}}=156$ (Chapter~\ref{cap:platform}), and is computed only on the frames not classified as \texttt{lost}. A gross error is an error above 15~px (13\% of the half-width of the image). For the masks without a corridor the expected status is \texttt{lost}. A failure is a frame that is \texttt{lost} or has a gross error.
 
 Table~\ref{tab:geometric_benchmark} gives the results on the synthetic test masks, and Table~\ref{tab:c7_scenario_errors} the gross error rate in the scenarios where at least one extractor exceeds 5\%. Figure~\ref{fig:geometric_extraction_comparison} shows two masks where Strip-IRLS is correct and at least two other extractors fail.
 
@@ -94,15 +96,15 @@ Table~\ref{tab:geometric_benchmark} gives the results on the synthetic test mask
          & Strip-IRLS & EdgeNet & RANSAC edges & Center points & Column histogram \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Base scenarios, 1900 masks with a corridor}} \\
-        Gross errors (\%) & 0.3 & 0.1 & 0.1 & 4.3 & 23.3 \\
-        \texttt{lost} (\%) & 0.4 & 0.0 & 0.0 & 3.4 & 1.1 \\
-        Gross errors classified \texttt{ok} & 4/6 & 1/2 & 1/1 & 25/78 & 406/437 \\
+        Gross errors (\%) & 0.3 & 0.1 & 0.1 & 1.9 & 23.3 \\
+        \texttt{lost} (\%) & 0.4 & 0.0 & 0.0 & 1.6 & 1.1 \\
+        Gross errors classified \texttt{ok} & 4/6 & 1/2 & 1/1 & 1/36 & 406/437 \\
         \texttt{empty} and \texttt{full} rejected (\%) & 100 & 100 & 100 & 50 & 50 \\
         \midrule
-        \multicolumn{6}{@{}l}{\textit{Adjacent corridors and curve, 400 masks}} \\
-        Gross errors (\%) & 2.3 & 0.0 & 18.5 & 0.5 & 42.6 \\
-        \texttt{lost} (\%) & 1.0 & 6.2 & 0.0 & 0.2 & 0.2 \\
-        Gross errors classified \texttt{ok} & 5/9 & -- & 74/74 & 1/2 & 170/170 \\
+        \multicolumn{6}{@{}l}{\textit{Adjacent corridors, 300 masks}} \\
+        Gross errors (\%) & 3.0 & 0.0 & 24.7 & 1.3 & 23.7 \\
+        \texttt{lost} (\%) & 1.3 & 8.3 & 0.0 & 0.0 & 0.3 \\
+        Gross errors classified \texttt{ok} & 5/9 & -- & 74/74 & 4/4 & 71/71 \\
         \bottomrule
     \end{tabular}}
 \end{table}
@@ -121,8 +123,7 @@ Table~\ref{tab:geometric_benchmark} gives the results on the synthetic test mask
         Scenario & Strip-IRLS & EdgeNet & RANSAC edges & Center points & Column histogram \\
         \midrule
         \texttt{adjacent} & 3.0 & 0.0 & 13.0 & 0.0 & 0.0 \\
-        \texttt{adjacent+offset} & 4.2 & 0.0 & 61.0 & 2.0 & 71.0 \\
-        \texttt{curved} & 0.0 & 0.0 & 0.0 & 0.0 & 99.0 \\
+        \texttt{adjacent+offset} & 4.2 & 0.0 & 61.0 & 4.0 & 71.0 \\
         \texttt{offset} & 0.0 & 0.0 & 0.0 & 0.0 & 64.0 \\
         \texttt{heading} & 0.0 & 0.0 & 0.0 & 0.0 & 92.0 \\
         \texttt{offset+heading} & 0.0 & 0.0 & 0.0 & 0.0 & 59.0 \\
@@ -131,8 +132,8 @@ Table~\ref{tab:geometric_benchmark} gives the results on the synthetic test mask
         \texttt{combined} & 0.0 & 0.0 & 1.0 & 0.0 & 44.3 \\
         \texttt{holes} & 0.0 & 0.0 & 0.0 & 0.0 & 5.2 \\
         \texttt{hole\_bottom} & 0.0 & 0.0 & 0.0 & 0.0 & 9.2 \\
-        \texttt{hole\_bottom\_tall} & 2.0 & 0.0 & 0.0 & 71.9 & 70.4 \\
-        \texttt{bulge\_one\_side} & 3.1 & 2.0 & 0.0 & 11.5 & 0.0 \\
+        \texttt{hole\_bottom\_tall} & 2.0 & 0.0 & 0.0 & 5.0 & 70.4 \\
+        \texttt{bulge\_one\_side} & 3.1 & 2.0 & 0.0 & 30.9 & 0.0 \\
         \bottomrule
     \end{tabular}}
 \end{table}
@@ -140,7 +141,7 @@ Table~\ref{tab:geometric_benchmark} gives the results on the synthetic test mask
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=\linewidth]{images/geometric/extraction_comparison.png}
-  \caption{Lines estimated by the five extractors on two masks with disturbances, chosen among the masks where Strip-IRLS has an error below 4~px and at least two other extractors fail. (a)~is a mask of the synthetic scenario \texttt{hole\_bottom\_tall}, and (b)~is the real frame \texttt{pomodori2\_01051}, whose true centerline comes from the hand annotation. The magenta line is the estimated centerline, the diamond its position at $y_{\mathrm{ref}}$ (dashed line), and the yellow circle the true centerline at $y_{\mathrm{ref}}$. Below each panel are the status and the error at $y_{\mathrm{ref}}$. A panel without a line is \texttt{lost}.}
+  \caption{Lines estimated by the five extractors on two masks with disturbances, chosen among the masks where Strip-IRLS has an error below 4~px and at least two other extractors fail. (a)~is a mask of the synthetic scenario \texttt{hole\_bottom\_tall}, and (b)~is a real annotated tomato frame, whose true centerline comes from the hand annotation. The magenta line is the estimated centerline, the diamond its position at $y_{\mathrm{ref}}$ (dashed line), and the yellow circle the true centerline at $y_{\mathrm{ref}}$. Below each panel are the status and the error at $y_{\mathrm{ref}}$. A panel without a line is \texttt{lost}.}
   \label{fig:geometric_extraction_comparison}
 \end{figure}
 
@@ -149,15 +150,14 @@ Each extractor fails in different scenarios:
     \item \textbf{Strip-IRLS.} In \texttt{hole\_bottom\_tall} a central hole 33 to 50~px wide splits the bottom of the corridor. Where the hole is wider than the merging gap (30~px) and taller than the seed window (six strips of 10 rows), every seed lies in one of the two parts. The chain stops where the parts join, because there the interval widens beyond the jump limit, and its edges are the two edges of one part. This gives gross errors in 2.0\% of the masks. In \texttt{adjacent+offset} the merging gap joins the narrow upper part of the row between two corridors with the corridors beside it (4.2\%).
     \item \textbf{EdgeNet.} In the base scenarios it has two gross errors, both in \texttt{bulge\_\allowbreak one\_\allowbreak side}. With adjacent corridors it has no gross errors, but it classifies only 26 of these 300 masks as \texttt{ok}, because the mask also contains the adjacent corridors and the IoU in its confidence is low. A first model, trained with an earlier generator without adjacent corridors and with the apex only between rows 30 and 100, had 95.7\% gross errors in \texttt{adjacent+offset}.
     \item \textbf{RANSAC edges.} It takes the first and last path pixel of each row of the selected component. When an adjacent corridor belongs to that component, its edge replaces the edge of the central corridor in those rows.
-    \item \textbf{Center points.} It forms the midpoints of the intervals before the fit, so a disturbance on one side or in the middle of the corridor moves the midpoints and enters the centerline (\texttt{bulge\_one\_side}, \texttt{hole\_bottom\_tall}). It returns a line on the mask that is all path. With adjacent corridors it follows one interval per strip and has almost no gross errors.
-    \item \textbf{Column histogram.} It returns a vertical line, so its error grows with the offset and the rotation of the robot and on the curved corridor.
+    \item \textbf{Center points.} It forms the midpoints of the intervals before the fit, so a disturbance on one side of the corridor moves the midpoints and enters the centerline (\texttt{bulge\_one\_side}). It returns a line on the mask that is all path. With adjacent corridors it follows one interval per strip and has almost no gross errors.
+    \item \textbf{Column histogram.} It returns a vertical line, so its error grows with the offset and the rotation of the robot.
 \end{itemize}
-On the curved corridor all extractors except Column histogram keep the error at $y_{\mathrm{ref}}$ below 15~px, but their lines do not follow the curve.
 
 \subsection{Results on the annotated real frames}
 \label{subsubsec:geometric_annotated}
 
-Table~\ref{tab:c7_annotated} gives the results on the annotated frames.
+Table~\ref{tab:c7_annotated} gives the results on the annotated frames, with the error measure of Section~\ref{subsubsec:geometric_comparison}.
 
 \begin{table}[htbp]
     \centering
@@ -172,18 +172,18 @@ Table~\ref{tab:c7_annotated} gives the results on the annotated frames.
         \cmidrule(lr){2-3}\cmidrule(lr){4-6}
          & Strip-IRLS & EdgeNet & RANSAC edges & Center points & Column histogram \\
         \midrule
-        Gross errors (\%) & 2.4 (6/250) & 4.7 (12/253) & 1.6 (4/250) & 6.5 (14/215) & 15.8 (38/241) \\
-        \texttt{lost} (\%) & 2.0 & 0.8 & 2.0 & 15.7 & 5.5 \\
-        Failures & 11 & 14 & 9 & 54 & 52 \\
-        Gross errors classified \texttt{ok} & 6 & 8 & 4 & 1 & 37 \\
-        Median error (px) & 1.73 & 1.74 & 1.39 & 2.22 & 5.19 \\
+        Gross errors (\%) & 2.4 (6/250) & 4.7 (12/253) & 1.6 (4/250) & 7.3 (16/219) & 15.8 (38/241) \\
+        \texttt{lost} (\%) & 2.0 & 0.8 & 2.0 & 14.1 & 5.5 \\
+        Failures & 11 & 14 & 9 & 52 & 52 \\
+        Gross errors classified \texttt{ok} & 6 & 8 & 4 & 0 & 37 \\
+        Median error (px) & 1.73 & 1.74 & 1.39 & 2.47 & 5.19 \\
         \bottomrule
     \end{tabular}}
 \end{table}
 
-Strip-IRLS and RANSAC edges have the fewest failures, 11 and 9 of 255, and two frames do not separate them. EdgeNet fails on 14 frames, Center points on 54 and Column histogram on 52. All gross errors of Strip-IRLS and RANSAC edges and 8 of the 12 of EdgeNet are classified as \texttt{ok}, so their status does not warn the controller.
+Strip-IRLS and RANSAC edges have the fewest failures, 11 and 9 of 255, and two frames do not separate them. EdgeNet fails on 14 frames, Center points and Column histogram on 52 each. All gross errors of Strip-IRLS and RANSAC edges and 8 of the 12 of EdgeNet are classified as \texttt{ok}, so their status does not warn the controller.
 
-These results have five limits. The 22 frames of a sequence are not independent. Of the 22 gross errors of Strip-IRLS, RANSAC edges and EdgeNet, 19 are on tomato frames, so the comparison between them rests mainly on the 133 tomato frames. The annotation was made once by one person, with the predicted mask shown in overlay, which can draw the annotation toward the mask, and its error was not measured. For this reason the differences of a few pixels in the median error are not interpreted, and the comparison relies on the gross errors. The ground truth is marked on the photo, so the measured error also contains the segmentation error, which is the same for all extractors. Finally, the excluded frames are among the most difficult, so the reported rates are lower than on all frames.
+These results have five limits. The frames of a sequence are not independent. Of the 22 gross errors of Strip-IRLS, RANSAC edges and EdgeNet, 19 are on tomato frames, so the comparison between them rests mainly on the 133 tomato frames. The annotation was made once by one person, with the predicted mask shown in overlay, which can draw the annotation toward the mask, and its error was not measured. For this reason the differences of a few pixels in the median error are not interpreted, and the comparison relies on the gross errors. The ground truth is marked on the photo, so the measured error also contains the segmentation error, which is the same for all extractors. Finally, the frames where the edges could not be marked or gave no usable centerline are not in the set. They are among the most difficult, so the reported rates are lower than on all frames.
 
 \section{Field validation}
 \label{sec:field_validation}
@@ -278,24 +278,24 @@ Table~\ref{tab:c7_summary} collects the main results of each extractor.
     \centering
     \footnotesize
     \setlength{\tabcolsep}{4pt}
-    \caption{Main results of the five extractors. Synthetic: failures (\texttt{lost} or gross error) on the test masks with a corridor, 1900 base and 400 with adjacent corridors or curve. Annotated: failures on the 255 annotated frames (Table~\ref{tab:c7_annotated}). Time: path extractor on the Jetson AGX Orin (Table~\ref{tab:jetson_extractors}). Field: root mean square difference from the mean of the other four extractors on the short runs, not an error (Table~\ref{tab:c7_field}).}
+    \caption{Main results of the five extractors. Synthetic: failures (\texttt{lost} or gross error) on the test masks with a corridor, 1900 base and 300 with adjacent corridors. Annotated: failures on the 255 annotated frames (Table~\ref{tab:c7_annotated}). Time: path extractor on the Jetson AGX Orin (Table~\ref{tab:jetson_extractors}). Field: root mean square difference from the mean of the other four extractors on the short runs, not an error (Table~\ref{tab:c7_field}).}
     \label{tab:c7_summary}
     \begin{tabular}{@{}lccccc@{}}
         \toprule
         & \multicolumn{2}{c}{Synthetic (\%)} & Annotated & Time & Field \\
         \cmidrule(lr){2-3}
-        Extractor & Base & Adjacent, curve & failures & (ms) & (cm) \\
+        Extractor & Base & Adjacent & failures & (ms) & (cm) \\
         \midrule
-        Strip-IRLS & 0.7 & 3.2 & 11 & 11.07 & 1.6 \\
-        EdgeNet & 0.1 & 6.2 & 14 & 4.68 & 1.1 \\
-        RANSAC edges & 0.1 & 18.5 & 9 & 15.52 & 1.9 \\
-        Center points & 7.5 & 0.8 & 54 & 7.27 & 1.6 \\
-        Column histogram & 24.1 & 42.8 & 52 & 0.91 & 6.8 \\
+        Strip-IRLS & 0.7 & 4.3 & 11 & 11.07 & 1.6 \\
+        EdgeNet & 0.1 & 8.3 & 14 & 4.68 & 1.1 \\
+        RANSAC edges & 0.1 & 24.7 & 9 & 15.52 & 1.9 \\
+        Center points & 3.5 & 1.3 & 52 & 7.27 & 1.6 \\
+        Column histogram & 24.1 & 24.0 & 52 & 0.91 & 6.8 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-No extractor is best on all the tests. On the annotated frames Strip-IRLS and RANSAC edges have the fewest failures, and on the synthetic masks each extractor has its own failure case (Section~\ref{subsubsec:geometric_comparison}). EdgeNet has few gross errors, but it classifies 274 of the 300 masks with adjacent corridors as \texttt{degraded} or \texttt{lost}. In the field, Strip-IRLS, EdgeNet, RANSAC edges and Center points differ from each other by 1.1 to 2.1~cm (root mean square), so the offline differences between them do not appear in that row. Column histogram has the most failures offline and is the only extractor that differs in the field.
+No extractor is best on all the tests. On the annotated frames Strip-IRLS and RANSAC edges have the fewest failures, and on the synthetic masks each extractor has its own failure case (Section~\ref{subsubsec:geometric_comparison}). EdgeNet has few gross errors, but it classifies 274 of the 300 masks with adjacent corridors as \texttt{degraded} or \texttt{lost}. In the field, Strip-IRLS, EdgeNet, RANSAC edges and Center points differ from each other by 1.1 to 2.1~cm (root mean square), so the offline differences between them do not appear in that row. Column histogram has the most failures on the base synthetic scenarios and is the only extractor that differs in the field.
 
 The controller ignores a jump of the error on a single frame (Eq.~\eqref{eq:filter_jump}), but a wrong line that persists over consecutive frames reaches the command. For Strip-IRLS, RANSAC edges and EdgeNet such a line is usually classified as \texttt{ok}, so the status does not warn the controller. A confidence calibrated on real frames could do it.
 
