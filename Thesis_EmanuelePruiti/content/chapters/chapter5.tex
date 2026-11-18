@@ -280,7 +280,7 @@ Figure~\ref{fig:c5_edgenet_examples} shows three validation masks with their lab
 \section{Baseline extractors}
 \label{sec:c5_baseline_algorithms}
 
-\textit{Strip-IRLS} and \textit{EdgeNet} are compared with the three geometric baselines of this section.
+\textit{Strip-IRLS} and \textit{EdgeNet} are compared with the three geometric baselines of this section. They are implementations of this work, based on the methods of Section~\ref{sec:geometric_extraction}, and they differ from the original methods. \textit{Column histogram}, for example, is a simplified version of SegMin.
 
 \subsection{Center points}
 \label{subsec:c5_center_baseline}
@@ -304,7 +304,7 @@ One line is fitted to the midpoints with four iterations of the weights of Eq.~\
 
 The works of Section~\ref{subsec:ransac_methods} fit RANSAC lines to points of the crop rows. \textit{RANSAC edges} fits them to the edges of the segmented corridor. It cleans the ROI from row 67 as \textit{Strip-IRLS} and keeps one large connected component that starts low in the image. The leftmost and rightmost pixels of each row of the component are the edge points, except in rows where they are less than 10~px apart and at the image border.
 
-Each edge is fitted with RANSAC~\cite{fischler1981ransac}: in 100 trials, two random points define a line, and the points within 18~px of it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines. The result is \texttt{lost} if an edge has fewer than 10 points or spans fewer than 20 rows, as at the end of a row, if the component has fewer than 1000 pixels in the ROI, or if the mean fraction of inliers is below 0.30. Otherwise a score combines the fraction of inliers, their residual, the vertical extent of the component and the regularity of its width, with the thresholds 0.38 and 0.60.
+Each edge is fitted with RANSAC, as the navigation lines of Wu et al.~\cite{wu2026deeplabv3}. In 100 trials, two random points define a line, and the points within 18~px of it are inliers. The line with the most inliers is refitted by least squares on its inliers, and the centerline is the mean of the two edge lines. The result is \texttt{lost} if an edge has fewer than 10 points or spans fewer than 20 rows, as at the end of a row, if the component has fewer than 1000 pixels in the ROI, or if the mean fraction of inliers is below 0.30. Otherwise a score combines the fraction of inliers, their residual, the vertical extent of the component and the regularity of its width, with the thresholds 0.38 and 0.60.
 
 \section{Structural differences and limitations}
 \label{sec:c5_tradeoffs_and_limitations}

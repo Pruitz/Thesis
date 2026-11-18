@@ -26,7 +26,7 @@ Semantic segmentation assigns a class to each pixel, and the choice of
 the classes decides what the geometric stage can recover. De Silva et
 al.\ train U-Net to predict crop-row masks in sugar-beet images. In
 their labels each crop row is a single white line 6~pixels wide, not a
-set of individual plants~\cite[Sections~3.3 and~4, Figure~5]{silva2023rowdetection}.
+set of individual plants~\cite[Sections~3.3 and~4, Figure~5]{desilva2024rowdetection}.
 Navone et al.\ predict a binary vegetation mask from RGB images with a
 MobileNetV3 backbone and an LR-ASPP head, and then combine this mask with
 depth to extract the reference \cite{navone2023ecmr,navone2025gpsfree}.
@@ -127,7 +127,7 @@ RANSAC is among the line fitting algorithms used to extract navigation
 lines in agricultural vision~\cite{bai2023vision}. Wu et al.\ extract
 crop-row anchor points from the segmentation masks, group them with
 DBSCAN clustering, and fit navigation lines with
-RANSAC~\cite{sensors2025deeplabv3}. \textit{RANSAC edges} (Section~\ref{subsec:c5_ransac_baseline}) applies
+RANSAC~\cite{wu2026deeplabv3}. \textit{RANSAC edges} (Section~\ref{subsec:c5_ransac_baseline}) applies
 RANSAC to the row extremes of the path corridor instead of to points of
 the crop rows.
 
