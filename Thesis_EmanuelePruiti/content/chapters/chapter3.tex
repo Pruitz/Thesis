@@ -137,28 +137,3 @@ SAM~3 has about 850 million parameters, of which about 450 million are in the vi
   \caption{SAM~3 architecture. The detector segments the instances of the prompted concept in each image, and the tracker propagates the masks between video frames. Only the detector is used in this thesis. Reproduced from Carion et~al.~\cite[Figure~4]{carion2026sam3}.}
   \label{fig:sam3_architecture}
 \end{figure}
-
-\section{Summary}
-\label{sec:arch_summary}
-
-Table~\ref{tab:architecture_characteristics} summarizes the four models of this chapter.
-
-\begin{table}[H]
-    \centering
-    \footnotesize
-    \caption{Models described in this chapter.}
-    \label{tab:architecture_characteristics}
-    \begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}p{2.4cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{3.2cm} >{\raggedright\arraybackslash}p{2.3cm}@{}}
-        \toprule
-        Model & Backbone & Head & Differences from the original paper & Role in this thesis \\
-        \midrule
-        FCN & ResNet-50, output stride 8 & \texttt{FCNHead}: $3\times3$ and $1\times1$ convolutions & ResNet-50 instead of VGG-16, \texttt{FCNHead}, no skips or learned upsampling, auxiliary classifier & Compared in Chapter~\ref{cap:dataset_training} \\
-        \addlinespace
-        DeepLabV3 & ResNet-50, output stride 8 & ASPP with rates 12, 24, 36 and image pooling & Extra $3\times3$ convolution after ASPP, no multi-grid, auxiliary classifier & Compared in Chapter~\ref{cap:dataset_training} \\
-        \addlinespace
-        LR-ASPP & MobileNetV3-Large, output stride 16 & Pooling gate on stride-16 features, logits summed with the logits of stride-8 features & Global pooling, no channel halving in the last block, pretrained weights & Compared in Chapter~\ref{cap:dataset_training}, network on the robot \\
-        \addlinespace
-        SAM~3 & Perception Encoder (image and text) & DETR-like detector with presence token & Not applicable & Offline labeling of training images \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
