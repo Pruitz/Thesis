@@ -206,7 +206,7 @@ The five extractors were tested in closed loop on the robot on 4 November 2026. 
 \subsection{Test conditions}
 \label{subsec:test_conditions}
 
-The tests were made in a row of tomato plants in a tunnel greenhouse. It was a difficult case for the segmentation: the plants were sparse, so the predicted path often widened into the gaps between them, and the lighting was poor. No image of this field is in the training data of the segmentation network. Figure~\ref{fig:c7_field_photo} shows the robot in this row, and Figure~\ref{fig:c7_field_frames} a frame of its camera.
+The tests were made in a row of tomato plants in a tunnel greenhouse. It was a difficult case for the segmentation: the plants were sparse, so the predicted path often widened into the gaps between them, and the lighting was poor. No image of this field is in the training data of the segmentation network. The short runs were made at 0.20~m/s and the full row at 0.50~m/s. Figure~\ref{fig:c7_field_photo} shows the robot in this row, and Figure~\ref{fig:c7_field_frames} a frame of its camera.
 
 \begin{figure}[H]
   \centering
@@ -238,19 +238,19 @@ Figure~\ref{fig:c7_field_short} shows the lateral distance $d$ from the row cent
 
 The standard deviation between runs and the RMSD compare runs at the same positions along the row. Each run is interpolated linearly at $N$ equally spaced positions: $N=400$ between 4.04 and 11.95~m on the short runs and $N=600$ between 15 and 39~m on the full row. Here $d_{r,i}$ is the distance of run $r=1,\dots,R$ of an extractor at position $i$, with $R=3$ on the short runs and $R=1$ on the full row. At each position, $\mu_i$ is the mean of the $R$ runs of the extractor and $o_i$ is the mean of all the runs of the other four extractors. At a given position the error of the centerline is the same in all runs, so it cancels in both measures.
 \begin{itemize}
-    \item \textbf{RMSE and Max: distance from the centerline.} For a run with distances $d_1,\dots,d_n$ at the $n$ points measured by the station,
+    \item \textbf{RMSE and Max.} They measure the distance from the centerline. For a run with distances $d_1,\dots,d_n$ at the $n$ points measured by the station,
     \begin{equation}
         \mathrm{RMSE}=\sqrt{\frac{1}{n}\sum_{j=1}^{n}d_j^2},
         \label{eq:c7_rmse}
     \end{equation}
     and the Max is the largest $|d_j|$. Both contain the error of the centerline.
-    \item \textbf{Standard deviation between runs: how repeatable an extractor is.} It says how much the runs of the extractor differ from each other:
+    \item \textbf{Standard deviation between runs.} It measures how repeatable an extractor is, that is, how much its runs differ from each other:
     \begin{equation}
         \sigma_{\mathrm{runs}}=\sqrt{\frac{1}{RN}\sum_{r=1}^{R}\sum_{i=1}^{N}\bigl(d_{r,i}-\mu_i\bigr)^2}.
         \label{eq:c7_runs}
     \end{equation}
     It needs more than one run, so it is computed only on the short runs.
-    \item \textbf{RMSD: how much an extractor differs from the others.} It compares the mean of the runs of the extractor with that of the other extractors:
+    \item \textbf{RMSD.} It measures how much an extractor differs from the others. It compares the mean of the runs of the extractor with that of the other extractors:
     \begin{equation}
         \mathrm{RMSD}=\sqrt{\frac{1}{N}\sum_{i=1}^{N}\bigl(\mu_i-o_i\bigr)^2}.
         \label{eq:c7_rmsd}
@@ -350,4 +350,4 @@ EdgeNet, trained only on synthetic masks, drove the robot in the field along the
 
 The lateral distance common to the four similar extractors stays below 20~cm and repeats at the same positions in all their runs, so it is not the error of one extractor. It comes from the row, where the plants reach further into the path on one side or the predicted path widens, and from small errors of the reference centerline.
 
-The segmentation network deployed on the robot, trained only on SAM~3 labels without manual correction (Section~\ref{subsec:c4_deployed_network}), guided the robot along the row with all five extractors, in a field not present in its training data. The best extractors fail mostly on the same badly segmented frames (Section~\ref{subsubsec:geometric_annotated}), so the quality of the segmentation matters more than the choice of the extractor.
+The segmentation network deployed on the robot, trained only on SAM~3 labels without manual correction (Section~\ref{subsec:c4_deployed_network}), guided the robot along the row with all five extractors, in a field not present in its training data. The best extractors fail mostly on the same badly segmented frames (Section~\ref{subsubsec:geometric_annotated}), so the quality of the segmentation affects the result more than the choice of the extractor.

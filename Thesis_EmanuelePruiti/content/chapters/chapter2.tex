@@ -1,12 +1,13 @@
 \chapter{State of the Art}
 \label{cap:stato_arte}
 
-This chapter reviews the works related to the parts of this thesis: the
-segmentation network, the annotation of the images used to train it, the
-extraction of the navigation reference from the mask, and the controller
-that steers the robot with this reference. Each extraction method is linked to
-the extractor of Chapter~\ref{cap:geometric_reference} that is based on
-it or compared with it.
+The guidance chain of this thesis has four parts: a segmentation network,
+the labeled images that train it, an extractor that turns the mask into a
+navigation reference, and a controller that steers the robot with this
+reference. The works reviewed here are grouped by these parts, and each
+extraction method is linked to the extractor of
+Chapter~\ref{cap:geometric_reference} that is based on it or compared
+with it.
 
 \section{Segmentation for row navigation}
 \label{sec:learning_based_segmentation}

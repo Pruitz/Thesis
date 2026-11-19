@@ -2,7 +2,7 @@
 \label{cap:segmentation}
 \label{cap:dataset_training}
 
-This chapter describes the datasets and two experiments on the segmentation network. The first compares FCN, DeepLabV3, and LR-ASPP, fine-tuned from pretrained weights on a manually annotated lettuce dataset, and selects LR-ASPP for the robot. Manual annotation was done only for lettuce, because it is time-consuming. The second experiment tests whether LR-ASPP networks trained on SAM~3 masks of the lettuce images, without manual correction, can replace manual annotation. The automatic binary labeling was then extended to all crops, and a network trained on this collection is the one deployed on the robot (Section~\ref{subsec:c4_deployed_network}).
+Two questions about the segmentation network are answered here: which architecture runs on the robot, and whether automatic labels can replace manual annotation. Manual masks were drawn only for lettuce, because annotation is time-consuming. The first experiment compares FCN, DeepLabV3, and LR-ASPP, fine-tuned from pretrained weights on these lettuce masks, and selects LR-ASPP for the robot. The second tests whether LR-ASPP networks trained on SAM~3 masks of the lettuce images, without manual correction, can replace manual annotation. The automatic binary labeling was then extended to all crops, and a network trained on this collection is the one deployed on the robot (Section~\ref{subsec:c4_deployed_network}).
 
 \section{Image acquisition and class definition}
 \label{sec:c4_acquisition_classes}
@@ -100,7 +100,7 @@ This section compares FCN, DeepLabV3, and LR-ASPP, trained on the manually annot
 \subsection{Model selection and pretrained weights}
 \label{subsec:c4_model_selection}
 
-FCN, DeepLabV3, and LR-ASPP were chosen among the implementations available in TorchVision, for practical reasons. All three start from the default TorchVision segmentation weights, trained on a subset of COCO restricted to the 20 categories of Pascal VOC~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}. FCN and DeepLabV3 use a ResNet-50 backbone, and LR-ASPP a MobileNetV3-Large backbone. Only the final $1\times1$ convolutions are replaced by new ones with 4 output channels, one per class: in FCN and DeepLabV3 those of the main and auxiliary classifiers, in LR-ASPP the two of the head, one on the low-level features and one on the processed high-level features~\cite{torchvision_lraspp}.
+FCN, DeepLabV3, and LR-ASPP were chosen among the implementations available in TorchVision, which provides all three with pretrained segmentation weights, trained on a subset of COCO restricted to the 20 categories of Pascal VOC~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}. FCN and DeepLabV3 use a ResNet-50 backbone, and LR-ASPP a MobileNetV3-Large backbone. Only the final $1\times1$ convolutions are replaced by new ones with 4 output channels, one per class: in FCN and DeepLabV3 those of the main and auxiliary classifiers, in LR-ASPP the two of the head, one on the low-level features and one on the processed high-level features~\cite{torchvision_lraspp}.
 
 \subsection{Training configuration and loss formulation}
 \label{subsec:c4_training_config}
@@ -143,7 +143,7 @@ FCN and DeepLabV3 reach the same mIoU (0.9253), 1.08 percentage points above LR-
 
 The validation loss of FCN and DeepLabV3 reaches its minimum early and then rises while the training loss keeps decreasing, so both networks overfit (Figure~\ref{fig:training_loss_curves}). That of LR-ASPP reaches a plateau around epoch 75 and does not rise. The losses of FCN and DeepLabV3 include the auxiliary term of Eq.~\eqref{eq:total_training_loss}, so their values are not comparable with those of LR-ASPP.
 
-LR-ASPP was selected because it is much faster with a similar mIoU, and speed matters most for a network that must run on the robot in real time.
+LR-ASPP was selected because it is much faster with a similar mIoU, and for a network that must run on the robot in real time, speed is the most important requirement.
 
 \pgfplotsset{
     losscurve/.style={
@@ -265,7 +265,7 @@ Each network is evaluated with the IoU of Eq.~\eqref{eq:eval_iou} against the ma
 
 Each automatic-label network is compared with the manual baseline on the classes they share (Tables~\ref{tab:c4_results_4class}--\ref{tab:c4_results_binary_lettuce}). The background is compared only for the four-class network, because in the three-class and binary labels it also contains the classes without a prompt.
 
-\begin{table}[H]
+\begin{table}[htb]
     \centering
     \small
     \caption{IoU of the four-class networks on the test set.}
@@ -287,7 +287,7 @@ Each automatic-label network is compared with the manual baseline on the classes
     \end{tabular}
 \end{table}
 
-\begin{table}[H]
+\begin{table}[htb]
     \centering
     \small
     \caption{IoU of the three-class network on plants and path. The mean is computed over these two classes only.}
@@ -308,7 +308,7 @@ Each automatic-label network is compared with the manual baseline on the classes
     \end{tabular}
 \end{table}
 
-\begin{table}[H]
+\begin{table}[htb]
     \centering
     \small
     \caption{Path IoU of the binary network trained on lettuce only.}
@@ -332,7 +332,6 @@ Each automatic-label network is compared with the manual baseline on the classes
 In the four-class network the IoU of the covering material and of the background is low. Visual inspection showed that the automatic labels segment the covering material poorly and also assign the greenhouse plastic cover to it, which is background in the manual masks. Automatic labels can therefore be poor for less common classes such as the covering material, and they do not replace manual annotation when these classes are needed.
 
 On the complete test set the path IoU of all automatic-label networks drops to 0.39--0.41, while that of the manual baseline does not. The drop comes from the test images recorded from viewpoints the robot cannot reach. In these images the manual masks mark only the path to follow, when it is visible, while the networks trained on automatic labels also mark adjacent paths and the soil outside the corridor, or in front of the camera when there is no path to follow (Figure~\ref{fig:segmentation_comparison_crops}a). These values therefore measure both segmentation errors and the difference between the two kinds of labels.
-
 In the realistic scenario the path IoU of the three automatic-label networks is 5.7 to 6.2 percentage points below the manual baseline.
 
 The automatic-label networks reach their minimum validation loss between epochs 18 and 38. The validation loss of the manual baseline keeps decreasing until a plateau around epoch 75 (Figure~\ref{fig:training_loss_curves}c), and its minimum within the plateau is at epoch 162.
@@ -344,7 +343,7 @@ The binary configuration was chosen for the robot because the centerline extract
 
 Its training data include the lettuce test images, so a second network with the same configuration was trained without them (Section~\ref{subsec:c4_dataset_splits}). Its results estimate the accuracy of the configuration (Table~\ref{tab:c4_results_binary_general}). On the complete test set its path IoU is 0.6369, against 0.3917 for the lettuce-only binary network. Figure~\ref{fig:segmentation_comparison_crops}b shows the deployed network on tomato and cucumber images.
 
-\begin{table}[H]
+\begin{table}[htb]
     \centering
     \small
     \caption{Path IoU of the multi-crop network trained without the lettuce test images.}
@@ -371,3 +370,4 @@ Its training data include the lettuce test images, so a second network with the 
   \caption{Segmentation outputs, path class only. (a)~Lettuce test images. In the third image the networks trained on automatic labels also mark the strips beside the corridor, and in the fourth, where the manual mask has no path to follow, they mark the soil in front of the camera. (b)~Tomato and cucumber images, without ground truth.}
   \label{fig:segmentation_comparison_crops}
 \end{figure}
+
