@@ -87,7 +87,7 @@ The masks of the synthetic test set form three groups:
     \item \textbf{Adjacent corridors:} the 3 scenarios with adjacent corridors, 300 masks. Navigating in rows with adjacent corridors was not a goal of this work, so they are kept separate.
     \item \textbf{No corridor:} \texttt{empty} and \texttt{full}, 200 masks, where the correct status is \texttt{lost}.
 \end{itemize}
-Table~\ref{tab:geometric_benchmark} gives the results of each group, and Table~\ref{tab:c7_scenario_errors} the failures in the scenarios where at least one extractor fails. Figure~\ref{fig:geometric_extraction_comparison} shows two examples: a synthetic mask where only Center points fails, and a real frame where Center points and Column histogram have gross errors.
+Table~\ref{tab:geometric_benchmark} gives the results of each group, and Table~\ref{tab:c7_scenario_errors} the failures in the scenarios where at least one extractor fails. Figure~\ref{fig:geometric_extraction_comparison} shows two examples: a synthetic mask where only Center points fails, and a real frame where Column histogram has a gross error and Center points an error of 14~px.
 
 \begin{table}[H]
     \centering
@@ -103,18 +103,18 @@ Table~\ref{tab:geometric_benchmark} gives the results of each group, and Table~\
          & Strip-IRLS & EdgeNet & RANSAC edges & Center points & Column histogram \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Base scenarios, 1900 masks}} \\
-        Failures & 13 (0.7) & 2 (0.1) & 1 (0.1) & 66 (3.5) & 458 (24.1) \\
-        \texttt{lost} & 7 (0.4) & 0 (0.0) & 0 (0.0) & 30 (1.6) & 21 (1.1) \\
-        Gross errors with status \texttt{ok} & 4/6 & 1/2 & 1/1 & 1/36 & 406/437 \\
-        Gross errors above 30~px & 0/6 & 0/2 & 0/1 & 3/36 & 40/437 \\
-        Median error (px) & 0.42 & 0.56 & 0.26 & 0.50 & 4.51 \\
+        Failures & 13 (0.7) & 2 (0.1) & 1 (0.1) & 65 (3.4) & 458 (24.1) \\
+        \texttt{lost} & 7 (0.4) & 0 (0.0) & 0 (0.0) & 31 (1.6) & 21 (1.1) \\
+        Gross errors with status \texttt{ok} & 4/6 & 1/2 & 1/1 & 1/34 & 406/437 \\
+        Gross errors above 30~px & 0/6 & 0/2 & 0/1 & 3/34 & 40/437 \\
+        Median error (px) & 0.42 & 0.56 & 0.26 & 0.53 & 4.51 \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Adjacent corridors, 300 masks}} \\
         Failures & 13 (4.3) & 25 (8.3) & 74 (24.7) & 4 (1.3) & 72 (24.0) \\
         \texttt{lost} & 4 (1.3) & 25 (8.3) & 0 (0.0) & 0 (0.0) & 1 (0.3) \\
         Gross errors with status \texttt{ok} & 5/9 & 0/0 & 74/74 & 4/4 & 71/71 \\
         Gross errors above 30~px & 9/9 & 0/0 & 74/74 & 0/4 & 0/71 \\
-        Median error (px) & 0.68 & 0.61 & 1.61 & 0.74 & 5.05 \\
+        Median error (px) & 0.68 & 0.61 & 1.61 & 0.83 & 5.05 \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{No corridor, 200 masks}} \\
         Returned \texttt{lost} (\%) & 100 & 100 & 100 & 50 & 50 \\
@@ -144,11 +144,11 @@ Table~\ref{tab:geometric_benchmark} gives the results of each group, and Table~\
         \texttt{edge\_out} & 0 & 0 & 0 & 0 & 74 \\
         \texttt{row\_end} & 0 & 0 & 0 & 0 & 24 (3) \\
         \texttt{combined} & 0 & 0 & 1 & 1 (1) & 46 (3) \\
-        \texttt{blobs} & 4 (3) & 0 & 0 & 14 (13) & 0 \\
+        \texttt{blobs} & 4 (3) & 0 & 0 & 15 (13) & 0 \\
         \texttt{holes} & 0 & 0 & 0 & 0 & 8 (3) \\
         \texttt{hole\_bottom} & 0 & 0 & 0 & 10 (10) & 11 (2) \\
         \texttt{hole\_bottom\_tall} & 2 & 0 & 0 & 5 & 71 (2) \\
-        \texttt{bulge\_one\_side} & 7 (4) & 2 & 0 & 35 (6) & 0 \\
+        \texttt{bulge\_one\_side} & 7 (4) & 2 & 0 & 33 (7) & 0 \\
         \texttt{shadow\_gap} & 0 & 0 & 0 & 1 & 9 (8) \\
         \bottomrule
     \end{tabular}}
@@ -191,11 +191,11 @@ Table~\ref{tab:c7_annotated} gives the results on the annotated frames.
         \cmidrule(lr){2-3}\cmidrule(lr){4-6}
          & Strip-IRLS & EdgeNet & RANSAC edges & Center points & Column histogram \\
         \midrule
-        Failures & 11 (4.3) & 14 (5.5) & 9 (3.5) & 52 (20.4) & 52 (20.4) \\
-        \texttt{lost} & 5 (2.0) & 2 (0.8) & 5 (2.0) & 36 (14.1) & 14 (5.5) \\
-        Gross errors with status \texttt{ok} & 6/6 & 8/12 & 4/4 & 0/16 & 37/38 \\
-        Gross errors above 30~px & 1/6 & 2/12 & 1/4 & 4/16 & 4/38 \\
-        Median error (px) & 1.73 & 1.74 & 1.39 & 2.47 & 5.19 \\
+        Failures & 11 (4.3) & 14 (5.5) & 9 (3.5) & 46 (18.0) & 52 (20.4) \\
+        \texttt{lost} & 5 (2.0) & 2 (0.8) & 5 (2.0) & 35 (13.7) & 14 (5.5) \\
+        Gross errors with status \texttt{ok} & 6/6 & 8/12 & 4/4 & 0/11 & 37/38 \\
+        Gross errors above 30~px & 1/6 & 2/12 & 1/4 & 4/11 & 4/38 \\
+        Median error (px) & 1.73 & 1.74 & 1.39 & 2.41 & 5.19 \\
         \bottomrule
     \end{tabular}}
 \end{table}
@@ -329,17 +329,17 @@ Table~\ref{tab:c7_summary} collects the main results of each extractor.
          & Strip-IRLS & EdgeNet & RANSAC edges & Center points & Column histogram \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Synthetic masks, one corridor (1900)}} \\
-        Gross errors (\%) & 0.3 & 0.1 & 0.1 & 1.9 & 23.0 \\
+        Gross errors (\%) & 0.3 & 0.1 & 0.1 & 1.8 & 23.0 \\
         \texttt{lost} (\%) & 0.4 & 0.0 & 0.0 & 1.6 & 1.1 \\
-        Median error (px) & 0.42 & 0.56 & 0.26 & 0.50 & 4.51 \\
+        Median error (px) & 0.42 & 0.56 & 0.26 & 0.53 & 4.51 \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Synthetic masks, adjacent corridors (300)}} \\
         Gross errors (\%) & 3.0 & 0.0 & 24.7 & 1.3 & 23.7 \\
         \texttt{lost} (\%) & 1.3 & 8.3 & 0.0 & 0.0 & 0.3 \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Annotated real frames (255)}} \\
-        Gross errors (\%) & 2.4 & 4.7 & 1.6 & 6.3 & 14.9 \\
-        \texttt{lost} (\%) & 2.0 & 0.8 & 2.0 & 14.1 & 5.5 \\
+        Gross errors (\%) & 2.4 & 4.7 & 1.6 & 4.3 & 14.9 \\
+        \texttt{lost} (\%) & 2.0 & 0.8 & 2.0 & 13.7 & 5.5 \\
         \midrule
         \multicolumn{6}{@{}l}{\textit{Robot}} \\
         Time on the Jetson AGX Orin (ms) & 11.07 & 4.68 & 15.52 & 7.27 & 0.91 \\
@@ -349,7 +349,7 @@ Table~\ref{tab:c7_summary} collects the main results of each extractor.
     \end{tabular}}
 \end{table}
 
-No extractor is best on all the tests. On the tests within the aim of this work, the synthetic masks with one corridor and the annotated frames, Strip-IRLS, EdgeNet and RANSAC edges have few gross errors, and on the annotated frames they differ by a few frames, which are not independent (Section~\ref{subsubsec:geometric_annotated}). These tests therefore do not rank these three extractors. Strip-IRLS has fewer gross errors than RANSAC edges only with adjacent corridors. Center points has more gross errors and, on the annotated frames, many more \texttt{lost} frames. Table~\ref{tab:c7_summary} gives the two separately, because a \texttt{lost} frame stops the robot after 0.5~s, while a gross error that persists over consecutive frames reaches the command (Section~\ref{subsubsec:control_node}).
+No extractor is best on all the tests. On the tests within the aim of this work, the synthetic masks with one corridor and the annotated frames, Strip-IRLS, EdgeNet and RANSAC edges have few gross errors, and on the annotated frames they differ by a few frames, which are not independent (Section~\ref{subsubsec:geometric_annotated}). These tests therefore do not rank these three extractors. On the Jetson, Strip-IRLS is 1.4 times and EdgeNet 3.3 times faster than RANSAC edges (Table~\ref{tab:c7_summary}). Strip-IRLS has fewer gross errors than RANSAC edges only with adjacent corridors. Center points has more gross errors on the synthetic masks with one corridor and, on the annotated frames, many more \texttt{lost} frames. Table~\ref{tab:c7_summary} gives the two separately, because a \texttt{lost} frame stops the robot after 0.5~s, while a gross error that persists over consecutive frames reaches the command (Section~\ref{subsubsec:control_node}).
 
 In the field the four extractors other than Column histogram drive the robot along almost the same path, so the offline differences between them do not appear in that row. Column histogram has the most gross errors offline and the least repeatable runs in the field.
 
