@@ -14,7 +14,7 @@ Deep learning methods, in particular convolutional neural networks for semantic 
 
 However, deep neural networks introduce a practical problem: supervised training requires extensive pixel-level ground truth. Manually labeling agricultural scenes is labor-intensive and must cover multiple crop types, growth stages, and ambient conditions. In addition, running neural networks on compact onboard computers requires balancing segmentation accuracy against processing speed and power consumption, as steering commands must be updated fast enough to guide the vehicle in real time.
 
-This thesis addresses these challenges through a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and deterministic geometric reference extraction for local robot guidance.
+This thesis addresses these challenges through a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and centerline extraction from the predicted mask for local robot guidance.
 
 \section{Problem and approach}
 \label{sec:problem_approach}
