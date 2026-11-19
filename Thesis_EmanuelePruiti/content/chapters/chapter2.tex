@@ -40,9 +40,10 @@ Fully Convolutional Networks (FCN) convert the fully connected layers of
 a classification network into convolutions, so the network outputs a
 map of class scores at a much lower resolution than the input image. A
 deconvolution layer then upsamples this map
-to one prediction per pixel~\cite[Sections~3.1 and~4.1]{long2015fcn}. DeepLabV3 uses atrous convolutions and
-atrous spatial pyramid pooling to capture multi-scale context without
-decreasing the feature resolution~\cite{chen2017deeplab}. For embedded
+to one prediction per pixel~\cite[Sections~3.1 and~4.1]{long2015fcn}. DeepLabV3 removes the downsampling of the last blocks and uses atrous
+convolutions there, which gives denser feature maps, and captures
+multi-scale context with atrous spatial pyramid
+pooling~\cite[Sections~1 and~3.3]{chen2017deeplab}. For embedded
 applications with limited computing resources, Howard et
 al.~\cite{howard2019mobilenetv3} introduced MobileNetV3, whose blocks are
 built on depthwise convolutions, together with the Lite Reduced Atrous
