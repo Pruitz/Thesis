@@ -12,9 +12,9 @@ Early vision-based guidance pipelines extracted navigation lines through handcra
 
 Deep learning methods, in particular convolutional neural networks for semantic segmentation, overcome some of these limitations. They can detect crop rows despite variations in light levels, occlusions due to weeds, and variations in the background~\cite{desilva2024rowdetection}.
 
-However, deep neural networks introduce a practical problem: supervised training requires extensive pixel-level ground truth. Manually labeling agricultural scenes is labor-intensive and must cover multiple crop types, growth stages, and ambient conditions. In addition, running neural networks on compact onboard computers requires balancing segmentation accuracy against processing speed, as steering commands must be updated fast enough to guide the vehicle in real time.
+However, deep neural networks introduce a problem: supervised training requires extensive pixel-level ground truth. Manually labeling agricultural scenes is labor-intensive and must cover multiple crop types, growth stages, and ambient conditions. In addition, running neural networks on compact onboard computers requires balancing segmentation accuracy against processing speed, as steering commands must be updated fast enough to guide the vehicle in real time.
 
-Our solution to these challenges is a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and centerline extraction from the predicted mask for local robot guidance.
+Our solution to these problems is a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and centerline extraction from the predicted mask for local robot guidance.
 
 \section{Problem and approach}
 \label{sec:problem_approach}

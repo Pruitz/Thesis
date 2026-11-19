@@ -116,9 +116,8 @@ version of SegMin.
 \label{subsec:strip_methods}
 
 Li et al. combine a Faster-U-net inter-row-path mask with an adaptive
-multi-ROI procedure. Horizontal regions supply the midpoints of the
-path, which are used as control points for a multisegment cubic
-B-spline~\cite[Section~2.2.3]{li2022multiroi}. Yang et al. scan each
+multi-ROI procedure. A multisegment cubic B-spline is fitted to the
+center points of the path in horizontal strips~\cite[Section~2.2.3]{li2022multiroi}. Yang et al. scan each
 row of a segmented orchard-road mask for its left and right edge, limit
 the change of each edge between consecutive rows, and take the midpoint
 of the two edges in each row as the navigation
@@ -143,7 +142,7 @@ the crop rows.
 \subsection{Robust line fitting with IRLS}
 \label{subsec:irls_methods}
 
-Kneip et al. detect crop--ground transitions in the scanlines of a
+Kneip et al. detect crop--ground transitions in the grid rows of a
 stereo elevation map, then fit a linear crop-edge model using a Huber
 M-estimator and iteratively reweighted least
 squares~\cite[Sections~5--7]{kneip2020cropedge}.
