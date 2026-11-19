@@ -37,7 +37,7 @@ The main objectives of this work are:
 \item Select a segmentation architecture balancing accuracy and inference speed for robotic deployment, through offline evaluation of FCN, DeepLabV3, and LR-ASPP.
 \item Evaluate the effect of output label configurations (four-class, three-class, and binary path) on path segmentation accuracy.
 \item Develop our two extractors, which convert segmentation masks into local image-space navigation references: a geometric one that fits the two corridor edges (Strip-IRLS) and a first version of an edge regression network (EdgeNet). Compare them with three baseline algorithms.
-\item Integrate the selected perception and geometric components on a robot platform for field validation.
+\item Integrate the selected perception and geometric components on a robot platform and verify in the field that the robot can follow a crop row with the network trained only on automatic labels.
 \end{itemize}
 
 \section{Organization of the work}

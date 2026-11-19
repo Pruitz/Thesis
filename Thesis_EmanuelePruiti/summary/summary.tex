@@ -1,0 +1,120 @@
+% Summary of the thesis (max 3 pages), separate document.
+% Figures: ../images (thesis) and figures/ (made by Code/figure_summary/*.py).
+% Build: cd summary && latexmk -pdf -interaction=nonstopmode summary.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[hmargin=1.8cm,top=1.5cm,bottom=1.8cm]{geometry}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{figures/}{../images/}}
+\captionsetup{skip=4pt}
+\setlength{\parskip}{0pt}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\pagestyle{plain}
+
+\makeatletter
+\renewcommand\section{\@startsection{section}{1}{\z@}{-1.4ex plus -0.5ex minus -0.2ex}{0.6ex plus 0.2ex}{\normalfont\large\bfseries}}
+\makeatother
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries Vision-Based Row Following Navigation for Horticultural Robots\\with Automatically Labeled Semantic Segmentation\par}
+\vspace{0.4em}
+{Emanuele Pruiti\par}
+\end{center}
+
+\section{Introduction}
+
+The shortage of skilled labor and the rising cost of farm management push agriculture towards autonomous robots, and row crops are among their most studied applications. A robot between two crop rows must stay in the corridor without damaging the plants, and satellite positioning alone is not enough for this. Dense canopies obstruct the GNSS signal and cause multi-path reflections, greenhouse structures also obstruct it, and GNSS with RTK corrections and 3D LiDAR are costly. A camera is cheaper. Classical camera pipelines isolate the plants with color indices and thresholds, which break with changes of light, shadows and weeds. Segmentation networks handle these conditions better, but they need many images annotated by hand at pixel level and must run fast on the onboard computer.
+
+Our solution guides the robot with the color images of one camera, without a map of the field. For each frame (Figure~\ref{fig:pipeline}), an LR-ASPP network predicts a mask of the path between the rows, a path extractor turns the mask into a straight centerline, and a proportional controller steers the robot to keep this centerline at the center of the image. If no valid centerline is found for more than 0.5~s, the robot stops. The work has three parts:
+\begin{enumerate}\setlength{\itemsep}{0pt}
+\item the network is trained only on labels generated offline by SAM~3 from text prompts, without manual correction, and these labels are compared with manual labels on lettuce images,
+\item two path extractors, Strip-IRLS, our main method, and EdgeNet, are compared offline with three baselines,
+\item the complete chain runs on the robot Demetra and was tested in a crop row with all five extractors, with the trajectory measured by a total station.
+\end{enumerate}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.8\linewidth]{pipeline/pipeline.pdf}
+  \caption{Steps that run on the robot for each camera frame. The reference shows the two edge lines, the centerline and the lateral error at row 156 of the $224\times224$ mask, where the controller reads it.}
+  \label{fig:pipeline}
+\end{figure}
+
+\section{Segmentation trained on automatic labels}
+
+The images were recorded in a commercial greenhouse with the camera of the robot, an Intel RealSense D435: 762 of lettuce, 878 of tomato and 319 of cucumber. Manual masks were drawn only for the lettuce images, because annotation is time-consuming.
+
+FCN and DeepLabV3 with a ResNet-50 backbone and LR-ASPP with a MobileNetV3-Large backbone were fine-tuned from pretrained TorchVision weights on the manual lettuce masks, with four classes. FCN and DeepLabV3 reach an mIoU of 0.9253, 1.08 percentage points above LR-ASPP, but LR-ASPP is 7.2 times faster than FCN and 10.6 times faster than DeepLabV3 on the training GPU. LR-ASPP was chosen because speed is the most important requirement for a network that runs on the robot in real time.
+
+SAM~3 was run offline with one text prompt per class, such as \texttt{central farm path}, and its masks were used for training without inspection or correction. LR-ASPP networks trained on these labels with four, three and two classes were compared with the same network trained on the manual masks, on the same 77 lettuce test images. On the 42 test images taken between parallel rows, from viewpoints the robot can reach, the path IoU of the automatic-label networks is 0.897 to 0.901, against 0.959 for the manual labels, 5.7 to 6.2 percentage points lower. On all 77 images it drops to 0.39--0.41. In the images with more than one path or taken outside the rows, the manual mask marks only the path to follow, while the automatic-label networks also mark the adjacent paths and the soil outside the corridor (Figure~\ref{fig:segmentation}a, bottom row). SAM~3 also labels the covering material poorly (IoU of 0.17 against 0.83 on all 77 images), so automatic labels do not replace manual labels for every class. Between parallel rows, the path IoU of the four-class, three-class and binary networks differs by less than 0.5 percentage points, and the robot uses a binary network, since the extractors need only the path.
+
+The robot network, a binary LR-ASPP, is trained only on the SAM~3 labels of all 1959 images, so the tomato and cucumber images needed no manual annotation. A copy trained without the 77 lettuce test images reaches a path IoU of 0.907 between parallel rows. Figure~\ref{fig:segmentation}b shows its output on tomato and cucumber, which have no manual masks.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\linewidth]{segmentation_summary.pdf}
+  \caption{Path masks. (a)~Lettuce test images with the manual mask and the output of the LR-ASPP networks trained on manual labels and on automatic labels with two, three and four classes. In the bottom image the automatic-label networks also mark the strips beside the corridor. (b)~Output of the robot network on tomato and cucumber images, which have no manual mask.}
+  \label{fig:segmentation}
+\end{figure}
+
+\section{Path extraction}
+
+The five extractors take the same $224\times224$ mask and return a straight centerline, a confidence and a status, \texttt{ok}, \texttt{degraded} or \texttt{lost}. Strip-IRLS divides the lower part of the mask into horizontal strips and extracts the path intervals of each strip. Going up from the bottom of the image, it links in each strip the interval that continues the corridor found below, and it keeps the chain that gives the most edge samples. It then fits the left and right edges separately with iteratively reweighted least squares, and the centerline is the mean of the two lines. EdgeNet, still at an early stage, is a small network of about 0.8 million parameters, trained only on synthetic masks, which takes the mask and regresses the two corridor edges directly. It has no geometric parameters to set by hand. The baselines are Center points, which fits one line to the midpoints of the intervals, Column histogram, which takes the column with the most path pixels, and RANSAC edges, which fits the two edges with RANSAC on the row extremes of the corridor.
+
+The extractors were tested on 2400 synthetic masks with an exact centerline and on 255 real frames whose corridor edges were marked by hand. A gross error is an error above 15~px at the row read by the controller. There is no clear winner, and finding one was not the aim. The tests show how the extractors behave in the different scenarios and which scenarios cause them the most problems (Table~\ref{tab:summary}). On the masks with one corridor and on the real frames, our two methods and RANSAC edges have few gross errors, and on the real frames they differ by a few frames, which are not independent, so these tests do not rank them. On the Jetson, Strip-IRLS is 1.4 times and EdgeNet 3.3 times faster than RANSAC edges. Adjacent corridors, outside the aim of this work, are the hardest synthetic case for RANSAC edges, with 24.7\% of gross errors against 3.0\% for Strip-IRLS. On the real frames, the 22 gross errors of the three best extractors fall on only 15 different frames, mostly of tomato, where the segmentation is much worse than on the others. Center points classifies 13.7\% of the real frames as \texttt{lost}, and Column histogram has the most gross errors.
+
+\begin{table}[h]
+  \centering
+  \footnotesize
+  \caption{Main results of the five extractors. Gross errors (above 15~px) and \texttt{lost} frames in \% of the masks with a corridor. Field tests: RMSE of the lateral distance from the row centerline (mean of the three short runs), standard deviation between the short runs of an extractor at the same positions (Std runs), and root mean square difference between the mean of its short runs and that of the other four extractors (RMSD).}
+  \label{tab:summary}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+     & \shortstack{Strip-IRLS\\(ours)} & \shortstack{EdgeNet\\(ours)} & \shortstack{RANSAC\\edges} & \shortstack{Center\\points} & \shortstack{Column\\histogram} \\
+    \midrule
+    Synthetic, one corridor (1900): gross errors (\%) ($\downarrow$) & 0.3 & 0.1 & 0.1 & 1.8 & 23.0 \\
+    Synthetic, adjacent corridors (300): gross errors (\%) ($\downarrow$) & 3.0 & 0.0 & 24.7 & 1.3 & 23.7 \\
+    Real frames (255): gross errors (\%) ($\downarrow$) & 2.4 & 4.7 & 1.6 & 4.3 & 14.9 \\
+    Real frames (255): \texttt{lost} (\%) ($\downarrow$) & 2.0 & 0.8 & 2.0 & 13.7 & 5.5 \\
+    Time on the Jetson AGX Orin (ms) ($\downarrow$) & 11.07 & 4.68 & 15.52 & 7.27 & 0.91 \\
+    Short runs: RMSE (cm) ($\downarrow$) & 5.7 & 5.3 & 5.4 & 5.7 & 5.5 \\
+    Short runs: Std runs (cm) ($\downarrow$) & 0.6 & 0.3 & 0.6 & 0.4 & 4.3 \\
+    Short runs: RMSD (cm) & 1.5 & 1.1 & 1.8 & 1.6 & 5.1 \\
+    Full row: RMSE (cm) ($\downarrow$) & 9.1 & 8.4 & 9.4 & 9.2 & 8.5 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Tests on the robot}
+
+Demetra is a four-wheel-steering robot of the Roboto student team of the Politecnico di Torino, with an NVIDIA Jetson AGX Orin as onboard computer. Without the debug video, the whole processing of a frame takes 11.3 to 26.2~ms depending on the extractor, less than the 33.3~ms frame period of the camera, so every frame is processed.
+
+The field tests were made on 4 November 2026 in a tomato row of a tunnel greenhouse, a field not present in the training data of the robot network, with sparse plants and poor light. Each extractor made three short runs at 0.20~m/s, compared between 12 and 4~m from the station, and one run along the full row at 0.50~m/s, compared from 15 to 39~m. Between runs only the extractor changed. A total station followed a prism at the center of the robot. The row centerline passes through five points placed by eye on the center of the row, so it is not accurate to the centimeter.
+
+The robot followed the row with all five extractors (Figure~\ref{fig:field}). The RMSE from the row centerline is 5.3 to 5.7~cm on the short runs and 8.4 to 9.4~cm on the full row, and the largest distance 13.6 and 20.4~cm. Strip-IRLS, EdgeNet, RANSAC edges and Center points drove the robot along almost the same trajectory, with an RMSD of 1.1 to 1.9~cm and a standard deviation between runs of 0.3 to 0.6~cm. Their RMSE therefore comes mostly from a part common to all their runs, which repeats at the same positions along the row, so these runs do not show which of the four is better. This part comes from the row, where the plants reach further into the path or the predicted path widens, and from small errors of the row centerline. Column histogram is the exception. Its three short runs follow different curves, with a standard deviation between runs of 4.3~cm. Where the predicted path covers most of the width of the mask, the column with the most path pixels can lie at the image border, and Column histogram still classifies the frame as \texttt{ok}.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.95\linewidth]{field_summary.pdf}
+  \caption{(a)~Demetra in the tomato row. (b, c)~Lateral distance from the row centerline, positive to the right as seen from the station. The robot moves from left to right. (b)~Mean of the three short runs of each extractor, at 0.20~m/s. (c)~Full row at 0.50~m/s, one run per extractor. The dashed line is the mean of all the runs.}
+  \label{fig:field}
+\end{figure}
+
+\section{Conclusions}
+
+Automatic labels from SAM~3, used without correction, can replace manual annotation for the path between parallel rows, with a path IoU about 6 percentage points lower, but not for every class. A network trained only on these labels guided the robot along a tomato row of a field not present in its training data, with each of the five extractors. No extractor is the best in all the tests. Our two methods have as few gross errors as RANSAC edges and run faster on the Jetson. With adjacent corridors they also have fewer gross errors. EdgeNet, trained only on synthetic masks, performs like the geometric extractors without parameters set by hand. The best extractors fail mostly on the same badly segmented frames, and in the field four of them drove the robot along almost the same trajectory, so the quality of the segmentation affects the result more than the choice among these extractors.
+
+The segmentation was measured against manual masks only on lettuce, with a random split by image, so the results can be optimistic. The field tests were made in one row of one crop on one day, with a row centerline placed by eye. The extractors model the centerline as a straight line, so they do not follow curved rows.
+
+\end{document}

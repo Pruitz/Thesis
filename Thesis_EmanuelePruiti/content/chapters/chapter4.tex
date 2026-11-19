@@ -332,9 +332,10 @@ Each automatic-label network is compared with the manual baseline on the classes
 In the four-class network the IoU of the covering material and of the background is low. Visual inspection showed that the automatic labels segment the covering material poorly and also assign the greenhouse plastic cover to it, which is background in the manual masks. Automatic labels can therefore be poor for less common classes such as the covering material, and they do not replace manual annotation when these classes are needed.
 
 On the complete test set the path IoU of all automatic-label networks drops to 0.39--0.41, while that of the manual baseline does not. The drop comes from the test images recorded from viewpoints the robot cannot reach. In these images the manual masks mark only the path to follow, when it is visible, while the networks trained on automatic labels also mark adjacent paths and the soil outside the corridor, or in front of the camera when there is no path to follow (Figure~\ref{fig:segmentation_comparison_crops}a). These values therefore measure both segmentation errors and the difference between the two kinds of labels.
+
 In the realistic scenario the path IoU of the three automatic-label networks is 5.7 to 6.2 percentage points below the manual baseline.
 
-The automatic-label networks reach their minimum validation loss between epochs 18 and 38. The validation loss of the manual baseline keeps decreasing until a plateau around epoch 75 (Figure~\ref{fig:training_loss_curves}c), and its minimum within the plateau is at epoch 162.
+The automatic-label networks reach their minimum validation loss between epochs 18 and 38. The validation loss of the manual baseline reaches a plateau around epoch 75 (Figure~\ref{fig:training_loss_curves}c), and its minimum within it is at epoch 162.
 
 \subsection{Deployed network}
 \label{subsec:c4_deployed_network}

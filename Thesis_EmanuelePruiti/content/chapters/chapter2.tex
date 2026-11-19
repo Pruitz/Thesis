@@ -118,7 +118,11 @@ version of SegMin.
 Li et al. combine a Faster-U-net inter-row-path mask with an adaptive
 multi-ROI procedure. Horizontal regions supply the midpoints of the
 path, which are used as control points for a multisegment cubic
-B-spline~\cite[Section~2.2.3]{li2022multiroi}.
+B-spline~\cite[Section~2.2.3]{li2022multiroi}. Yang et al. scan each
+row of a segmented orchard-road mask for its left and right edge, limit
+the change of each edge between consecutive rows, and take the midpoint
+of the two edges in each row as the navigation
+path~\cite[Section~2.3]{yang2022orchard}.
 
 \textit{Center points} (Section~\ref{subsec:c5_center_baseline}) follows
 this scheme and fits one straight line to the interval midpoints.
@@ -185,15 +189,15 @@ following:
 
 \begin{enumerate}
     \item \textbf{Automatic labels.} SAM~3 generated, from text prompts, the
-    masks used to train the segmentation network that runs on the robot.
-    The masks were used without manual correction
-    (Section~\ref{subsec:c4_sam_annotation}).
+    training masks of the network on the robot, without manual
+    correction (Section~\ref{subsec:c4_sam_annotation}).
 
-    \item \textbf{Path segmentation.} The network segments the path between
-    the rows and not the plants.
+    \item \textbf{Path segmentation.} As in Li et al.~\cite{li2022multiroi}
+    and Yang et al.~\cite{yang2022orchard}, the network segments the path
+    between the rows and not the plants.
 
-    \item \textbf{Two path extractors.} \textit{Strip-IRLS} fits the two edges of the corridor separately instead of
-    using the midpoints of the path intervals
+    \item \textbf{Two path extractors.} \textit{Strip-IRLS} fits the two corridor edges separately instead of
+    using the interval midpoints
     (Section~\ref{sec:c5_stripirls}). \textit{EdgeNet}, still at an
     early stage, is a small network that regresses the two edges directly
     from the mask (Section~\ref{sec:c5_network}). Both are compared with

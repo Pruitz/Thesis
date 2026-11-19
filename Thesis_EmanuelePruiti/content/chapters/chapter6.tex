@@ -78,7 +78,7 @@ The image subscription keeps only the last frame, so frames that arrive during t
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{images/platform/debug_video.png}
-    \caption{Frame of the debug video recorded during a field run with Strip-IRLS. From left to right: segmentation (the segmentation before the morphological cleaning), region of interest (the cleaned segmentation, on which the path extractor operates) and path (the extracted path drawn on the camera image).}
+    \caption{Frame of the debug video recorded during a field run with Strip-IRLS. From left to right: segmentation (the segmentation before the morphological cleaning), region of interest (the cleaned segmentation, on which the path extractor operates) and path (the edges and the centerline estimated by the extractor, drawn on the camera image).}
     \label{fig:debug_video}
 \end{figure}
 
@@ -414,7 +414,7 @@ It then shifts the frame horizontally by
 \end{equation}
 pixels, positive to the right, where $f = 465$~px is the nominal focal length of the camera and $D = 1.25$~m is the assumed distance of the image row where the error is measured. A lateral offset therefore moves the row in the image by $f/D \approx 372$~px per meter, and a rotation by 465~px per radian. During the test, a lateral offset was added from the keyboard. The simulated pose was computed from the velocity command, assuming that the wheels follow the commanded steering angle, and the wheels visibly reached the commanded angle. Figure~\ref{fig:sitl_test} shows three frames of the test.
 
-The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate physical path tracking, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
+The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate row following on the ground, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
 
 \begin{figure}[H]
     \centering
