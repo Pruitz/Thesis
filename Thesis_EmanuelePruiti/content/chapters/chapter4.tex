@@ -200,8 +200,8 @@ LR-ASPP was selected because it is much faster with a similar mIoU, and speed ma
         S[table-format=1.4] S[table-format=1.4]
         S[table-format=2.2] S[table-format=3.2]@{}}
         \toprule
-        Model & {\shortstack{Parameters\\(M)}} & {Epoch} & {mIoU} & {Path IoU} &
-        {\shortstack{Mean time\\(ms)}} & {FPS} \\
+        Model & {\shortstack{Parameters\\(M) ($\downarrow$)}} & {Epoch} & {mIoU ($\uparrow$)} & {Path IoU ($\uparrow$)} &
+        {\shortstack{Mean time\\(ms) ($\downarrow$)}} & {FPS ($\uparrow$)} \\
         \midrule
         FCN & 35.3 & 38 & 0.9253 & 0.9654 & 59.10 & 16.92 \\
         DeepLabV3 & 42.0 & 43 & 0.9253 & 0.9686 & 86.90 & 11.51 \\
@@ -218,7 +218,7 @@ LR-ASPP was selected because it is much faster with a similar mIoU, and speed ma
     \sisetup{group-digits=false}
     \begin{tabular}{@{}l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]@{}}
         \toprule
-        Model & {Background} & {Plants} & {Path} & {Covering material} \\
+        Model & {Background ($\uparrow$)} & {Plants ($\uparrow$)} & {Path ($\uparrow$)} & {Covering material ($\uparrow$)} \\
         \midrule
         FCN & 0.9493 & 0.9385 & 0.9654 & 0.8479 \\
         DeepLabV3 & 0.9494 & 0.9384 & 0.9686 & 0.8448 \\
@@ -271,10 +271,10 @@ Each automatic-label network is compared with the manual baseline on the classes
     \caption{IoU of the four-class networks on the test set.}
     \label{tab:c4_results_4class}
     \sisetup{group-digits=false}
-    \setlength{\tabcolsep}{4.5pt}
+    \setlength{\tabcolsep}{3.5pt}
     \begin{tabular}{@{}l l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]@{}}
         \toprule
-        Scenario & Model & {Background} & {Plants} & {Path} & {\shortstack{Covering\\material}} & {mIoU} \\
+        Scenario & Model & {\shortstack{Background\\($\uparrow$)}} & {\shortstack{Plants\\($\uparrow$)}} & {\shortstack{Path\\($\uparrow$)}} & {\shortstack{Covering\\material ($\uparrow$)}} & {\shortstack{mIoU\\($\uparrow$)}} \\
         \midrule
         \multirow{2}{*}{Complete test set} 
         & Manual baseline & 0.9439 & 0.9262 & 0.9532 & 0.8346 & 0.9145 \\
@@ -295,7 +295,7 @@ Each automatic-label network is compared with the manual baseline on the classes
     \sisetup{group-digits=false}
     \begin{tabular}{@{}l l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]@{}}
         \toprule
-        Scenario & Model & {Plants IoU} & {Path IoU} & {Mean IoU} \\
+        Scenario & Model & {Plants IoU ($\uparrow$)} & {Path IoU ($\uparrow$)} & {Mean IoU ($\uparrow$)} \\
         \midrule
         \multirow{2}{*}{Complete test set} 
         & Manual baseline & 0.9262 & 0.9532 & 0.9397 \\
@@ -316,7 +316,7 @@ Each automatic-label network is compared with the manual baseline on the classes
     \sisetup{group-digits=false}
     \begin{tabular}{@{}l l S[table-format=1.4]@{}}
         \toprule
-        Scenario & Model & {Path IoU} \\
+        Scenario & Model & {Path IoU ($\uparrow$)} \\
         \midrule
         \multirow{2}{*}{Complete test set}
         & Manual baseline & 0.9532 \\
@@ -352,7 +352,7 @@ Its training data include the lettuce test images, so a second network with the 
     \sisetup{group-digits=false}
     \begin{tabular}{@{}l l S[table-format=1.4]@{}}
         \toprule
-        Scenario & Model & {Path IoU} \\
+        Scenario & Model & {Path IoU ($\uparrow$)} \\
         \midrule
         \multirow{2}{*}{Complete test set}
         & Manual baseline & 0.9532 \\

@@ -14,7 +14,7 @@ Deep learning methods, in particular convolutional neural networks for semantic 
 
 However, deep neural networks introduce a practical problem: supervised training requires extensive pixel-level ground truth. Manually labeling agricultural scenes is labor-intensive and must cover multiple crop types, growth stages, and ambient conditions. In addition, running neural networks on compact onboard computers requires balancing segmentation accuracy against processing speed and power consumption, as steering commands must be updated fast enough to guide the vehicle in real time.
 
-This thesis addresses these challenges through a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and centerline extraction from the predicted mask for local robot guidance.
+Our solution to these challenges is a modular pipeline that combines automatic dataset annotation with SAM~3, real-time onboard semantic segmentation, and centerline extraction from the predicted mask for local robot guidance.
 
 \section{Problem and approach}
 \label{sec:problem_approach}
@@ -36,7 +36,7 @@ The main objectives of this work are:
 \item Evaluate whether manual annotation can be replaced by labels generated automatically by SAM~3 from text prompts, without manual correction, by comparing networks trained on SAM~3 labels with a network trained on manual masks.
 \item Select a segmentation architecture balancing accuracy and inference speed for robotic deployment, through offline evaluation of FCN, DeepLabV3, and LR-ASPP.
 \item Evaluate the effect of output label configurations (four-class, three-class, and binary path) on path segmentation accuracy.
-\item Develop extractors that convert segmentation masks into local image-space navigation references: a geometric one that fits the two corridor edges (Strip-IRLS) and a first version of an edge regression network (EdgeNet). Compare them with three baseline algorithms.
+\item Develop our two extractors, which convert segmentation masks into local image-space navigation references: a geometric one that fits the two corridor edges (Strip-IRLS) and a first version of an edge regression network (EdgeNet). Compare them with three baseline algorithms.
 \item Integrate the selected perception and geometric components on a robot platform for field validation.
 \end{itemize}
 
@@ -47,11 +47,11 @@ The thesis is organized as follows:
 
 \textbf{Chapter~\ref{cap:stato_arte}} reviews vision-based methods for agricultural row navigation, covering classical and learning-based segmentation approaches, geometric extraction techniques, and experimental validation in related work.
 
-\textbf{Chapter~\ref{cap:architectures}} presents the segmentation networks evaluated to choose the one used on the robot, FCN, DeepLabV3 and LR-ASPP with a MobileNetV3 backbone, and SAM~3, used to label training images automatically.
+\textbf{Chapter~\ref{cap:architectures}} presents the segmentation networks evaluated to choose the one used on the robot, FCN, DeepLabV3 and LR-ASPP, and SAM~3, used to label training images automatically.
 
 \textbf{Chapter~\ref{cap:segmentation}} describes dataset preparation with manual annotation and automatic SAM~3 labeling, empirical comparisons among the three architectures on lettuce, and evaluations of supervision strategies across label configurations.
 
-\textbf{Chapter~\ref{cap:geometric_reference}} presents the two extractors developed in this work, which convert corridor masks into navigation references: Strip-IRLS, based on horizontal-strip interval selection and independent edge fitting, and EdgeNet, a network that regresses the corridor edges, still at an early stage. Three baseline algorithms are described for comparison.
+\textbf{Chapter~\ref{cap:geometric_reference}} presents our two extractors, which convert corridor masks into navigation references: Strip-IRLS, based on horizontal-strip interval selection and independent edge fitting, and EdgeNet, a network that regresses the corridor edges, still at an early stage. Three baseline algorithms are described for comparison.
 
 \textbf{Chapter~\ref{cap:platform}} describes the robot and its camera, the complete pipeline that runs on the robot from the camera image to the steering command, its integration in ROS, the timing on the onboard computer, and the Processor-in-the-Loop test.
 
