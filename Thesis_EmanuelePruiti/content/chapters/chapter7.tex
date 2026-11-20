@@ -206,7 +206,7 @@ The five extractors were tested in closed loop on the robot on 4 November 2026. 
 \subsection{Test conditions}
 \label{subsec:test_conditions}
 
-The tests were made in a row of tomato plants in a tunnel greenhouse. It was a difficult case for the segmentation: the plants were sparse, so the predicted path often widened into the gaps between them, and the lighting was poor. No image of this field is in the training data of the segmentation network. The short runs were made at 0.20~m/s and the full row at 0.50~m/s. Figure~\ref{fig:c7_field_photo} shows the robot in this row, and Figure~\ref{fig:c7_field_frames} a frame of its camera.
+The tests were made in a row of tomato plants in a greenhouse. It was a difficult case for the segmentation: the plants were sparse, so the predicted path often widened into the gaps between them, and the lighting was poor. No image of this row is in the training data of the segmentation network. The short runs were made at 0.20~m/s and the full row at 0.50~m/s. Figure~\ref{fig:c7_field_photo} shows the robot in this row, and Figure~\ref{fig:c7_field_frames} a frame of its camera.
 
 \begin{figure}[H]
   \centering
@@ -350,4 +350,4 @@ EdgeNet, trained only on synthetic masks, drove the robot in the field along the
 
 The lateral distance common to the four similar extractors stays below 20~cm and repeats at the same positions in all their runs, so it is not the error of one extractor. It comes from the row, where the plants reach further into the path on one side or the predicted path widens, and from small errors of the reference centerline.
 
-The segmentation network deployed on the robot, trained only on SAM~3 labels without manual correction (Section~\ref{subsec:c4_deployed_network}), guided the robot along the row with all five extractors, in a field not present in its training data. The best extractors fail mostly on the same badly segmented frames (Section~\ref{subsubsec:geometric_annotated}), so the quality of the segmentation affects the result more than the choice of the extractor.
+The segmentation network deployed on the robot, trained only on SAM~3 labels without manual correction (Section~\ref{subsec:c4_deployed_network}), guided the robot along the row with all five extractors, in a row not present in its training data. The best extractors fail mostly on the same badly segmented frames (Section~\ref{subsubsec:geometric_annotated}), so the quality of the segmentation affects the result more than the choice of the extractor.

@@ -2,7 +2,7 @@
 \label{cap:segmentation}
 \label{cap:dataset_training}
 
-Two questions about the segmentation network are answered here: which architecture runs on the robot, and whether automatic labels can replace manual annotation. Manual masks were drawn only for lettuce, because annotation is time-consuming. The first experiment compares FCN, DeepLabV3, and LR-ASPP, fine-tuned from pretrained weights on these lettuce masks, and selects LR-ASPP for the robot. The second tests whether LR-ASPP networks trained on SAM~3 masks of the lettuce images, without manual correction, can replace manual annotation. The automatic binary labeling was then extended to all crops, and a network trained on this collection is the one deployed on the robot (Section~\ref{subsec:c4_deployed_network}).
+Two questions about the segmentation network are answered here: which architecture runs on the robot, and whether automatic labels can replace manual annotation. Manual masks were drawn only for lettuce, because annotation is time-consuming and they were needed only as ground truth and to choose the network. The first experiment compares FCN, DeepLabV3, and LR-ASPP, fine-tuned from pretrained weights on these lettuce masks, and selects LR-ASPP for the robot. The second tests whether LR-ASPP networks trained on SAM~3 masks of the lettuce images, without manual correction, can replace manual annotation. The automatic binary labeling was then extended to all crops, and a network trained on this collection is the one deployed on the robot (Section~\ref{subsec:c4_deployed_network}).
 
 \section{Image acquisition and class definition}
 \label{sec:c4_acquisition_classes}
