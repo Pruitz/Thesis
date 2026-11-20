@@ -242,7 +242,7 @@ The values are set for the camera, its mounting and the fields of this work. Wit
 \section{EdgeNet, an edge regression network}
 \label{sec:c5_network}
 
-\textit{EdgeNet} is a first test of replacing the geometric steps of \textit{Strip-IRLS} with a learned model. It takes the segmentation mask and not the image, and it regresses the two corridor edges. It has no geometric parameters to set by hand for each scenario.
+\textit{EdgeNet} is a first test of replacing the geometric steps of \textit{Strip-IRLS} with a learned model. It takes the segmentation mask and not the image, and it regresses the two corridor edges. Because it works on the mask, it can be trained on generated masks whose edges are known exactly. A network that worked on the camera images would need real images labeled with their centerline. It has no geometric parameters to set by hand for each scenario.
 
 The network is a small CNN of about 0.8 million parameters, shown in Figure~\ref{fig:c5_edgenet}. Its input is the $224\times224$ mask, and it has five outputs: the $x$ positions of the left and right edges at rows 156 and 223, and the validity $p_{\mathrm{valid}}$, the estimate of the network that the mask contains a corridor.
 
@@ -285,6 +285,8 @@ Our two methods, \textit{Strip-IRLS} and \textit{EdgeNet}, are compared with the
 \subsection{Center points}
 \label{subsec:c5_center_baseline}
 
+\textit{Center points} is our version of the midpoint methods of Section~\ref{subsec:strip_methods}. Li et al.\ fit a B-spline to the center points of the strips, and Yang et al.\ use the midpoints of the rows as the path. \textit{Center points} instead fits one straight line to the midpoints with iteratively reweighted least squares, the estimator of \textit{Strip-IRLS}.
+
 \textit{Center points} uses the same mask cleaning, ROI, strips and interval extraction as \textit{Strip-IRLS}. Each interval is reduced to its midpoint $c=(\ell+r)/2$ and its width $d=r-\ell+1$. The seed is the interval of the bottom six strips with the most path pixels. Intervals are associated upward with the cost
 \begin{equation}
     J_i = |c_i - c_p| + 0.4\, |d_i - d_p|,
@@ -292,7 +294,7 @@ Our two methods, \textit{Strip-IRLS} and \textit{EdgeNet}, are compared with the
 \end{equation}
 where $c_p$ and $d_p$ are the midpoint and width of the last accepted interval, under the jump limit $|c_i - c_p| \le \max(28, 0.5\, d_p)$. The stopping rule and the minimum of three intervals are those of \textit{Strip-IRLS}.
 
-One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c5_reweight}, starting from weights proportional to the pixel count of each interval. Clipped intervals are not excluded. The confidence combines tracking, fit, width regularity and gap scores similar to those of \textit{Strip-IRLS} (Section~\ref{sec:c5_output}), with weights 0.30, 0.35, 0.25 and 0.10. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the confidence is below 0.38, and \texttt{degraded} if it is below 0.60. Section~\ref{sec:c5_tradeoffs_and_limitations} discusses the effect of forming the midpoints before the fit.
+One line is fitted to the midpoints with four iterations of the weights of Eq.~\eqref{eq:c5_reweight}, starting from uniform weights, as in \textit{Strip-IRLS}. Clipped intervals are not excluded. The confidence combines tracking, fit, width regularity and gap scores similar to those of \textit{Strip-IRLS} (Section~\ref{sec:c5_output}), with weights 0.30, 0.35, 0.25 and 0.10. The result is \texttt{lost} if the mean residual exceeds $2\sigma$ or if the confidence is below 0.38, and \texttt{degraded} if it is below 0.60. Section~\ref{sec:c5_tradeoffs_and_limitations} discusses the effect of forming the midpoints before the fit.
 
 \subsection{Column histogram}
 \label{subsec:c5_histogram_baseline}
@@ -336,11 +338,11 @@ Table~\ref{tab:c5_algorithm_tradeoffs} summarizes how the five extractors differ
     \end{tabularx}
 \end{table}
 
-The main structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c5_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. The effect on the synthetic test set is shown in Section~\ref{subsubsec:geometric_comparison} (\texttt{bulge\_one\_side}).
+One structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c5_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. The seed also differs. \textit{Center points} grows a single chain from the interval of the bottom six strips with the most path pixels and does not use the strips below it, while \textit{Strip-IRLS} grows a chain from each seed and keeps the one with more samples. The effect on the synthetic test set is shown in Figure~\ref{fig:geometric_extraction_comparison}a.
 
 \textit{Strip-IRLS} has three structural limitations:
 \begin{itemize}
-    \item \textbf{Seed dependence.} The seeds are searched only in the bottom six strips. If these contain no interval, the result is \texttt{lost} even if the upper part of the corridor is segmented. If a hole wider than the merging gap and taller than these strips splits the bottom of the corridor, the chain follows only one part (Section~\ref{subsubsec:geometric_comparison}). At a fork above these strips, the chain takes the branch with the lowest cost and never revises it.
+    \item \textbf{Seed dependence.} The seeds are searched only in the bottom six strips. If these contain no interval, the result is \texttt{lost} even if the upper part of the corridor is segmented. If a hole wider than the merging gap and taller than these strips splits the bottom of the corridor, the chain follows only one part (Table~\ref{tab:c7_scenario_errors}). At a fork above these strips, the chain takes the branch with the lowest cost and never revises it.
     \item \textbf{Number of parameters.} \textit{Strip-IRLS} has 16 arguments and 13 constants (Table~\ref{tab:c5_defaults}), most of them in pixels of the mask, and several act together. They were set for the camera, its mounting and the fields of this work, and in a new scenario they may need to be adjusted to get the best results (Section~\ref{sec:c5_parameter_setting}).
     \item \textbf{Missing plants on one side.} The predicted path, and therefore the interval, can widen on that side. Within the jump limit it is accepted, and its endpoint on that side is a wrong sample that only the reweighting can reduce. Beyond the limit the strip is skipped. If the interval reaches the image border, its endpoint on that side gives no sample.
 \end{itemize}
