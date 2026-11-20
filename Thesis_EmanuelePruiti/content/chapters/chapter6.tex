@@ -48,7 +48,7 @@ The onboard computer is an NVIDIA Jetson AGX Orin Developer Kit (64~GB), with a 
 \subsection{ROS integration}
 \label{subsec:ros}
 
-The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph of the robot. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the path extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes debug topics under \texttt{/debug}, which are used during configuration and are omitted from the figure. When the debug video is enabled, it also publishes three debug images (segmentation, region of interest and path), shown in Figure~\ref{fig:debug_video}. The debug video makes the node skip camera frames (Section~\ref{subsec:timing}), so it should be disabled when the robot operates. The text log on \texttt{/debug/text} is always active. It carries important information on each frame and its cost is small, so the node still processes every camera frame.
+The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph of the robot. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the centerline extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes debug topics under \texttt{/debug}, which are used during configuration and are omitted from the figure. When the debug video is enabled, it also publishes three debug images (segmentation, region of interest and path), shown in Figure~\ref{fig:debug_video}. The debug video makes the node skip camera frames (Section~\ref{subsec:timing}), so it should be disabled when the robot operates. The text log on \texttt{/debug/text} is always active. It carries important information on each frame and its cost is small, so the node still processes every camera frame.
 
 The image subscription keeps only the last frame, so frames that arrive during the processing are not queued and the controller always processes the most recent image seen by the robot.
 
@@ -78,7 +78,7 @@ The image subscription keeps only the last frame, so frames that arrive during t
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{images/platform/debug_video.png}
-    \caption{Frame of the debug video recorded during a field run with Strip-IRLS. From left to right: segmentation (the segmentation before the morphological cleaning), region of interest (the cleaned segmentation, on which the path extractor operates) and path (the edges and the centerline estimated by the extractor, drawn on the camera image).}
+    \caption{Frame of the debug video recorded during a field run with Strip-IRLS. From left to right: segmentation (the segmentation before the morphological cleaning), region of interest (the cleaned segmentation, on which the centerline extractor operates) and path (the edges and the centerline estimated by the extractor, drawn on the camera image).}
     \label{fig:debug_video}
 \end{figure}
 
@@ -97,9 +97,9 @@ The microcontroller receives $v$ and $\delta$ from the driver and actuates them 
 \subsection{Controller node}
 \label{subsubsec:control_node}
 
-For each frame, the controller node decodes the image, resizes it to $224\times224$ pixels and normalizes it with the ImageNet mean and standard deviation. The segmentation network turns the image into the label mask, and the path extractor (Chapter~\ref{cap:geometric_reference}) turns the mask into a centerline.
+For each frame, the controller node decodes the image, resizes it to $224\times224$ pixels and normalizes it with the ImageNet mean and standard deviation. The segmentation network turns the image into the label mask, and the centerline extractor (Chapter~\ref{cap:geometric_reference}) turns the mask into a centerline.
 
-The lateral error $e$ is the horizontal offset, in pixels, of the centerline from the image center at row $y_{\mathrm{ref}} = 156$ of the $W \times H = 224\times224$ input. It is positive when the centerline is on the right. The error then passes through a filter that depends on the status returned by the path extractor (Section~\ref{sec:c5_output}), a deadband and the steering law, which gives the angular velocity command.
+The lateral error $e$ is the horizontal offset, in pixels, of the centerline from the image center at row $y_{\mathrm{ref}} = 156$ of the $W \times H = 224\times224$ input. It is positive when the centerline is on the right. The error then passes through a filter that depends on the status returned by the centerline extractor (Section~\ref{sec:c5_output}), a deadband and the steering law, which gives the angular velocity command.
 
 \paragraph{Error filter.}
 The error is smoothed with an exponential moving average (EMA). At each frame $k$, the filtered error is a weighted average of the previous filtered error $\hat{e}_{k-1}$ and of the new measurement $e_k$:
@@ -109,7 +109,7 @@ The error is smoothed with an exponential moving average (EMA). At each frame $k
 \end{equation}
 The smoothing factor $\alpha$ is the weight of the new value. With $\alpha = 0.20$ the filter keeps 80\% of the previous value at each frame. If the measured error jumps to a new value and then stays constant, the filter covers about half of the step after three frames and 95.6\% of it after 14 frames, which at 30 frames per second take 0.1~s and 0.47~s.
 
-In practice the measured error changes at every frame, because of the noise of the segmentation and of the path extractor and because the robot moves. Replacing $\hat{e}_{k-1}$ with Equation~\eqref{eq:filter_ema_update} written for the previous frame, and repeating this for the older frames, gives
+In practice the measured error changes at every frame, because of the noise of the segmentation and of the centerline extractor and because the robot moves. Replacing $\hat{e}_{k-1}$ with Equation~\eqref{eq:filter_ema_update} written for the previous frame, and repeating this for the older frames, gives
 \begin{equation}
     \hat{e}_k = \alpha\, e_k + \alpha (1-\alpha)\, e_{k-1} + \alpha (1-\alpha)^2\, e_{k-2} + \dots
     \label{eq:ema_weights}
@@ -230,7 +230,7 @@ This deadband avoids small oscillations of the steering around the center of the
     \omega^{*} = \operatorname{sat}_{\omega_{\max}}\!\left( - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2} \right),
     \label{eq:control_law_omega}
 \end{equation}
-with $K_{p} = 1.2$, where $\operatorname{sat}_{\omega_{\max}}$ limits the value to $\pm\omega_{\max} = \pm 0.58$~rad/s. Dividing by the half-width $W/2 = 112$~px gives the error as a fraction of the image, from 0 at the center to $\pm 1$ at the edges, so $K_p$ does not depend on the input resolution. The confidence $C \in [0, 1]$ of the path extractor reduces the gain when the result is less reliable. The effective proportional gain is $K_p (0.6 + 0.4\, C)$, which equals $K_p$ with $C = 1$ and $0.75\, K_p$ with $C = 0.38$, the lowest value before \texttt{lost}. The minus sign makes the robot turn towards the centerline.
+with $K_{p} = 1.2$, where $\operatorname{sat}_{\omega_{\max}}$ limits the value to $\pm\omega_{\max} = \pm 0.58$~rad/s. Dividing by the half-width $W/2 = 112$~px gives the error as a fraction of the image, from 0 at the center to $\pm 1$ at the edges, so $K_p$ does not depend on the input resolution. The confidence $C \in [0, 1]$ of the centerline extractor reduces the gain when the result is less reliable. The effective proportional gain is $K_p (0.6 + 0.4\, C)$, which equals $K_p$ with $C = 1$ and $0.75\, K_p$ with $C = 0.38$, the lowest value before \texttt{lost}. The minus sign makes the robot turn towards the centerline.
 
 The limit $\omega_{\max}$ is chosen from $v$ so that it matches the steering limit of $30^\circ$ (Equation~\eqref{eq:4ws_steering_angle}): a larger $\omega$ would not turn the wheels further. The command therefore saturates for errors above
 \begin{equation}
@@ -367,7 +367,7 @@ When the status is \texttt{lost} or no centerline is available, the node keeps t
     \label{fig:complete_pipeline}
 \end{figure}
 
-Figure~\ref{fig:complete_pipeline} summarizes the steps that run on the robot for each camera frame. The controller node resizes the color image to $224\times224$ pixels, and the segmentation network turns it into the path mask (Chapter~\ref{cap:segmentation}). The path extractor turns the mask into the centerline (Chapter~\ref{cap:geometric_reference}). The controller computes the lateral error $e$ at row $y_{\mathrm{ref}}=156$, filters it and gives the command $(v,\omega)$ (Section~\ref{subsubsec:control_node}). The serial driver converts the command into the speed and the steering angle sent to the microcontroller (Section~\ref{subsec:control_interface}).
+Figure~\ref{fig:complete_pipeline} summarizes the steps that run on the robot for each camera frame. The controller node resizes the color image to $224\times224$ pixels, and the segmentation network turns it into the path mask (Chapter~\ref{cap:segmentation}). The centerline extractor turns the mask into the centerline (Chapter~\ref{cap:geometric_reference}). The controller computes the lateral error $e$ at row $y_{\mathrm{ref}}=156$, filters it and gives the command $(v,\omega)$ (Section~\ref{subsubsec:control_node}). The serial driver converts the command into the speed and the steering angle sent to the microcontroller (Section~\ref{subsec:control_interface}).
 
 \section{Deployment and testing}
 \label{sec:deployment}
@@ -375,16 +375,16 @@ Figure~\ref{fig:complete_pipeline} summarizes the steps that run on the robot fo
 \subsection{Timing and latency}
 \label{subsec:timing}
 
-The inference times in Table~\ref{tab:c4_architecture_results} were measured on the training GPU at the original image resolution, so they do not describe the onboard model. The times in this section were measured on the Jetson AGX Orin in the MAXN power mode, with the clock frequencies fixed at their maximum by \texttt{jetson\_clocks}, so that the runs are comparable. For each path extractor, the controller node processed the same recording of a row, played at its original speed, once with the debug video disabled and once with it enabled. For each run, 100 callbacks were measured. Table~\ref{tab:jetson_extractors} lists the mean and standard deviation of the time of the path extractor and of the whole callback.
+The inference times in Table~\ref{tab:c4_architecture_results} were measured on the training GPU at the original image resolution, so they do not describe the onboard model. The times in this section were measured on the Jetson AGX Orin in the MAXN power mode, with the clock frequencies fixed at their maximum by \texttt{jetson\_clocks}, so that the runs are comparable. For each centerline extractor, the controller node processed the same recording of a row, played at its original speed, once with the debug video disabled and once with it enabled. For each run, 100 callbacks were measured. Table~\ref{tab:jetson_extractors} lists the mean and standard deviation of the time of the centerline extractor and of the whole callback.
 
 \begin{table}[H]
     \centering
     \small
-    \caption{Time of the path extractor and of the whole callback on the Jetson AGX Orin (mean $\pm$ standard deviation, ms). The inference takes about 5.8~ms, and the other steps of the callback (decoding, resizing, filter, command and log) about 4.7~ms without the debug video.}
+    \caption{Time of the centerline extractor and of the whole callback on the Jetson AGX Orin (mean $\pm$ standard deviation, ms). The inference takes about 5.8~ms, and the other steps of the callback (decoding, resizing, filter, command and log) about 4.7~ms without the debug video.}
     \label{tab:jetson_extractors}
     \begin{tabular}{@{}l c c c@{}}
         \toprule
-        Extractor & Path extractor & Callback, debug off & Callback, debug on \\
+        Extractor & Centerline extractor & Callback, debug off & Callback, debug on \\
          & ($\downarrow$) & ($\downarrow$) & ($\downarrow$) \\
         \midrule
         Strip-IRLS (ours) & $11.07 \pm 0.21$ & $21.62 \pm 0.24$ & $53.73 \pm 0.69$ \\
@@ -414,7 +414,7 @@ It then shifts the frame horizontally by
 \end{equation}
 pixels, positive to the right, where $f = 465$~px is the nominal focal length of the camera and $D = 1.25$~m is the assumed distance of the image row where the error is measured. A lateral offset therefore moves the row in the image by $f/D \approx 372$~px per meter, and a rotation by 465~px per radian. During the test, a lateral offset was added from the keyboard. The simulated pose was computed from the velocity command, assuming that the wheels follow the commanded steering angle, and the wheels visibly reached the commanded angle. Figure~\ref{fig:sitl_test} shows three frames of the test.
 
-The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate row following on the ground, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the path extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
+The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate row following on the ground, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the centerline extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
 
 \begin{figure}[H]
     \centering
