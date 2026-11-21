@@ -2,19 +2,43 @@
 \chapter{Deep Learning Architectures for Semantic Segmentation}
 \label{cap:architectures}
 
-Semantic segmentation classifies each pixel of an image according to the class of the object it belongs to. Different objects of the same class are not distinguished~\cite{geron2026handson}. In this thesis, the robot follows the path between the crop rows, so the path is the class used for navigation.
+Semantic segmentation classifies each pixel of an image according to the class of the object it belongs to~\cite{geron2026handson}. In this thesis, the robot follows the path between the crop rows, so the path is the class used for navigation.
 
-This chapter describes FCN, DeepLabV3, and LR-ASPP, the three segmentation networks compared in Chapter~\ref{cap:dataset_training}, and SAM~3, used to label training images automatically. Section~\ref{sec:seg_formulation} introduces the concepts shared by the three networks.
+This chapter describes FCN, DeepLabV3, and LR-ASPP, the three segmentation networks compared in Chapter~\ref{cap:dataset_training}, and SAM~3, used to label training images automatically. Section~\ref{sec:seg_formulation} introduces the concepts used by the three networks.
 
 \section{Principles of segmentation networks}
 \label{sec:seg_formulation}
 
-For each pixel, a segmentation network outputs one score for each class. These scores are called logits, and the softmax function converts them into the estimated probabilities of the classes. The predicted class of the pixel is the one with the highest probability. During training, a loss function measures the error of the output, and backpropagation and gradient descent update the parameters to reduce it~\cite{geron2026handson}.
+\subsection{Convolutional networks for segmentation}
+\label{subsec:seg_networks}
 
-A convolutional neural network (CNN) is built mainly from convolutional layers. Each neuron of a convolutional layer is connected only to a small region of the input, and its weights form a \textit{filter}, also called a \textit{kernel}. The layer has several filters and outputs one channel for each filter. All the neurons of a channel share the same filter, so it recognizes a pattern, such as a line, in any position of the image. The filters are learned during training. The first layers detect small low-level features and the following layers combine them into larger ones. As the image goes through the network, its resolution decreases and the number of channels grows. At the end, a few fully connected layers estimate the class of the whole image~\cite{geron2026handson}.
-A segmentation network outputs one class for each pixel of the image. A simple approach starts from a classification network and keeps its first part, which reduces the resolution. In place of the fully connected layers, it has convolutional layers, which compute the class scores at the reduced resolution. Upsampling then increases the resolution until it is the same as that of the input image. The outputs of lower layers, which have a higher resolution, can also be added during the upsampling to recover part of the spatial detail lost in the first part~\cite{geron2026handson}. The output contains one logit for each class and each pixel.
+For each pixel, a semantic segmentation network outputs one score for each class. These scores are called logits, and the softmax function converts them into the estimated probabilities of the classes. The predicted class of the pixel is the one with the highest probability. During training, a loss function measures the error of the output, and backpropagation and gradient descent update the parameters to reduce it~\cite{geron2026handson}.
+
+A convolutional neural network (CNN) is built mainly from convolutional layers. Each neuron of a convolutional layer looks only at a small region of the input, for example $3\times3$ pixels. It multiplies each value of the region by a weight and sums the results. The grid of these weights is a filter, also called a kernel. The layer has several filters and outputs one channel for each filter. All the neurons of a channel share the same filter, so it recognizes a pattern, such as a line, in any position of the image. The filters are learned during training. The first layers detect small low-level features and the following layers combine them into larger ones. In a \textit{classification network}, the resolution decreases and the number of channels grows as the image goes through the layers. At the end, a few fully connected layers estimate the class of the whole image~\cite{geron2026handson}.
+
+A \textit{semantic segmentation network} outputs one class for each pixel of the image, and not one for the whole image. A simple approach turns a classification network into a fully convolutional network, that is, a network without fully connected layers. It keeps the first part of the classification network, which reduces the resolution. In place of the fully connected layers, it has convolutional layers, which compute the class scores at the reduced resolution. Upsampling then increases the resolution until it is the same as that of the input image. The outputs of lower layers, which have a higher resolution, can also be added during the upsampling to recover part of the spatial detail lost in the first part~\cite{geron2026handson}. The output contains one logit for each class and each pixel.
 
 The TorchVision v0.21.0 implementations of FCN, DeepLabV3, and LR-ASPP used in this thesis (Sections~\ref{sec:fcn_arch}--\ref{sec:mobilenet_lraspp}) consist of two main parts. The \textit{backbone}, a classification network without its final layers, extracts the features. The \textit{segmentation head}, made of convolutional layers, computes the logits from them at 1/8 of the input resolution. The logits are then resized to the input resolution with bilinear interpolation~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp,torchvision_seg_utils}. For example, with $K$ classes and the $224\times224$ input image used on the robot (Section~\ref{subsubsec:control_node}), the logits are a $K\times28\times28$ map, which is resized to $K\times224\times224$.
+
+\subsection{ResNet-50 and atrous convolution}
+\label{subsec:resnet_atrous}
+
+ResNet-50 is the backbone of the FCN and DeepLabV3 models used in this thesis. Adding more layers to an already deep network can increase its training error. He et al.\ call this the degradation problem and address it with residual blocks~\cite{he2016deep}.
+
+ResNet-50 is built mainly from residual blocks. A residual block is a group of convolutional layers whose input is added, channel by channel, to their output (Figure~\ref{fig:bottleneck}). The connection that carries the input to this sum is called a shortcut connection. The layers therefore learn only the difference between the desired output and the input. In their experiments, residual networks are easier to optimize than plain networks with the same layers~\cite{he2016deep}.
+
+\begin{figure}[H]
+  \centering
+  \input{images/architectures/bottleneck_tikz}%
+  \caption{Bottleneck block of ResNet-50. The input is added to the output of the three convolutions. Batch normalization and ReLU are not shown. Based on He et~al.~\cite{he2016deep}.}
+  \label{fig:bottleneck}
+\end{figure}
+
+ResNet-50 uses a type of residual block called a bottleneck block, which has three convolutions. In Figure~\ref{fig:bottleneck}, the input has 256 channels. A $1\times1$ convolution reduces them to 64, a $3\times3$ convolution works on these 64 channels, and a second $1\times1$ convolution brings them back to 256. The input of the block is then added to this output~\cite{he2016deep}. When a block changes the number of channels or the size of the feature map, the input cannot be added directly, so a $1\times1$ convolution on the shortcut connection first brings it to the same dimensions~\cite{he2016deep}.
+
+ResNet-50 has four stages of residual blocks. The first convolution and a max pooling layer, both with stride 2, reduce the height and width of the input to 1/4. The first block of the second, third, and fourth stages halves them again with a stride of 2, so the height and width of the final feature map are 32 times smaller than those of the input~\cite{he2016deep}.
+
+An atrous (dilated) convolution applies its filter to input values that are spaced apart, which is equivalent to inserting zeros between the values of the filter. It covers a larger area of the input with the same number of parameters~\cite{geron2026handson,chen2017deeplab}. Removing the downsampling of the last layers of a network and using atrous convolutions there gives denser feature maps~\cite{chen2017deeplab}. The ratio between the resolution of the input image and that of the final feature map is called the \textit{output stride}~\cite{chen2017deeplab}.
 
 \section{Fully Convolutional Network (FCN)}
 \label{sec:fcn_arch}
@@ -22,32 +46,27 @@ The TorchVision v0.21.0 implementations of FCN, DeepLabV3, and LR-ASPP used in t
 \subsection{Original architecture}
 \label{subsec:fcn_original}
 
-Long et al.\ turn the classification network VGG-16 into a fully convolutional network. They remove its last fully connected layer, which gives the scores of the classes of the original task, and replace the other fully connected layers with convolutional layers. A new $1\times1$ convolution gives one coarse score map for each segmentation class, and a deconvolution layer upsamples these maps bilinearly to the input resolution~\cite{long2015fcn}. The resulting network accepts inputs of any size and outputs a map of class scores~\cite{long2015fcn}.
+Long et al.\ introduce fully convolutional networks (FCNs) for semantic segmentation~\cite{long2015fcn,geron2026handson}. They define an FCN as a network with only layers that operate on local input regions, such as convolution, pooling, and activation functions, so it works on inputs of any size. Some earlier networks already worked on inputs of any size, and Long et al.\ place them in this class. They state that, to their knowledge, they are the first to train FCNs end-to-end for pixelwise prediction and from supervised pre-training~\cite{long2015fcn}. In the rest of this thesis, FCN without a suffix indicates the \texttt{fcn\_resnet50} model of TorchVision (Section~\ref{subsec:fcn_torchvision}), which is based on this work.
 
-With VGG-16, this map is 32 times smaller than the input image (stride 32), which limits the detail of the upsampled output. Long et al.\ therefore also add predictions from the finer layers \texttt{pool4} and \texttt{pool3} (FCN-16s and FCN-8s). The intermediate upsampling layers are learned, while the final upsampling is fixed to bilinear interpolation~\cite{long2015fcn}.
+Long et al.\ turn the classification network VGG-16 into a fully convolutional network. They remove its last fully connected layer, which gives the scores of the classes of the original task, and convert the other fully connected layers into convolutional layers. A new $1\times1$ convolution gives one coarse score map for each segmentation class, 32 times smaller than the input image (stride 32)~\cite{long2015fcn}.
 
-\subsection{ResNet-50 and atrous convolution}
-\label{subsec:resnet_atrous}
-
-In a residual block, a shortcut connection adds the input of the block, or a $1\times1$ projection of it, to the output of its layers, so the layers learn only the difference between the desired output and the input, which is easier to optimize~\cite{he2016deep}. In the bottleneck blocks of ResNet-50, a $1\times1$ convolution reduces the number of channels, a $3\times3$ convolution works on the reduced channels, and a second $1\times1$ convolution restores them~\cite{he2016deep}. ResNet-50 has four stages of residual blocks. The first convolution and a max pooling layer, both with stride 2, reduce the input to 1/4 of its size. The first block of the second, third, and fourth stages halves it again with a stride of 2, so the final feature map is 32 times smaller than the input~\cite{he2016deep}.
-
-An atrous (dilated) convolution applies its filter to input values that are spaced apart, which is equivalent to inserting zeros between the values of the filter. It covers a larger area of the input with the same number of parameters~\cite{geron2026handson,chen2017deeplab}. The ratio between the resolution of the input image and that of the final feature map is called the \textit{output stride}~\cite{chen2017deeplab}.
+Upsampling these maps directly would limit the detail of the output. The best model of Long et al., FCN-8s, uses learned upsampling layers to combine them with class scores from two lower layers, \texttt{pool4} and \texttt{pool3}, which have a higher resolution. The combined map is 8 times smaller than the input image (stride 8), and a final bilinear upsampling brings it to the input resolution. The output has one score for each class and each pixel~\cite{long2015fcn}.
 
 \subsection{TorchVision implementation}
 \label{subsec:fcn_torchvision}
 
-The \texttt{fcn\_resnet50} model of TorchVision consists of a ResNet-50 backbone and a head, \texttt{FCNHead}, plus an auxiliary head described below~\cite{torchvision_fcn}. The four stages of the backbone are \texttt{layer1} to \texttt{layer4} (Figure~\ref{fig:resnet50}). \texttt{layer3} and \texttt{layer4} do not reduce the size of the feature maps and use atrous convolutions with rates 2 and 4 from their second block, so the output stride is 8 instead of 32~\cite{torchvision_fcn,torchvision_resnet}.
+The \texttt{fcn\_resnet50} model of TorchVision consists of a modified ResNet-50 backbone and a head, \texttt{FCNHead}, plus an auxiliary head described below~\cite{torchvision_fcn}. The four stages of the backbone are \texttt{layer1} to \texttt{layer4} (Figure~\ref{fig:resnet50}). \texttt{layer3} and \texttt{layer4} do not reduce the size of the feature maps and use atrous convolutions with rates 2 and 4 from their second block, so the output stride is 8 instead of 32~\cite{torchvision_fcn,torchvision_resnet}. For a $224\times224$ input, the final feature maps are therefore $28\times28$ instead of the $7\times7$ of the original ResNet-50~\cite{he2016deep}.
 
 \begin{figure}[!htb]
   \centering
   \resizebox{\linewidth}{!}{\input{images/architectures/resnet50_tikz}}%
-  \caption{ResNet-50, the backbone of the FCN and DeepLabV3 models of TorchVision. Each stage is a sequence of bottleneck blocks. The channels are those at the output of each box. The dark orange stages, \texttt{layer3} and \texttt{layer4}, use atrous convolutions instead of a stride of 2, with rates 2 and 4 from their second block. Below each box are the output stride (OS) and the height and width of the feature maps for a $224\times224$ input. The final average pooling and fully connected layer are removed. Based on He et~al.~\cite{he2016deep} and TorchVision~\cite{torchvision_resnet,torchvision_fcn}.}
+  \caption{The modified ResNet-50 of TorchVision, used as the backbone of the FCN and DeepLabV3 models. Each stage is a sequence of bottleneck blocks. The channels are those at the output of each box. The dark orange stages, \texttt{layer3} and \texttt{layer4}, use atrous convolutions instead of a stride of 2, with rates 2 and 4 from their second block. Below each box are the output stride (OS) and the height and width of the feature maps for a $224\times224$ input. The final average pooling and fully connected layer are removed. Based on He et~al.~\cite{he2016deep} and TorchVision~\cite{torchvision_resnet,torchvision_fcn}.}
   \label{fig:resnet50}
 \end{figure}
 
-For a $224\times224$ input, ResNet-50 outputs $2048\times28\times28$ feature maps (Figure~\ref{fig:resnet50}). \texttt{FCNHead} applies a $3\times3$ convolution with 512 filters and then a $1\times1$ convolution with one filter for each of the $K$ classes, which gives the $K\times28\times28$ logits. A second \texttt{FCNHead}, the auxiliary classifier, works in the same way on the $1024\times28\times28$ output of \texttt{layer3}, with 256 filters in its $3\times3$ convolution. It is used only in the loss, not in the prediction (Section~\ref{subsec:c4_training_config})~\cite{torchvision_fcn,torchvision_seg_utils}.
+For a $224\times224$ input, the backbone outputs $2048\times28\times28$ feature maps (Figure~\ref{fig:resnet50}). \texttt{FCNHead} applies a $3\times3$ convolution with 512 filters and then a $1\times1$ convolution with one filter for each of the $K$ classes, which gives the $K\times28\times28$ logits. A second \texttt{FCNHead}, the auxiliary classifier, works in the same way on the $1024\times28\times28$ output of \texttt{layer3}, with 256 filters in its $3\times3$ convolution. It is used only in the loss, not in the prediction (Section~\ref{subsec:c4_training_config})~\cite{torchvision_fcn,torchvision_seg_utils}.
 
-The model differs from FCN-8s of Long et al.\ in four points. The backbone is ResNet-50 with output stride 8 instead of VGG-16 with stride 32. The head is \texttt{FCNHead}, while Long et al.\ convert the fully connected layers of VGG-16. There are no predictions from finer layers and no learned upsampling, only one bilinear interpolation of the logits. The auxiliary classifier is not part of the model of Long et al.~\cite{long2015fcn,torchvision_fcn}.
+Unlike FCN-8s, the model does not combine class scores from lower layers and has no learned upsampling. Its logits are resized with a single bilinear interpolation~\cite{long2015fcn,torchvision_fcn,torchvision_seg_utils}.
 
 \section{DeepLabV3}
 \label{sec:deeplabv3_arch}
