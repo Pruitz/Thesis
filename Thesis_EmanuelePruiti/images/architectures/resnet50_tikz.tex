@@ -20,8 +20,8 @@
   \node[stem, right=of c1] (mp) {max pool\\ $3\times3$\\ stride 2\\ 64 ch.};
   \node[res,  right=of mp] (l1) {\texttt{layer1}\\ 3 blocks\\ 256 ch.};
   \node[res,  right=of l1] (l2) {\texttt{layer2}\\ 4 blocks\\ 512 ch.};
-  \node[atr,  right=of l2] (l3) {\texttt{layer3}\\ 6 blocks\\ 1024 ch.\\ rate 2};
-  \node[atr,  right=of l3] (l4) {\texttt{layer4}\\ 3 blocks\\ 2048 ch.\\ rate 4};
+  \node[atr,  right=of l2] (l3) {\texttt{layer3}\\ 6 blocks\\ 1024 ch.\\ rate 2 from\\ block 2};
+  \node[atr,  right=of l3] (l4) {\texttt{layer4}\\ 3 blocks\\ 2048 ch.\\ rate 4 from\\ block 2};
   \node[cut,  right=of l4] (fc) {avg pool\\ fc 1000};
   \foreach \a/\b in {in/c1, c1/mp, mp/l1, l1/l2, l2/l3, l3/l4} \draw[arr] (\a) -- (\b);
   \draw[arr, dashed, black!40] (l4) -- (fc);

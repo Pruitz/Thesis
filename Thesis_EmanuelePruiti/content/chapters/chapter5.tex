@@ -313,7 +313,16 @@ Each edge is fitted with RANSAC, as the navigation lines of Wu et al.~\cite{wu20
 
 Table~\ref{tab:c5_algorithm_tradeoffs} summarizes how the five extractors differ in their code. It does not describe measured performance, which is reported in Chapter~\ref{cap:experiments}.
 
-\begin{table}[htbp]
+One structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c5_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. The seed also differs. \textit{Center points} grows a single chain from the interval of the bottom six strips with the most path pixels and does not use the strips below it, while \textit{Strip-IRLS} grows a chain from each seed and keeps the one with more samples. The effect on the synthetic test set is shown in Figure~\ref{fig:geometric_extraction_comparison}a.
+
+\textit{Strip-IRLS} has three structural limitations:
+\begin{itemize}
+    \item \textbf{Seed dependence.} The seeds are searched only in the bottom six strips. If these contain no interval, the result is \texttt{lost} even if the upper part of the corridor is segmented. If a hole wider than the merging gap and taller than these strips splits the bottom of the corridor, the chain follows only one part (Table~\ref{tab:c7_scenario_errors}). At a fork above these strips, the chain takes the branch with the lowest cost and never revises it.
+    \item \textbf{Number of parameters.} \textit{Strip-IRLS} has 16 arguments and 13 constants (Table~\ref{tab:c5_defaults}), most of them in pixels of the mask, and several act together. They were set for the camera, its mounting and the fields of this work, and in a new scenario they may need to be adjusted to get the best results (Section~\ref{sec:c5_parameter_setting}).
+    \item \textbf{Missing plants on one side.} The predicted path, and therefore the interval, can widen on that side. Within the jump limit it is accepted, and its endpoint on that side is a wrong sample that only the reweighting can reduce. Beyond the limit the strip is skipped. If the interval reaches the image border, its endpoint on that side gives no sample.
+\end{itemize}
+
+\begin{table}[H]
     \centering
     \footnotesize
     \setlength{\tabcolsep}{4pt}
@@ -337,12 +346,3 @@ Table~\ref{tab:c5_algorithm_tradeoffs} summarizes how the five extractors differ
         \bottomrule
     \end{tabularx}
 \end{table}
-
-One structural difference between \textit{Strip-IRLS} and \textit{Center points} is where the two edges are combined: \textit{Center points} combines them before the fit, in the midpoints, and \textit{Strip-IRLS} after the fit, in the centerline. When a disturbance moves one edge, the midpoint moves by half of the displacement, so its distance from the fitted line is also halved. Both extractors use the weights of Eq.~\eqref{eq:c5_reweight} with $\sigma=18$~px. For example, an edge point displaced by 36~px gets weight 0.2 in the fit of its edge, while the corresponding midpoint, displaced by 18~px, gets weight 0.5, so the reweighting reduces the disturbance less in \textit{Center points}. In addition, \textit{Center points} does not exclude the clipped intervals, whose midpoint lies between the image border and the other edge and is not the center of the corridor. The seed also differs. \textit{Center points} grows a single chain from the interval of the bottom six strips with the most path pixels and does not use the strips below it, while \textit{Strip-IRLS} grows a chain from each seed and keeps the one with more samples. The effect on the synthetic test set is shown in Figure~\ref{fig:geometric_extraction_comparison}a.
-
-\textit{Strip-IRLS} has three structural limitations:
-\begin{itemize}
-    \item \textbf{Seed dependence.} The seeds are searched only in the bottom six strips. If these contain no interval, the result is \texttt{lost} even if the upper part of the corridor is segmented. If a hole wider than the merging gap and taller than these strips splits the bottom of the corridor, the chain follows only one part (Table~\ref{tab:c7_scenario_errors}). At a fork above these strips, the chain takes the branch with the lowest cost and never revises it.
-    \item \textbf{Number of parameters.} \textit{Strip-IRLS} has 16 arguments and 13 constants (Table~\ref{tab:c5_defaults}), most of them in pixels of the mask, and several act together. They were set for the camera, its mounting and the fields of this work, and in a new scenario they may need to be adjusted to get the best results (Section~\ref{sec:c5_parameter_setting}).
-    \item \textbf{Missing plants on one side.} The predicted path, and therefore the interval, can widen on that side. Within the jump limit it is accepted, and its endpoint on that side is a wrong sample that only the reweighting can reduce. Beyond the limit the strip is skipped. If the interval reaches the image border, its endpoint on that side gives no sample.
-\end{itemize}

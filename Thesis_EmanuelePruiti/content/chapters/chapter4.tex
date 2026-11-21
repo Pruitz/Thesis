@@ -106,7 +106,7 @@ FCN, DeepLabV3, and LR-ASPP were chosen among the implementations available in T
 \label{subsec:c4_training_config}
 
 \subsubsection{Loss function and class weighting}
-The loss is the cross entropy, computed for each pixel, which penalizes the model when it estimates a low probability for the target class~\cite[Chapter~4]{geron2026handson}. To keep the classes with many pixels from dominating the training, the models use a weighted cross-entropy loss $\mathcal{L}_{\text{WCE}}$, in which each pixel is multiplied by the weight $w_c$ of its ground-truth class $c$. The weights are computed on the training split only. With $N_c$ the number of pixels of class $c$ in all the training masks and $C$ the number of classes (four in this comparison), the weight of class $c$ is
+The loss is the cross entropy, computed for each pixel, which penalizes the model when it estimates a low probability for the target class~\cite{geron2026handson}. To keep the classes with many pixels from dominating the training, the models use a weighted cross-entropy loss $\mathcal{L}_{\text{WCE}}$, in which each pixel is multiplied by the weight $w_c$ of its ground-truth class $c$. The weights are computed on the training split only. With $N_c$ the number of pixels of class $c$ in all the training masks and $C$ the number of classes (four in this comparison), the weight of class $c$ is
 \begin{equation}
     w_c = \frac{1/N_c}{\frac{1}{C}\sum_{j=0}^{C-1} 1/N_j}.
     \label{eq:class_weights_norm}
