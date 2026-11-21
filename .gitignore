@@ -28,3 +28,6 @@
 
 # Cartella fonti bibliografiche (PDF pesanti)
 fonti/
+
+# Cartella di appoggio dell'autore, non va nel repository
+Thesis_EmanuelePruiti/summary/cose_da_guardarmi/
