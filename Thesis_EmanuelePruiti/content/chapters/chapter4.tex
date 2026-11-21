@@ -127,7 +127,7 @@ Data augmentation is applied only to the training split: horizontal flips with p
     \item \textbf{Epochs 11--200:} the backbone is unfrozen, and a new AdamW optimizer uses a learning rate of $10^{-5}$ for the backbone and $10^{-4}$ for the heads, which limits the changes to the pretrained weights. The cosine annealing restarts over the remaining 190 epochs ($T_{\text{max}} = 190$, $\eta_{\text{min}} = 10^{-6}$).
 \end{enumerate}
 
-Early stopping was not used, so that the complete loss curves could be recorded. After each epoch the model is evaluated on the validation set, and the weights are saved whenever the validation loss reaches a new minimum.
+After each epoch the model is evaluated on the validation set, and the weights are saved whenever the validation loss reaches a new minimum.
 
 \subsection{Evaluation metrics and results}
 \label{subsec:c4_architecture_results}

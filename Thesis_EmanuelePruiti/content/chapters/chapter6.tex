@@ -11,7 +11,7 @@ The guidance chain runs entirely on Demetra, the four-wheel-steering robot used 
 
 The experimental platform is Demetra, a mobile robot prototype developed by the Roboto student team of the Politecnico di Torino. It has four-wheel steering (4WS) and four-wheel drive (4WD).
 
-Each wheel has a DJI RoboMaster M3508 brushless motor with a DJI RoboMaster C620 speed controller, and its own CubeMars AK70-10 actuator for steering. A DJI RoboMaster Development Board Type C (STM32F407) controls the speed controllers and the steering actuators. It receives the linear velocity and the steering angle from the onboard computer and sends back the measured platform speed and steering angle. The wheelbase is $L = 40$~cm, the track width is $T = 34$~cm, the wheel diameter is 19~cm ($r_w = 9.5$~cm) and the chassis is 15~cm above the ground.
+Each wheel has a DJI RoboMaster M3508 brushless motor with a DJI RoboMaster C620 speed controller, and its own CubeMars AK70-10 actuator for steering. A DJI RoboMaster Development Board Type C (STM32F407) controls the speed controllers and the steering actuators. It receives the linear velocity and the steering angle from the onboard computer. The wheelbase is $L = 40$~cm, the track width is $T = 34$~cm, the wheel diameter is 19~cm ($r_w = 9.5$~cm) and the chassis is 15~cm above the ground.
 
 \begin{figure}[!t]
   \centering
@@ -48,7 +48,7 @@ The onboard computer is an NVIDIA Jetson AGX Orin Developer Kit (64~GB), with a 
 \subsection{ROS integration}
 \label{subsec:ros}
 
-The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph of the robot. Three nodes are active. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the centerline extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller. The controller node also publishes debug topics under \texttt{/debug}, which are used during configuration and are omitted from the figure. When the debug video is enabled, it also publishes three debug images (segmentation, region of interest and path), shown in Figure~\ref{fig:debug_video}. The debug video makes the node skip camera frames (Section~\ref{subsec:timing}), so it should be disabled when the robot operates. The text log on \texttt{/debug/text} is always active. It carries important information on each frame and its cost is small, so the node still processes every camera frame.
+The software pipeline is implemented in ROS~2. Figure~\ref{fig:ros2_architecture} shows the node graph of the robot. The RealSense node (\texttt{/camera/camera}) publishes the compressed color images. The controller node (\texttt{/controller\_node}) subscribes to these images. In the same callback, it runs the segmentation network and the centerline extractor, computes the velocity command (Section~\ref{subsubsec:control_node}), and publishes it on \texttt{/cmd\_vel}. The controller node also publishes debug topics under \texttt{/debug}, which are used during configuration and are omitted from the figure. When the debug video is enabled, it also publishes three debug images (segmentation, region of interest and path), shown in Figure~\ref{fig:debug_video}. The debug video makes the node skip camera frames (Section~\ref{subsec:timing}), so it should be disabled when the robot operates. The text log on \texttt{/debug/text} is always active. It carries important information on each frame and its cost is small, so the node still processes every camera frame. The serial driver node (\texttt{/demetra\_node}) receives the commands and sends them to the microcontroller.
 
 The image subscription keeps only the last frame, so frames that arrive during the processing are not queued and the controller always processes the most recent image seen by the robot.
 
@@ -225,7 +225,9 @@ The steering law uses the command error
     \end{cases}
     \label{eq:deadband}
 \end{equation}
-This deadband avoids small oscillations of the steering around the center of the row. It acts only on the command, so the filter keeps its internal value $\hat{e}_k$. The angular velocity target is
+This deadband avoids small oscillations of the steering around the center of the row. It acts only on the command, so the filter keeps its internal value $\hat{e}_k$.
+
+The angular velocity target is
 \begin{equation}
     \omega^{*} = \operatorname{sat}_{\omega_{\max}}\!\left( - K_{p} \, (0.6 + 0.4\, C) \, \frac{e_{\mathrm{cmd}}}{W/2} \right),
     \label{eq:control_law_omega}
@@ -237,7 +239,7 @@ The limit $\omega_{\max}$ is chosen from $v$ so that it matches the steering lim
     e_{\mathrm{sat}} = \frac{\omega_{\max}\, (W/2)}{K_p\, (0.6 + 0.4\, C)},
     \label{eq:error_saturation}
 \end{equation}
-which is about 54~px with $C = 1$ (Figure~\ref{fig:steering_law}a). The gain $K_p$ sets how strongly the robot reacts to the error (Figure~\ref{fig:steering_law}b). A larger $K_p$ gives a larger command for the same error and reaches $30^\circ$ at a smaller error. A smaller $K_p$ gives a smoother response and reaches the limit later.
+At this error and above it the steering angle is $30^\circ$. With $C = 1$ it is about 54~px (Figure~\ref{fig:steering_law}a). The gain $K_p$ sets how strongly the robot reacts to the error (Figure~\ref{fig:steering_law}b). A larger $K_p$ gives a larger command for the same error and reaches $30^\circ$ at a smaller error. A smaller $K_p$ gives a smoother response and reaches the limit later.
 
 \begin{figure}[H]
     \centering
@@ -414,7 +416,9 @@ It then shifts the frame horizontally by
 \end{equation}
 pixels, positive to the right, where $f = 465$~px is the nominal focal length of the camera and $D = 1.25$~m is the assumed distance of the image row where the error is measured. A lateral offset therefore moves the row in the image by $f/D \approx 372$~px per meter, and a rotation by 465~px per radian. During the test, a lateral offset was added from the keyboard. The simulated pose was computed from the velocity command, assuming that the wheels follow the commanded steering angle, and the wheels visibly reached the commanded angle. Figure~\ref{fig:sitl_test} shows three frames of the test.
 
-The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate row following on the ground, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground. The network segments every frame, but always the same image shifted laterally. The segmentation and the centerline extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
+The test checked the integration of the perception, control and actuation chain. The wheels turned forward, and after each displacement they steered towards the center of the row while the simulated offset returned to the center without oscillating. However, the test is not a realistic simulation of row navigation and does not validate row following on the ground, because the scene is a single shifted frame, the projection is approximate and the robot does not move on the ground.
+
+The segmentation and the centerline extraction along a real row were instead tested by playing recordings of the rows to the controller node, as in Section~\ref{subsec:timing}. A visual check of the debug video showed that most of the extracted centerlines were correct.
 
 \begin{figure}[H]
     \centering
