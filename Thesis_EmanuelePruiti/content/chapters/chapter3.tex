@@ -97,7 +97,7 @@ Chen et al.\ describe their framework as applicable to any network and implement
 \subsection{TorchVision implementation}
 \label{subsec:deeplabv3_torchvision}
 
-The \texttt{deeplabv3\_resnet50} model of TorchVision uses the same backbone architecture as \texttt{fcn\_resnet50}, with output stride 8 (Section~\ref{subsec:fcn_torchvision}), followed by the ASPP module of Section~\ref{subsec:aspp_module} with rates 12, 24, and 36~\cite{torchvision_deeplabv3}. These are the rates of Chen et al.\ for output stride 8~\cite{chen2017deeplab}. Figure~\ref{fig:heads} shows the head, from the output of the backbone to the upsampled logits. Unlike the model of Chen et al., the TorchVision model has a $3\times3$ convolution after ASPP~\cite{chen2017deeplab,torchvision_deeplabv3}. Like FCN, it has an auxiliary \texttt{FCNHead} on \texttt{layer3}, used only in the loss, not in the prediction (Section~\ref{subsec:c4_training_config})~\cite{torchvision_deeplabv3}.
+The \texttt{deeplabv3\_resnet50} model of TorchVision uses the same backbone architecture as \texttt{fcn\_resnet50}, with output stride 8 (Section~\ref{subsec:fcn_torchvision}), followed by the ASPP module of Section~\ref{subsec:aspp_module} with rates 12, 24, and 36~\cite{torchvision_deeplabv3}. These are the rates of Chen et al.\ for output stride 8~\cite{chen2017deeplab}. Figure~\ref{fig:heads} shows the head, from the output of the backbone to the final output. Unlike the model of Chen et al., the TorchVision model has a $3\times3$ convolution after ASPP~\cite{chen2017deeplab,torchvision_deeplabv3}. Like FCN, it has an auxiliary \texttt{FCNHead} on \texttt{layer3}, used only in the loss, not in the prediction (Section~\ref{subsec:c4_training_config})~\cite{torchvision_deeplabv3}.
 
 \section{MobileNetV3 and LR-ASPP}
 \label{sec:mobilenet_lraspp}
@@ -133,39 +133,39 @@ The Lite Reduced ASPP (LR-ASPP) head has two branches instead of the five of ASP
 \subsection{TorchVision implementation}
 \label{subsec:lraspp_torchvision}
 
-The \texttt{lraspp\_mobilenet\_v3\_large} model of TorchVision has the same structure as the model of Howard et al.\ (Section~\ref{subsec:lraspp_arch}). The last stage of the backbone (Figure~\ref{fig:mobilenetv3_backbone}) uses atrous convolution with rate 2. The head takes the high-level features with 960 channels at output stride 16 and the low-level features with 40 channels at output stride 8~\cite{torchvision_lraspp,torchvision_mobilenetv3}. Figure~\ref{fig:heads} shows the head, from the outputs of the backbone to the upsampled logits. Unlike the model of Howard et al., the TorchVision model pools over the whole feature map instead of using a $49\times49$ pooling kernel, so each channel has a single weight for the whole feature map and the pooling branch needs no bilinear upsampling~\cite{howard2019mobilenetv3,torchvision_lraspp}.
+The \texttt{lraspp\_mobilenet\_v3\_large} model of TorchVision has the same structure as the model of Howard et al.\ (Section~\ref{subsec:lraspp_arch}). The last stage of the backbone (Figure~\ref{fig:mobilenetv3_backbone}) uses atrous convolution with rate 2. The head takes the high-level features with 960 channels at output stride 16 and the low-level features with 40 channels at output stride 8~\cite{torchvision_lraspp,torchvision_mobilenetv3}. Figure~\ref{fig:heads} shows the head, from the outputs of the backbone to the final output. Unlike the model of Howard et al., the TorchVision model pools over the whole feature map instead of using a $49\times49$ pooling kernel, so each channel has a single weight for the whole feature map and the pooling branch needs no bilinear upsampling~\cite{howard2019mobilenetv3,torchvision_lraspp}.
 
 \begin{figure}[H]
   \centering
   \resizebox{\linewidth}{!}{\input{images/architectures/mobilenetv3_backbone_tikz}}%
-  \caption{The MobileNetV3-Large backbone of the LR-ASPP model of TorchVision. Orange boxes are sequences of the blocks of Figure~\ref{fig:mobilenetv3_block} and, where indicated, the stride of 2 is in the first block of the box. The channels are those at the output of each box. Below each box are the output stride (OS) and the height and width of the feature maps for a $224\times224$ input. The blocks are those of Howard et~al.~\cite{howard2019mobilenetv3}, with two changes: the dark orange box uses atrous convolution with rate 2 instead of a stride of 2, and the final average pooling and classifier are removed~\cite{torchvision_lraspp,torchvision_mobilenetv3}.}
+  \caption{The MobileNetV3-Large backbone of the LR-ASPP model of TorchVision. Orange boxes are sequences of the blocks of Figure~\ref{fig:mobilenetv3_block} and, where indicated, the stride of 2 is in the first block of the box. The dark orange box uses atrous convolution with rate 2, so the output stride stays at 16. The channels are those at the output of each box. Below each box are the output stride (OS) and the height and width of the feature maps for a $224\times224$ input~\cite{torchvision_lraspp,torchvision_mobilenetv3}.}
   \label{fig:mobilenetv3_backbone}
 \end{figure}
 
 \section{Segmentation heads}
 \label{sec:segmentation_heads}
 
-Figure~\ref{fig:heads} compares the heads of the three TorchVision models described in Sections~\ref{subsec:fcn_torchvision}, \ref{subsec:deeplabv3_torchvision}, and \ref{subsec:lraspp_torchvision}. All three compute the logits at 1/8 of the input resolution and resize them with bilinear interpolation. FCN has a single path of two convolutions. DeepLabV3 processes the same feature map in five parallel branches and concatenates their outputs. LR-ASPP has two branches on the high-level features and multiplies their outputs. It is the only one of the three whose prediction also uses features from an intermediate block of the backbone~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp,torchvision_seg_utils}.
+Figure~\ref{fig:heads} compares the heads of the three TorchVision models described in Sections~\ref{subsec:fcn_torchvision}, \ref{subsec:deeplabv3_torchvision}, and \ref{subsec:lraspp_torchvision}. All three compute the logits at 1/8 of the input resolution and resize them with bilinear interpolation. FCN has a single path of two convolutions. In DeepLabV3, ASPP processes the same feature map in five parallel branches and concatenates their outputs. LR-ASPP processes the high-level and the low-level features separately and sums the results~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp,torchvision_seg_utils}.
 
 \begin{figure}[H]
   \centering
   \resizebox{\linewidth}{!}{\input{images/architectures/heads_tikz}}%
-  \caption{Heads of the three TorchVision models used in this thesis, from the output of the backbone to the upsampled logits, for a $224\times224$ input and $K$ classes. Gray boxes are the features from the backbone. In LR-ASPP, the low-level features come from an intermediate block of the backbone and the high-level features from its end. Orange boxes are convolutions on the features, light blue boxes contain global average pooling, and white boxes are the bilinear upsampling of features. Blue boxes are the $1\times1$ convolutions that give the logits and the final bilinear upsampling. The auxiliary classifiers of FCN and DeepLabV3 are not shown. Based on TorchVision~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}.}
+  \caption{Heads of the three TorchVision models used in this thesis, from the outputs of the backbone to the final output, for a $224\times224$ input and $K$ classes. Gray boxes are the features from the backbone. In LR-ASPP, the low-level features come from an intermediate block of the backbone and the high-level features from its end. Orange boxes are convolutions on the features, yellow boxes contain global average pooling, and the white box is the bilinear upsampling of features. Light blue boxes are the $1\times1$ convolutions that give the logits, and dark blue boxes are the final bilinear upsampling. The auxiliary classifiers of FCN and DeepLabV3 are not shown. Based on TorchVision~\cite{torchvision_fcn,torchvision_deeplabv3,torchvision_lraspp}.}
   \label{fig:heads}
 \end{figure}
 
 \section{SAM~3}
 \label{sec:sam3_theory}
 
-SAM~3 (Section~\ref{sec:dataset_annotation}) consists of a detector for images and a tracker with a memory for videos. Both take vision-language inputs from a shared Perception Encoder (PE) backbone~\cite{carion2026sam3}. Figure~\ref{fig:sam3_architecture} shows the architecture. The labels of this thesis were generated from text prompts on single images, so only the detector is used.
+SAM~3 segments all the instances of a concept, given for example as a short text prompt. It consists of a detector for images and a tracker with a memory for videos. Both use the same image encoder, part of the Perception Encoder (PE) backbone~\cite{carion2026sam3}. Figure~\ref{fig:sam3_architecture} shows the architecture. The labels of this thesis were generated from text prompts on single images, so only the text encoder, the image encoder, and the detector are used. The image exemplars, the visual prompts, the tracker, and its memory are not used.
 
-The detector follows the DETR paradigm, in which a set of learned object queries proposes the objects. PE encodes the image and the text prompt. A fusion encoder conditions the image embeddings on the prompt tokens through cross-attention. In the decoder, the object queries cross-attend to the conditioned image embeddings, and each query predicts whether its object corresponds to the prompt, together with a box and a mask~\cite{carion2026sam3}.
+In this thesis, each text prompt is processed separately on each image. PE encodes the image and the text prompt. The Detector block of Figure~\ref{fig:sam3_architecture} contains a fusion encoder and a decoder. The fusion encoder conditions the image features on the prompt, so the same image has different features for different prompts. The decoder starts from a set of learned object queries. Each query looks for one object in the conditioned features and predicts a box and a score of how well the object corresponds to the prompt. A segmentation head then uses the query and the conditioned features to compute the mask of the object~\cite{carion2026sam3}. The output is one mask with its score for each instance found.
 
-SAM~3 has about 850 million parameters~\cite{carion2026sam3}. Its reported time of 30~ms for one image refers to an NVIDIA H200 GPU~\cite{carion2026sam3}, not to the Jetson AGX Orin of the robot. SAM~3 was run offline (Section~\ref{subsec:c4_sam_annotation}). The robot runs an LR-ASPP network trained on its labels (Section~\ref{subsec:c4_deployed_network}).
-
-\begin{figure}[!htb]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.9\linewidth]{images/architectures/sam3_architecture.png}
-  \caption{SAM~3 architecture. The detector segments the instances of the prompted concept in each image, and the tracker propagates the masks between video frames. Only the detector is used in this thesis. Reproduced from Carion et~al.~\cite{carion2026sam3}.}
+  \caption{SAM~3 architecture. The detector segments the instances of the prompted concept in each image, and the tracker propagates the masks between video frames. The tracker and the memory bank are not used in this thesis. Reproduced from Carion et~al.~\cite{carion2026sam3}.}
   \label{fig:sam3_architecture}
 \end{figure}
+
+SAM~3 has about 850 million parameters~\cite{carion2026sam3}, against about 3.2 million of LR-ASPP~\cite{torchvision_lraspp}. It was run offline to generate the training labels (Section~\ref{subsec:c4_sam_annotation}), and the robot runs an LR-ASPP network trained on these labels (Section~\ref{subsec:c4_deployed_network}).

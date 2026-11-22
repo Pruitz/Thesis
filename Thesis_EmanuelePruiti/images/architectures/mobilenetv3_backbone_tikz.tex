@@ -11,7 +11,6 @@
     stem/.style={blk, fill=black!8},
     res/.style={blk, fill=orange!25},
     atr/.style={blk, fill=orange!55},
-    cut/.style={blk, draw=black!40, dashed, text=black!50},
     arr/.style={-{Stealth[length=3pt]}, black!70},
     os/.style={font=\scriptsize, black!75, align=center},
     feat/.style={font=\scriptsize, align=center, draw=black!60, rounded corners=1pt, fill=black!8, inner sep=2pt},
@@ -25,19 +24,16 @@
   \node[res,  right=of b4] (b5) {6 blocks\\ 80, 112\\ ch.\\ stride 2};
   \node[atr,  right=of b5] (b6) {3 blocks\\ 160 ch.\\ rate 2};
   \node[stem, right=of b6] (c1) {conv\\ $1\times1$\\ 960 ch.};
-  \node[cut,  right=of c1] (fc) {avg pool\\ classifier};
   \foreach \a/\b in {in/c0, c0/b1, b1/b2, b2/b3, b3/b4, b4/b5, b5/b6, b6/c1} \draw[arr] (\a) -- (\b);
-  \draw[arr, dashed, black!40] (c1) -- (fc);
   \node[feat, above=0.42cm of b3] (lo) {low-level features\\ $40\times28\times28$};
   \node[feat, above=0.42cm of c1] (hi) {high-level features\\ $960\times14\times14$};
   \draw[arr] (b3) -- (lo);
   \draw[arr] (c1) -- (hi);
   \node[os, anchor=east] at ($(in.south west)+(-0.08,-0.35)$) {OS};
   \node[os, anchor=east] at ($(in.south west)+(-0.08,-0.8)$) {size};
-  \node[os, anchor=west] at ($(fc.south east)+(0.08,-0.8)$) {\phantom{size}};
+  \node[os, anchor=west] at ($(c1.south east)+(0.08,-0.8)$) {\phantom{size}};
   \foreach \n/\t/\s in {in/1/224, c0/2/112, b1/2/112, b2/4/56, b3/8/28, b4/8/28, b5/16/14, b6/\textbf{16}/\textbf{14}, c1/\textbf{16}/\textbf{14}} {
     \node[os] at ($(\n.south)+(0,-0.35)$) {\t};
     \node[os] at ($(\n.south)+(0,-0.8)$) {$\s\times\s$};
   }
-  \node[os, text=black!50] at ($(fc.south)+(0,-0.55)$) {removed};
 \end{tikzpicture}%

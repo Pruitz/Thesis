@@ -23,10 +23,10 @@
   \foreach \i/\x/\lab in {1/5.56/{$1\times1$}, 2/6.48/{$3\times3$\\rate 12}, 3/7.4/{$3\times3$\\rate 24}, 4/8.32/{$3\times3$\\rate 36}} {
     \node[s] (r\i) at (\x,-2.2) {\lab};
   }
-  \node[s, fill=blue!12, minimum width=1.12cm] (r5) at (9.4,-2.2) {avg. pool,\\conv $1\times1$,\\upsample};
+  \node[s, fill=yellow!25, minimum width=1.12cm] (r5) at (9.4,-2.2) {avg. pool,\\conv $1\times1$,\\upsample};
   \foreach \i in {1,...,5} \draw[a] (d0.south -| r\i.north) -- (r\i.north);
   \node[align=right, anchor=east, font=\scriptsize, text=black!85] at (5.08,-2.2) {ASPP:\\5 branches,\\256 filters\\each,\\BN, ReLU};
-  \node[b, fill=orange!45, minimum width=4.6cm] (d2) at (7.4,-3.7) {concatenation $1280\times28\times28$\\conv $1\times1$, 256 filters, BN, ReLU, dropout};
+  \node[b, fill=orange!30, minimum width=4.6cm] (d2) at (7.4,-3.7) {concatenation $1280\times28\times28$\\conv $1\times1$, 256 filters, BN, ReLU, dropout};
   \foreach \i in {1,...,5} \draw[a] (r\i.south) -- (r\i.south |- d2.north);
   \node[b, fill=orange!30, minimum width=4.6cm] (d3) at (7.4,-5.0) {conv $3\times3$, 256 filters, BN, ReLU\\$256\times28\times28$};
   \node[b, fill=blue!20, minimum width=4.6cm]   (d4) at (7.4,-6.3) {conv $1\times1$, $K$ filters\\logits $K\times28\times28$};
@@ -36,7 +36,7 @@
   \node[t] at (13.7,0.45) {LR-ASPP\\[-1pt]\texttt{\footnotesize LRASPPHead}};
   \node[b, fill=black!8, minimum width=3.4cm] (l0) at (13.7,-0.8) {high-level features\\$960\times14\times14$};
   \node[m, fill=orange!30, minimum width=2.5cm] (l1) at (12.3,-2.2) {conv $1\times1$, 128\\BN, ReLU\\$128\times14\times14$};
-  \node[m, fill=blue!12, minimum width=2.5cm]   (l2) at (15.1,-2.2) {global avg. pooling\\conv $1\times1$, 128\\sigmoid: $128\times1\times1$};
+  \node[m, fill=yellow!25, minimum width=2.5cm]   (l2) at (15.1,-2.2) {global avg. pooling\\conv $1\times1$, 128\\sigmoid: $128\times1\times1$};
   \node[op] (lm) at (13.7,-3.4) {$\times$};
   \node[m, fill=white, minimum width=3.0cm] (l3) at (13.7,-4.5) {bilinear $\times2$\\$128\times28\times28$};
   \node[m, fill=blue!20, minimum width=3.0cm]   (l4) at (13.7,-5.8) {conv $1\times1$, $K$ filters\\$K\times28\times28$};
