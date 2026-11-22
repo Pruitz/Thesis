@@ -81,6 +81,11 @@ ASPP applies atrous convolutions with different rates in parallel to the same fe
 As the rate grows, fewer filter weights fall on the feature map and more on the padding zeros. With a rate close to the size of the feature map, a $3\times3$ filter acts as a $1\times1$ filter. To overcome this problem and incorporate global context, Chen et al.\ add an image pooling branch to ASPP, in parallel with the other branches. This branch applies global average pooling, which gives one value per channel, then a $1\times1$ convolution, and bilinear upsampling back to the size of the feature map~\cite{chen2017deeplab,geron2026handson}. Its output can then be concatenated with those of the other branches.
 
 In the model of Chen et al., ASPP has five branches, all with 256 filters and batch normalization: one $1\times1$ convolution, three $3\times3$ atrous convolutions with rates 6, 12, and 18 at output stride 16 (doubled at output stride 8), and the image pooling branch. The five outputs are concatenated and pass through a $1\times1$ convolution with 256 filters~\cite{chen2017deeplab}. The right side of Figure~\ref{fig:deeplabv3_aspp} shows the module: the $1\times1$ convolution, the three atrous convolutions, the image pooling branch, and the concatenation followed by a $1\times1$ convolution.
+\newpage
+\subsection{Original architecture}
+\label{subsec:deeplabv3_original}
+
+Chen et al.\ describe their framework as applicable to any network and implement it on a ResNet~\cite{chen2017deeplab}. They set to 1 the stride of the layers that would reduce the resolution at the end of the network and replace the following convolutions with atrous convolutions. For output stride 8, these are the two layers that would reduce the feature maps from 1/8 to 1/16 and from 1/16 to 1/32, and the last two stages use rates 2 and 4~\cite{chen2017deeplab}. ASPP is applied to the resulting feature map, and a final $1\times1$ convolution gives the logits, which are upsampled to the input resolution~\cite{chen2017deeplab}. Figure~\ref{fig:deeplabv3_aspp} shows the whole architecture at output stride 16. Block1 to Block4 in the figure are the four ResNet stages (\texttt{layer1} to \texttt{layer4} in TorchVision).
 
 \begin{figure}[H]
   \centering
@@ -88,11 +93,6 @@ In the model of Chen et al., ASPP has five branches, all with 256 filters and ba
   \caption{DeepLabV3 with the ASPP module at output stride 16: block3 does not reduce the feature map, block4 uses atrous convolution with rate 2, and the ASPP rates are 6, 12, and 18. Here the stride of 2 is at the end of a block, while in Figure~\ref{fig:resnet50} it is at the start of the next stage, so the output stride after Block1 is 8 and not 4. The TorchVision model used in this thesis works at output stride 8, with atrous convolution also in block3, and with rates 12, 24, and 36~\cite{torchvision_deeplabv3}. Reproduced from Chen et~al.~\cite{chen2017deeplab}.}
   \label{fig:deeplabv3_aspp}
 \end{figure}
-
-\subsection{Original architecture}
-\label{subsec:deeplabv3_original}
-
-Chen et al.\ describe their framework as applicable to any network and implement it on a ResNet~\cite{chen2017deeplab}. They set to 1 the stride of the layers that would reduce the resolution at the end of the network and replace the following convolutions with atrous convolutions. For output stride 8, these are the two layers that would reduce the feature maps from 1/8 to 1/16 and from 1/16 to 1/32, and the last two stages use rates 2 and 4~\cite{chen2017deeplab}. ASPP is applied to the resulting feature map, and a final $1\times1$ convolution gives the logits, which are upsampled to the input resolution~\cite{chen2017deeplab}. Figure~\ref{fig:deeplabv3_aspp} shows the whole architecture at output stride 16. Block1 to Block4 in the figure are the four ResNet stages (\texttt{layer1} to \texttt{layer4} in TorchVision).
 
 \subsection{TorchVision implementation}
 \label{subsec:deeplabv3_torchvision}
