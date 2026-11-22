@@ -5,7 +5,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
-\usepackage[hmargin=1.6cm,top=1.5cm,bottom=1.7cm,columnsep=0.55cm]{geometry}
+\usepackage[hmargin=1.6cm,top=1.4cm,bottom=1.5cm,columnsep=0.55cm]{geometry}
 \usepackage{microtype}
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -41,7 +41,7 @@
 {Emanuele Pruiti (ID 347065)\par}
 {\small Supervisors: Marcello Chiaberge, Alessandro Navone, Umberto Albertin\par}
 \vspace{0.5em}
-\begin{minipage}{0.84\textwidth}\small\noindent\textbf{Abstract.} A monocular RGB camera guides a robot between crop rows. The segmentation network is trained only on labels generated automatically by SAM~3, without manual correction. It guided the robot along a tomato row not present in its training data, with each of the five centerline extractors.\end{minipage}
+\begin{minipage}{0.84\textwidth}\small\noindent\textbf{Abstract.} Segmentation networks can guide a robot between crop rows with a single RGB camera, but they need images annotated by hand. We train an LR-ASPP network only on labels generated automatically by SAM~3, without manual correction. Between parallel rows, networks trained on these labels reach a path IoU about 6 percentage points lower than with manual labels. We also develop two centerline extractors, Strip-IRLS and EdgeNet, and compare them with three baselines. With all five, the robot followed a tomato row not present in the training data, at about 5.5~cm RMSE from the row centerline on short runs and 9~cm on the full row.\end{minipage}
 \end{center}
 \vspace{0.2em}
 }]
