@@ -65,7 +65,7 @@ After this result, the robot network, a binary LR-ASPP, was trained only on the 
 \begin{figure}[h]
   \centering
   \includegraphics[width=0.85\linewidth]{segmentation_summary.pdf}
-  \caption{Path masks. (a)~Lettuce test images with the manual mask and the output of the LR-ASPP networks trained on manual labels and on automatic labels with two, three and four classes. The bottom image is taken outside the rows, where the manual mask is empty and the automatic-label networks mark the soil as path. (b)~Output of the robot network on tomato and cucumber images, which have no manual mask.}
+  \caption{Manual and predicted path masks. (a)~Lettuce test images with the manual mask and the output of the LR-ASPP networks trained on manual labels and on automatic labels with two, three and four classes. The bottom image is taken outside the rows, where the manual mask is empty and the automatic-label networks mark the soil as path. (b)~Output of the robot network, trained only on the automatic labels of the three crops.}
   \label{fig:segmentation}
 \end{figure}
 
@@ -85,7 +85,7 @@ The extractors were tested on 2400 synthetic masks with an exact centerline and 
 \begin{table}[h]
   \centering
   \footnotesize
-  \caption{Offline results and time of the five extractors. Gross error: centerline error above 15~px at the row read by the controller. \texttt{lost}: no centerline returned. Both are in \% of the masks of each group, which all contain a corridor.}
+  \caption{Offline results and processing times of the five extractors. Gross error: centerline error above 15~px at the row read by the controller. \texttt{lost}: no centerline returned. Both are in \% of the masks of each group, which all contain a corridor.}
   \label{tab:summary}
   \setlength{\tabcolsep}{4pt}
   \begin{tabular}{@{}lccccc@{}}
